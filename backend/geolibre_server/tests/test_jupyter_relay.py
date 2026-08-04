@@ -51,11 +51,9 @@ def _isolate_listeners():
     saved = list(jupyter_relay._listeners)
     saved_pending = dict(jupyter_relay._pending_results)
     saved_request_ids = set(jupyter_relay._pending_request_ids)
-    saved_owners = dict(jupyter_relay._pending_owners)
     jupyter_relay._listeners.clear()
     jupyter_relay._pending_results.clear()
     jupyter_relay._pending_request_ids.clear()
-    jupyter_relay._pending_owners.clear()
     yield
     jupyter_relay._listeners.clear()
     jupyter_relay._listeners.extend(saved)
@@ -63,8 +61,6 @@ def _isolate_listeners():
     jupyter_relay._pending_results.update(saved_pending)
     jupyter_relay._pending_request_ids.clear()
     jupyter_relay._pending_request_ids.update(saved_request_ids)
-    jupyter_relay._pending_owners.clear()
-    jupyter_relay._pending_owners.update(saved_owners)
 
 
 # -- the command envelope ----------------------------------------------------
@@ -248,49 +244,10 @@ def test_broadcast_with_no_listeners_reports_zero():
 # -- correlated read-back ----------------------------------------------------
 
 
-def test_dispatch_one_keeps_correlated_commands_in_one_window():
-    first, second = FakeSocket(), FakeSocket()
-    jupyter_relay._listeners.extend([first, second])
-
-    for method in ("addGeoJsonLayer", "getLayer"):
-        owner = jupyter_relay._dispatch_one(
-            {"type": "geolibre:command", "requestId": "dispatch", "method": method}
-        )
-        assert owner is first
-
-    assert len(first.received) == 2
-    assert second.received == []
-
-
-def test_only_the_authoritative_window_may_answer():
-    loop = asyncio.new_event_loop()
-    try:
-        owner, other = FakeSocket(), FakeSocket()
-        future = loop.create_future()
-        jupyter_relay._pending_results["dispatch"] = future
-        jupyter_relay._pending_owners["dispatch"] = owner
-        reply = json.dumps(
-            {
-                "type": "geolibre:result",
-                "requestId": "dispatch",
-                "ok": True,
-                "value": "layer-1",
-            }
-        )
-
-        jupyter_relay.GeoLibreRelaySocket.on_message(other, reply)
-        assert not future.done()
-
-        jupyter_relay.GeoLibreRelaySocket.on_message(owner, reply)
-        assert future.result()["value"] == "layer-1"
-    finally:
-        loop.close()
-
-
 def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
     async def exercise_reuse() -> None:
-        socket = FakeSocket()
-        jupyter_relay._listeners.append(socket)
+        first_socket, second_socket = FakeSocket(), FakeSocket()
+        jupyter_relay._listeners.extend([first_socket, second_socket])
         post = jupyter_relay.GeoLibreRelayCommandHandler.post.__wrapped__
         payload = {
             "method": "listLayers",
@@ -300,9 +257,11 @@ def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
         first_handler = FakeCommandHandler(payload)
         first_post = asyncio.create_task(post(first_handler))
         await asyncio.sleep(0)
-        first_dispatch_id = json.loads(socket.received[-1])["requestId"]
+        assert len(first_socket.received) == len(second_socket.received) == 1
+        first_dispatch_id = json.loads(first_socket.received[-1])["requestId"]
+        assert json.loads(second_socket.received[-1])["requestId"] == first_dispatch_id
         jupyter_relay.GeoLibreRelaySocket.on_message(
-            socket,
+            second_socket,
             json.dumps(
                 {
                     "type": "geolibre:result",
@@ -318,11 +277,13 @@ def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
         second_handler = FakeCommandHandler(payload)
         second_post = asyncio.create_task(post(second_handler))
         await asyncio.sleep(0)
-        second_dispatch_id = json.loads(socket.received[-1])["requestId"]
+        assert len(first_socket.received) == len(second_socket.received) == 2
+        second_dispatch_id = json.loads(first_socket.received[-1])["requestId"]
+        assert json.loads(second_socket.received[-1])["requestId"] == second_dispatch_id
         assert second_dispatch_id != first_dispatch_id
 
         jupyter_relay.GeoLibreRelaySocket.on_message(
-            socket,
+            first_socket,
             json.dumps(
                 {
                     "type": "geolibre:result",
@@ -336,7 +297,7 @@ def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
         assert not second_post.done()
 
         jupyter_relay.GeoLibreRelaySocket.on_message(
-            socket,
+            second_socket,
             json.dumps(
                 {
                     "type": "geolibre:result",
@@ -350,6 +311,20 @@ def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
         response = json.loads(second_handler.response or "{}")
         assert response["requestId"] == "caller-id"
         assert response["value"] == ["second"]
+        assert response["delivered"] == 2
+
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            first_socket,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": second_dispatch_id,
+                    "ok": True,
+                    "value": ["late"],
+                }
+            ),
+        )
+        assert json.loads(second_handler.response or "{}")["value"] == ["second"]
 
     asyncio.run(exercise_reuse())
 
@@ -385,21 +360,34 @@ def test_overlapping_caller_request_id_returns_conflict():
     asyncio.run(exercise_overlap())
 
 
-def test_closing_the_authoritative_window_fails_its_request_at_once():
-    loop = asyncio.new_event_loop()
-    try:
-        socket = FakeSocket()
-        future = loop.create_future()
-        jupyter_relay._listeners.append(socket)
-        jupyter_relay._pending_results["dispatch"] = future
-        jupyter_relay._pending_owners["dispatch"] = socket
+def test_closing_one_listener_leaves_another_to_answer():
+    async def exercise_close() -> None:
+        closing, remaining = FakeSocket(), FakeSocket()
+        jupyter_relay._listeners.extend([closing, remaining])
+        post = jupyter_relay.GeoLibreRelayCommandHandler.post.__wrapped__
+        handler = FakeCommandHandler({"method": "listLayers", "requestId": "caller-id"})
 
-        jupyter_relay.GeoLibreRelaySocket.on_close(socket)
+        pending_post = asyncio.create_task(post(handler))
+        await asyncio.sleep(0)
+        dispatch_id = json.loads(remaining.received[-1])["requestId"]
+        jupyter_relay.GeoLibreRelaySocket.on_close(closing)
+        assert not pending_post.done()
 
-        assert socket not in jupyter_relay._listeners
-        assert future.result()["error"] == "The GeoLibre window running this command closed."
-    finally:
-        loop.close()
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            remaining,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": dispatch_id,
+                    "ok": True,
+                    "value": [],
+                }
+            ),
+        )
+        await pending_post
+        assert json.loads(handler.response or "{}")["value"] == []
+
+    asyncio.run(exercise_close())
 
 
 # -- extension load ----------------------------------------------------------

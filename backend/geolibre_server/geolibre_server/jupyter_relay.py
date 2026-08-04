@@ -98,10 +98,6 @@ _pending_results: dict[str, Future[dict[str, Any]]] = {}
 # Caller request ids currently in flight, used only to reject concurrent reuse.
 _pending_request_ids: set[str] = set()
 
-# Which window each correlated request was dispatched to. A stable authoritative
-# window keeps layer ids returned by addGeoJsonLayer valid for later read-backs.
-_pending_owners: dict[str, GeoLibreRelaySocket] = {}
-
 #: How long a correlated POST waits for the app's result before answering 504.
 #: The kernel client's own socket timeout (``_RELAY_TIMEOUT_SECONDS + 1`` in
 #: ``notebook_client.py``) must stay longer than this, so the precise 504 message
@@ -219,15 +215,6 @@ def _broadcast(message: dict[str, Any]) -> int:
     return sum(_try_write(socket, encoded) for socket in list(_listeners))
 
 
-def _dispatch_one(message: dict[str, Any]) -> GeoLibreRelaySocket | None:
-    """Send ``message`` to the oldest open app window that accepts it."""
-    encoded = json.dumps(message)
-    for socket in list(_listeners):
-        if _try_write(socket, encoded):
-            return socket
-    return None
-
-
 class GeoLibreRelaySocket(WebSocketMixin, websocket.WebSocketHandler, JupyterHandler):
     """The app side: subscribes to every command posted to the relay."""
 
@@ -258,27 +245,13 @@ class GeoLibreRelaySocket(WebSocketMixin, websocket.WebSocketHandler, JupyterHan
         except (ValueError, json.JSONDecodeError):
             return
         dispatch_id = result["requestId"]
-        if _pending_owners.get(dispatch_id) is not self:
-            return
         future = _pending_results.get(dispatch_id)
         if future is not None and not future.done():
             future.set_result(result)
 
     def on_close(self) -> None:
-        """Unregister this app window and fail its correlated requests."""
+        """Unregister this app window."""
         _drop_listener(self)
-        for dispatch_id, owner in list(_pending_owners.items()):
-            if owner is not self:
-                continue
-            future = _pending_results.get(dispatch_id)
-            if future is not None and not future.done():
-                future.set_result(
-                    {
-                        "requestId": dispatch_id,
-                        "ok": False,
-                        "error": "The GeoLibre window running this command closed.",
-                    }
-                )
 
 
 class GeoLibreRelayCommandHandler(APIHandler):
@@ -304,20 +277,18 @@ class GeoLibreRelayCommandHandler(APIHandler):
         _pending_request_ids.add(request_id)
         _pending_results[dispatch_id] = future
         try:
-            owner = _dispatch_one(message)
-            if owner is None:
+            delivered = _broadcast(message)
+            if delivered == 0:
                 self.finish(json.dumps({"delivered": 0}))
                 return
-            _pending_owners[dispatch_id] = owner
             try:
                 result = await wait_for(future, RESULT_TIMEOUT_SECONDS)
             except (TimeoutError, AsyncTimeoutError) as error:
                 raise web.HTTPError(504, "GeoLibre did not return a result in time.") from error
             result["requestId"] = request_id
-            self.finish(json.dumps({"delivered": 1, **result}))
+            self.finish(json.dumps({"delivered": delivered, **result}))
         finally:
             _pending_results.pop(dispatch_id, None)
-            _pending_owners.pop(dispatch_id, None)
             _pending_request_ids.discard(request_id)
 
 
