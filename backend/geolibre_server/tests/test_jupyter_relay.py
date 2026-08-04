@@ -8,6 +8,7 @@ environment it publishes to kernels, and the broadcast bookkeeping itself.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 
@@ -37,13 +38,21 @@ def _isolate_listeners():
     """Keep each test's listener list independent of the module-level one."""
     saved = list(jupyter_relay._listeners)
     saved_pending = dict(jupyter_relay._pending_results)
+    saved_request_ids = set(jupyter_relay._pending_request_ids)
+    saved_owners = dict(jupyter_relay._pending_owners)
     jupyter_relay._listeners.clear()
     jupyter_relay._pending_results.clear()
+    jupyter_relay._pending_request_ids.clear()
+    jupyter_relay._pending_owners.clear()
     yield
     jupyter_relay._listeners.clear()
     jupyter_relay._listeners.extend(saved)
     jupyter_relay._pending_results.clear()
     jupyter_relay._pending_results.update(saved_pending)
+    jupyter_relay._pending_request_ids.clear()
+    jupyter_relay._pending_request_ids.update(saved_request_ids)
+    jupyter_relay._pending_owners.clear()
+    jupyter_relay._pending_owners.update(saved_owners)
 
 
 # -- the command envelope ----------------------------------------------------
@@ -222,6 +231,98 @@ def test_broadcast_with_no_listeners_reports_zero():
     # This zero is what the kernel client turns into a "nothing is listening"
     # warning rather than a silent no-op.
     assert jupyter_relay._broadcast({"type": "geolibre:command", "method": "flyTo"}) == 0
+
+
+# -- correlated read-back ----------------------------------------------------
+
+
+def test_dispatch_one_keeps_correlated_commands_in_one_window():
+    first, second = FakeSocket(), FakeSocket()
+    jupyter_relay._listeners.extend([first, second])
+
+    for method in ("addGeoJsonLayer", "getLayer"):
+        owner = jupyter_relay._dispatch_one(
+            {"type": "geolibre:command", "requestId": "dispatch", "method": method}
+        )
+        assert owner is first
+
+    assert len(first.received) == 2
+    assert second.received == []
+
+
+def test_only_the_authoritative_window_may_answer():
+    loop = asyncio.new_event_loop()
+    try:
+        owner, other = FakeSocket(), FakeSocket()
+        future = loop.create_future()
+        jupyter_relay._pending_results["dispatch"] = future
+        jupyter_relay._pending_owners["dispatch"] = owner
+        reply = json.dumps(
+            {
+                "type": "geolibre:result",
+                "requestId": "dispatch",
+                "ok": True,
+                "value": "layer-1",
+            }
+        )
+
+        jupyter_relay.GeoLibreRelaySocket.on_message(other, reply)
+        assert not future.done()
+
+        jupyter_relay.GeoLibreRelaySocket.on_message(owner, reply)
+        assert future.result()["value"] == "layer-1"
+    finally:
+        loop.close()
+
+
+def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
+    loop = asyncio.new_event_loop()
+    try:
+        socket = FakeSocket()
+        current = loop.create_future()
+        jupyter_relay._pending_results["new-dispatch"] = current
+        jupyter_relay._pending_owners["new-dispatch"] = socket
+
+        delayed = json.dumps(
+            {
+                "type": "geolibre:result",
+                "requestId": "old-dispatch",
+                "ok": True,
+                "value": "stale",
+            }
+        )
+        jupyter_relay.GeoLibreRelaySocket.on_message(socket, delayed)
+        assert not current.done()
+
+        reply = json.dumps(
+            {
+                "type": "geolibre:result",
+                "requestId": "new-dispatch",
+                "ok": True,
+                "value": "current",
+            }
+        )
+        jupyter_relay.GeoLibreRelaySocket.on_message(socket, reply)
+        assert current.result()["value"] == "current"
+    finally:
+        loop.close()
+
+
+def test_closing_the_authoritative_window_fails_its_request_at_once():
+    loop = asyncio.new_event_loop()
+    try:
+        socket = FakeSocket()
+        future = loop.create_future()
+        jupyter_relay._listeners.append(socket)
+        jupyter_relay._pending_results["dispatch"] = future
+        jupyter_relay._pending_owners["dispatch"] = socket
+
+        jupyter_relay.GeoLibreRelaySocket.on_close(socket)
+
+        assert socket not in jupyter_relay._listeners
+        assert future.result()["error"] == "The GeoLibre window running this command closed."
+    finally:
+        loop.close()
 
 
 # -- extension load ----------------------------------------------------------
