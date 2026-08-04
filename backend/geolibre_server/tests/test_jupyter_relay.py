@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -31,6 +32,17 @@ class FakeSocket:
         if self.fails:
             raise RuntimeError("socket is closed")
         self.received.append(message)
+
+
+class FakeCommandHandler:
+    """Minimal command handler surface for exercising ``post`` directly."""
+
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.request = SimpleNamespace(body=json.dumps(payload).encode())
+        self.response: str | None = None
+
+    def finish(self, response: str) -> None:
+        self.response = response
 
 
 @pytest.fixture(autouse=True)
@@ -276,36 +288,101 @@ def test_only_the_authoritative_window_may_answer():
 
 
 def test_delayed_result_cannot_resolve_a_reused_caller_request_id():
-    loop = asyncio.new_event_loop()
-    try:
+    async def exercise_reuse() -> None:
         socket = FakeSocket()
-        current = loop.create_future()
-        jupyter_relay._pending_results["new-dispatch"] = current
-        jupyter_relay._pending_owners["new-dispatch"] = socket
+        jupyter_relay._listeners.append(socket)
+        post = jupyter_relay.GeoLibreRelayCommandHandler.post.__wrapped__
+        payload = {
+            "method": "listLayers",
+            "requestId": "caller-id",
+        }
 
-        delayed = json.dumps(
-            {
-                "type": "geolibre:result",
-                "requestId": "old-dispatch",
-                "ok": True,
-                "value": "stale",
-            }
+        first_handler = FakeCommandHandler(payload)
+        first_post = asyncio.create_task(post(first_handler))
+        await asyncio.sleep(0)
+        first_dispatch_id = json.loads(socket.received[-1])["requestId"]
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            socket,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": first_dispatch_id,
+                    "ok": True,
+                    "value": ["first"],
+                }
+            ),
         )
-        jupyter_relay.GeoLibreRelaySocket.on_message(socket, delayed)
-        assert not current.done()
+        await first_post
+        assert json.loads(first_handler.response or "{}")["requestId"] == "caller-id"
 
-        reply = json.dumps(
-            {
-                "type": "geolibre:result",
-                "requestId": "new-dispatch",
-                "ok": True,
-                "value": "current",
-            }
+        second_handler = FakeCommandHandler(payload)
+        second_post = asyncio.create_task(post(second_handler))
+        await asyncio.sleep(0)
+        second_dispatch_id = json.loads(socket.received[-1])["requestId"]
+        assert second_dispatch_id != first_dispatch_id
+
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            socket,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": first_dispatch_id,
+                    "ok": True,
+                    "value": ["stale"],
+                }
+            ),
         )
-        jupyter_relay.GeoLibreRelaySocket.on_message(socket, reply)
-        assert current.result()["value"] == "current"
-    finally:
-        loop.close()
+        await asyncio.sleep(0)
+        assert not second_post.done()
+
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            socket,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": second_dispatch_id,
+                    "ok": True,
+                    "value": ["second"],
+                }
+            ),
+        )
+        await second_post
+        response = json.loads(second_handler.response or "{}")
+        assert response["requestId"] == "caller-id"
+        assert response["value"] == ["second"]
+
+    asyncio.run(exercise_reuse())
+
+
+def test_overlapping_caller_request_id_returns_conflict():
+    async def exercise_overlap() -> None:
+        socket = FakeSocket()
+        jupyter_relay._listeners.append(socket)
+        post = jupyter_relay.GeoLibreRelayCommandHandler.post.__wrapped__
+        payload = {"method": "listLayers", "requestId": "caller-id"}
+
+        first_post = asyncio.create_task(post(FakeCommandHandler(payload)))
+        await asyncio.sleep(0)
+
+        with pytest.raises(jupyter_relay.web.HTTPError) as error:
+            await post(FakeCommandHandler(payload))
+        assert error.value.status_code == 409
+
+        dispatch_id = json.loads(socket.received[-1])["requestId"]
+        jupyter_relay.GeoLibreRelaySocket.on_message(
+            socket,
+            json.dumps(
+                {
+                    "type": "geolibre:result",
+                    "requestId": dispatch_id,
+                    "ok": True,
+                    "value": [],
+                }
+            ),
+        )
+        await first_post
+
+    asyncio.run(exercise_overlap())
 
 
 def test_closing_the_authoritative_window_fails_its_request_at_once():
