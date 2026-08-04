@@ -1388,7 +1388,9 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
             </DropdownMenuItem>
             <DropdownMenuItem onSelect={() => handleToggleExcluded(col)}>
               <Ban className="me-2 h-3.5 w-3.5" />
-              {layer?.fieldVisibility?.[col] === "excluded" ? t("attributeTable.includeField", "Include field on export") : t("attributeTable.excludeField", "Exclude field on export")}
+              {layer?.fieldVisibility?.[col] === "excluded"
+                ? t("attributeTable.includeField", "Include field on export")
+                : t("attributeTable.excludeField", "Exclude field on export")}
             </DropdownMenuItem>
             <DropdownMenuItem
               disabled={isRtl ? index === columns.length - 1 : index === 0}

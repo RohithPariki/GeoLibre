@@ -6,12 +6,12 @@ import type { GeoLibreProject, FieldVisibility } from "./types";
  */
 export function excludeHiddenFieldsFromGeojson(
   geojson: FeatureCollection,
-  fieldVisibility?: Record<string, FieldVisibility>
+  fieldVisibility?: Record<string, FieldVisibility>,
 ): FeatureCollection {
   const excludedKeys = new Set(
     Object.entries(fieldVisibility || {})
       .filter(([_, visibility]) => visibility === "excluded")
-      .map(([key]) => key)
+      .map(([key]) => key),
   );
 
   if (excludedKeys.size === 0) {

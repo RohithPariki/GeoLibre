@@ -539,9 +539,7 @@ def postgis_read(request: PostgisReadRequest) -> dict[str, Any]:
                 if info["srid"] not in (0, 4326)
                 else sql.SQL("ST_AsGeoJSON({geom})").format(geom=geom)
             )
-            read_columns = [
-                col for col in info["columns"] if col not in request.excluded_fields
-            ]
+            read_columns = [col for col in info["columns"] if col not in request.excluded_fields]
             column_list = sql.SQL(", ").join(
                 [geom_expr] + [sql.Identifier(col) for col in read_columns]
             )
