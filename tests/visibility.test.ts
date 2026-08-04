@@ -50,7 +50,7 @@ describe("visibility", () => {
     };
 
     const stripped = excludeHiddenFieldsFromProject(project);
-    
+
     // Check main geojson
     const feature1 = stripped.layers[0].geojson!.features[0];
     assert.strictEqual(feature1.properties?.keep, 1);

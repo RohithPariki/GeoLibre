@@ -41,7 +41,7 @@ export function excludeHiddenFieldsFromProject(project: GeoLibreProject): GeoLib
   let changed = false;
   const layers = project.layers.map((layer) => {
     if (!layer.fieldVisibility) return layer;
-    
+
     let updatedLayer = layer;
 
     if (layer.geojson) {
@@ -53,7 +53,10 @@ export function excludeHiddenFieldsFromProject(project: GeoLibreProject): GeoLib
     }
 
     if (layer.metadata?.embeddedGeoJSON) {
-      const strippedEmbedded = excludeHiddenFieldsFromGeojson(layer.metadata.embeddedGeoJSON as FeatureCollection, layer.fieldVisibility);
+      const strippedEmbedded = excludeHiddenFieldsFromGeojson(
+        layer.metadata.embeddedGeoJSON as FeatureCollection,
+        layer.fieldVisibility,
+      );
       if (strippedEmbedded !== layer.metadata.embeddedGeoJSON) {
         changed = true;
         updatedLayer = {

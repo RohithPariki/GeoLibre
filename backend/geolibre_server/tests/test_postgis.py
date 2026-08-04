@@ -365,9 +365,7 @@ def test_read_returns_wgs84_with_primary_key(live_table) -> None:
 def test_read_drops_excluded_fields(live_table) -> None:
     result = postgis_read(
         PostgisReadRequest(
-            connection=LIVE_DSN,
-            table=TABLE,
-            excluded_fields=["population", "name", "gid"]
+            connection=LIVE_DSN, table=TABLE, excluded_fields=["population", "name", "gid"]
         )
     )
     features = result["geojson"]["features"]

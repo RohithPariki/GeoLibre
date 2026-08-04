@@ -581,7 +581,9 @@ def postgis_read(request: PostgisReadRequest) -> dict[str, Any]:
     pk = info["primary_key"]
     features = []
     for row in rows:
-        properties_raw = {column: _json_safe(value) for column, value in zip(read_columns, row[1:], strict=True)}
+        properties_raw = {
+            column: _json_safe(value) for column, value in zip(read_columns, row[1:], strict=True)
+        }
         feature: dict[str, Any] = {
             "type": "Feature",
             "geometry": json.loads(row[0]) if row[0] else None,
