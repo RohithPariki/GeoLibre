@@ -8,7 +8,6 @@ environment it publishes to kernels, and the broadcast bookkeeping itself.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 
