@@ -364,14 +364,18 @@ def test_read_returns_wgs84_with_primary_key(live_table) -> None:
 @requires_live_postgis
 def test_read_drops_excluded_fields(live_table) -> None:
     result = postgis_read(
-        PostgisReadRequest(connection=LIVE_DSN, table=TABLE, excluded_fields=["population", "name"])
+        PostgisReadRequest(
+            connection=LIVE_DSN,
+            table=TABLE,
+            excluded_fields=["population", "name", "gid"]
+        )
     )
     features = result["geojson"]["features"]
     assert len(features) == 3
     knox = features[0]
-    assert "gid" in knox["properties"]
     assert "population" not in knox["properties"]
     assert "name" not in knox["properties"]
+    assert "gid" not in knox["properties"]
     # The geometry and id must still be populated correctly.
     assert "geometry" in knox
     assert "id" in knox

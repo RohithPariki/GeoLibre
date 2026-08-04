@@ -40,14 +40,33 @@ export function excludeHiddenFieldsFromGeojson(
 export function excludeHiddenFieldsFromProject(project: GeoLibreProject): GeoLibreProject {
   let changed = false;
   const layers = project.layers.map((layer) => {
-    if (layer.fieldVisibility && layer.geojson) {
+    if (!layer.fieldVisibility) return layer;
+    
+    let updatedLayer = layer;
+
+    if (layer.geojson) {
       const strippedGeojson = excludeHiddenFieldsFromGeojson(layer.geojson, layer.fieldVisibility);
       if (strippedGeojson !== layer.geojson) {
         changed = true;
-        return { ...layer, geojson: strippedGeojson };
+        updatedLayer = { ...updatedLayer, geojson: strippedGeojson };
       }
     }
-    return layer;
+
+    if (layer.metadata?.embeddedGeoJSON) {
+      const strippedEmbedded = excludeHiddenFieldsFromGeojson(layer.metadata.embeddedGeoJSON as FeatureCollection, layer.fieldVisibility);
+      if (strippedEmbedded !== layer.metadata.embeddedGeoJSON) {
+        changed = true;
+        updatedLayer = {
+          ...updatedLayer,
+          metadata: {
+            ...updatedLayer.metadata,
+            embeddedGeoJSON: strippedEmbedded,
+          },
+        };
+      }
+    }
+
+    return updatedLayer;
   });
 
   return changed ? { ...project, layers } : project;
