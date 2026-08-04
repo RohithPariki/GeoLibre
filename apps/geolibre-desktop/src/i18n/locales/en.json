@@ -4207,6 +4207,8 @@
     "manageFieldAria": "Manage field {{name}}",
     "renameField": "Rename field",
     "hideField": "Hide field",
+    "excludeField": "Exclude field on export",
+    "includeField": "Include field on export",
     "moveLeft": "Move left",
     "moveRight": "Move right",
     "deleteField": "Delete field",
