@@ -97,7 +97,7 @@ def _estimate_metric_crs(gdf: Any) -> Any:
     hemisphere), leading to severe projection distortion. We detect this and
     raise a descriptive ValueError.
     """
-    minx, miny, maxx, maxy = gdf.total_bounds
+    minx, _, maxx, _ = gdf.total_bounds
     if (maxx - minx) > 180.0:
         raise ValueError(
             "Input layer crosses the antimeridian (longitude span > 180°). "
