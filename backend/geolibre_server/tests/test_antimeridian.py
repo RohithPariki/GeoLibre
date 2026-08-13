@@ -1,6 +1,7 @@
 """Standalone tests for antimeridian crossing handling in vector_ops."""
 
 import unittest
+
 from geolibre_server import vector_ops
 from geolibre_server.vector_ops import run_vector_tool
 
