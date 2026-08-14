@@ -4823,7 +4823,7 @@
       "fillColor": "Tô màu",
       "strokeColor": "Màu đường viền",
       "strokeWidth": "Chiều rộng đường viền (px)",
-      "opacity": "Điền vào độ mờ",
+      "opacity": "Độ mờ",
       "circleRadius": "Bán kính điểm (px)",
       "sizeField": "Trường kích thước"
     },
