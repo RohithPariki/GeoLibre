@@ -4881,11 +4881,15 @@
       "typeConvexHull": "Envoltórias convexas",
       "typeBuffer": "Buffers",
       "bufferDistance": "Distância do buffer (m)",
+      "bufferField": "Campo de distância",
+      "bufferFieldHint": "Cada feição recebe um buffer com o seu próprio valor em metros; as feições sem valor usam a distância acima e o valor 0 não desenha nada.",
+      "fieldNone": "Nenhum (fixo)",
       "fillColor": "Cor de preenchimento",
       "strokeColor": "Cor do contorno",
       "strokeWidth": "Largura do contorno (px)",
       "opacity": "Opacidade do preenchimento",
-      "circleRadius": "Raio do ponto (px)"
+      "circleRadius": "Raio do ponto (px)",
+      "sizeField": "Campo de tamanho"
     },
     "attributeForm": {
       "heading": "Formulário de atributos",

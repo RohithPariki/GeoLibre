@@ -4881,11 +4881,15 @@
       "typeConvexHull": "Envolventes convexas",
       "typeBuffer": "Zonas de influencia",
       "bufferDistance": "Distancia de influencia (m)",
+      "bufferField": "Campo de distancia",
+      "bufferFieldHint": "A cada entidad se le aplica una zona de influencia según su propio valor en metros; las entidades sin valor usan la distancia indicada arriba y un valor de 0 no dibuja nada.",
+      "fieldNone": "Ninguno (fijo)",
       "fillColor": "Color de relleno",
       "strokeColor": "Color de contorno",
       "strokeWidth": "Ancho de contorno (px)",
       "opacity": "Opacidad de relleno",
-      "circleRadius": "Radio de punto (px)"
+      "circleRadius": "Radio de punto (px)",
+      "sizeField": "Campo de tamaño"
     },
     "attributeForm": {
       "heading": "Formulario de atributos",

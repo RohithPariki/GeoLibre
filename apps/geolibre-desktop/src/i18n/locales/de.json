@@ -4881,11 +4881,15 @@
       "typeConvexHull": "Konvexe Hüllen",
       "typeBuffer": "Puffer",
       "bufferDistance": "Pufferdistanz (m)",
+      "bufferField": "Entfernungsfeld",
+      "bufferFieldHint": "Jedes Objekt wird mit seinem eigenen Wert in Metern gepuffert; Objekte ohne Wert verwenden die oben angegebene Entfernung, und der Wert 0 zeichnet nichts.",
+      "fieldNone": "Keines (fest)",
       "fillColor": "Füllfarbe",
       "strokeColor": "Umrissfarbe",
       "strokeWidth": "Umrissbreite (px)",
       "opacity": "Fülldeckkraft",
-      "circleRadius": "Punktradius (px)"
+      "circleRadius": "Punktradius (px)",
+      "sizeField": "Größenfeld"
     },
     "attributeForm": {
       "heading": "Attributformular",

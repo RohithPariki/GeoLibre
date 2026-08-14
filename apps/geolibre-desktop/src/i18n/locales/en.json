@@ -4891,11 +4891,15 @@
       "typeConvexHull": "Convex hulls",
       "typeBuffer": "Buffers",
       "bufferDistance": "Buffer distance (m)",
+      "bufferField": "Distance field",
+      "bufferFieldHint": "Each feature is buffered by its own value in meters; features with no value use the distance above, and a value of 0 draws nothing.",
+      "fieldNone": "None (fixed)",
       "fillColor": "Fill color",
       "strokeColor": "Outline color",
       "strokeWidth": "Outline width (px)",
       "opacity": "Fill opacity",
-      "circleRadius": "Point radius (px)"
+      "circleRadius": "Point radius (px)",
+      "sizeField": "Size field"
     },
     "attributeForm": {
       "heading": "Attributes Form",

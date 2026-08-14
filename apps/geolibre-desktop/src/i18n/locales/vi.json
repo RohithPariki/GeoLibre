@@ -4814,14 +4814,18 @@
       "typeNone": "Không có",
       "typeCentroid": "trung tâm",
       "typeBoundingBox": "Hộp giới hạn",
-      "typeConvexHull": "Chuyển đổi một giá trị thành một chuỗi.",
+      "typeConvexHull": "Bao lồi",
       "typeBuffer": "Bộ đệm",
       "bufferDistance": "Khoảng cách đệm (m)",
+      "bufferField": "Trường khoảng cách",
+      "bufferFieldHint": "Mỗi đối tượng được đệm theo giá trị riêng của nó tính bằng mét; đối tượng không có giá trị dùng khoảng cách ở trên, và giá trị 0 không vẽ gì cả.",
+      "fieldNone": "Không có (cố định)",
       "fillColor": "Tô màu",
-      "strokeColor": "Chữ",
+      "strokeColor": "Màu đường viền",
       "strokeWidth": "Chiều rộng đường viền (px)",
       "opacity": "Điền vào độ mờ",
-      "circleRadius": "Bán kính điểm (px)"
+      "circleRadius": "Bán kính điểm (px)",
+      "sizeField": "Trường kích thước"
     },
     "attributeForm": {
       "widget": {
