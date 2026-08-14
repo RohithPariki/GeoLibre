@@ -50,14 +50,36 @@ export function resolveEditorTrackingConfig(
 }
 
 /**
+ * Resolve a config for the query helpers, yielding `null` rather than throwing when
+ * the configured field names are blank or collide.
+ *
+ * The query helpers run once per field on every Attribute Table / Field Calculator
+ * render, and the field names are user-editable strings, so a half-filled settings
+ * form or a hand-edited `.geolibre.json` must degrade to "tracking off" instead of
+ * crashing the panel. The stamping helpers keep the throw: a write that silently
+ * skipped tracking would leave a layer looking tracked while recording nothing.
+ */
+function resolveEditorTrackingConfigForQuery(
+  config?: EditorTrackingConfig,
+): Required<EditorTrackingConfig> | null {
+  try {
+    return resolveEditorTrackingConfig(config);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Check whether a field name corresponds to one of the maintained editor tracking columns.
+ *
+ * Returns `false` for an invalid config, so callers can use this as a plain predicate.
  */
 export function isMaintainedEditorTrackingField(
   fieldName: string,
   config?: EditorTrackingConfig,
 ): boolean {
-  const resolved = resolveEditorTrackingConfig(config);
-  if (!resolved.enabled) {
+  const resolved = resolveEditorTrackingConfigForQuery(config);
+  if (!resolved?.enabled) {
     return false;
   }
   return (
@@ -70,13 +92,16 @@ export function isMaintainedEditorTrackingField(
 
 /**
  * Ensure all configured editor tracking field names are included in a field list.
+ *
+ * Returns the list unchanged for an invalid config, matching
+ * {@link isMaintainedEditorTrackingField}.
  */
 export function ensureEditorTrackingFields(
   fields: string[],
   config?: EditorTrackingConfig,
 ): string[] {
-  const resolved = resolveEditorTrackingConfig(config);
-  if (!resolved.enabled) {
+  const resolved = resolveEditorTrackingConfigForQuery(config);
+  if (!resolved?.enabled) {
     return fields;
   }
   const result = [...fields];

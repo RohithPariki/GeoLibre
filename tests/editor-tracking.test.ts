@@ -53,6 +53,24 @@ describe("editor-tracking", () => {
     assert.equal(isMaintainedEditorTrackingField("created_by", customConfig), false);
   });
 
+  it("query helpers degrade to disabled instead of throwing on an invalid config", () => {
+    // A half-filled settings form or a hand-edited project must not crash the
+    // Attribute Table / Field Calculator, which call these once per field.
+    const blank = { enabled: true, createdByField: "  " };
+    const duplicate = { enabled: true, createdAtField: "same", editedAtField: "same" };
+
+    assert.equal(isMaintainedEditorTrackingField("created_at", blank), false);
+    assert.equal(isMaintainedEditorTrackingField("same", duplicate), false);
+    assert.deepEqual(ensureEditorTrackingFields(["id"], blank), ["id"]);
+    assert.deepEqual(ensureEditorTrackingFields(["id"], duplicate), ["id"]);
+
+    // The stamping path still surfaces the misconfiguration.
+    assert.throws(
+      () => stampFeaturePropertiesEditorTracking({ id: 1 }, "create", { config: blank }),
+      /non-empty and unique/,
+    );
+  });
+
   it("ensureEditorTrackingFields adds fields when tracking is enabled", () => {
     const initialFields = ["id", "name"];
     const disabledResult = ensureEditorTrackingFields(initialFields, { enabled: false });
