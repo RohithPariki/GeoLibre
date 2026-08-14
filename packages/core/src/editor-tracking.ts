@@ -28,13 +28,25 @@ export interface EditorTrackingStampOptions {
 export function resolveEditorTrackingConfig(
   config?: EditorTrackingConfig,
 ): Required<EditorTrackingConfig> {
-  return {
+  const resolved = {
     enabled: config?.enabled ?? DEFAULT_EDITOR_TRACKING_CONFIG.enabled,
-    createdByField: config?.createdByField || DEFAULT_EDITOR_TRACKING_CONFIG.createdByField,
-    createdAtField: config?.createdAtField || DEFAULT_EDITOR_TRACKING_CONFIG.createdAtField,
-    editedByField: config?.editedByField || DEFAULT_EDITOR_TRACKING_CONFIG.editedByField,
-    editedAtField: config?.editedAtField || DEFAULT_EDITOR_TRACKING_CONFIG.editedAtField,
+    createdByField: config?.createdByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdByField,
+    createdAtField: config?.createdAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdAtField,
+    editedByField: config?.editedByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedByField,
+    editedAtField: config?.editedAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedAtField,
   };
+
+  const fields = [
+    resolved.createdByField,
+    resolved.createdAtField,
+    resolved.editedByField,
+    resolved.editedAtField,
+  ];
+  if (fields.some((field) => field.trim() === "") || new Set(fields).size !== fields.length) {
+    throw new Error("Editor tracking field names must be non-empty and unique");
+  }
+
+  return resolved;
 }
 
 /**
@@ -45,6 +57,9 @@ export function isMaintainedEditorTrackingField(
   config?: EditorTrackingConfig,
 ): boolean {
   const resolved = resolveEditorTrackingConfig(config);
+  if (!resolved.enabled) {
+    return false;
+  }
   return (
     fieldName === resolved.createdByField ||
     fieldName === resolved.createdAtField ||
@@ -149,8 +164,13 @@ export function stampFeatureCollectionEditorTracking(
     return collection;
   }
 
+  const timestamp = options?.timestamp ?? new Date().toISOString();
+  const opts = { ...options, timestamp };
+
   return {
     ...collection,
-    features: collection.features.map((feat) => stampFeatureEditorTracking(feat, action, options)),
+    features: collection.features.map((feat) =>
+      stampFeatureEditorTracking(feat, action, opts)
+    ),
   };
 }

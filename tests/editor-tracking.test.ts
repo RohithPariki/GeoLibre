@@ -21,13 +21,27 @@ describe("editor-tracking", () => {
     assert.equal(resolved.editedAtField, "edited_at");
   });
 
+  it("resolveEditorTrackingConfig throws on invalid configurations", () => {
+    assert.throws(() => {
+      resolveEditorTrackingConfig({ enabled: true, createdAtField: "same", editedAtField: "same" });
+    }, /non-empty and unique/);
+
+    assert.throws(() => {
+      resolveEditorTrackingConfig({ enabled: true, createdByField: "   " });
+    }, /non-empty and unique/);
+  });
+
+
   it("isMaintainedEditorTrackingField correctly identifies tracking columns", () => {
-    assert.equal(isMaintainedEditorTrackingField("created_by"), true);
-    assert.equal(isMaintainedEditorTrackingField("created_at"), true);
-    assert.equal(isMaintainedEditorTrackingField("edited_by"), true);
-    assert.equal(isMaintainedEditorTrackingField("edited_at"), true);
-    assert.equal(isMaintainedEditorTrackingField("name"), false);
-    assert.equal(isMaintainedEditorTrackingField("population"), false);
+    const config = { enabled: true };
+    assert.equal(isMaintainedEditorTrackingField("created_by", config), true);
+    assert.equal(isMaintainedEditorTrackingField("created_at", config), true);
+    assert.equal(isMaintainedEditorTrackingField("edited_by", config), true);
+    assert.equal(isMaintainedEditorTrackingField("edited_at", config), true);
+    assert.equal(isMaintainedEditorTrackingField("name", config), false);
+    assert.equal(isMaintainedEditorTrackingField("population", config), false);
+
+    assert.equal(isMaintainedEditorTrackingField("created_by", { enabled: false }), false);
 
     const customConfig = {
       enabled: true,
