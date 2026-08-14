@@ -140,4 +140,3 @@ export {
 } from "./credentials";
 export { excludeHiddenFieldsFromGeojson, excludeHiddenFieldsFromProject } from "./visibility";
 export * from "./editor-tracking";
-

@@ -26,7 +26,7 @@ export interface EditorTrackingStampOptions {
  * Fully resolve an {@link EditorTrackingConfig} with fallback default field names.
  */
 export function resolveEditorTrackingConfig(
-  config?: EditorTrackingConfig
+  config?: EditorTrackingConfig,
 ): Required<EditorTrackingConfig> {
   return {
     enabled: config?.enabled ?? DEFAULT_EDITOR_TRACKING_CONFIG.enabled,
@@ -42,7 +42,7 @@ export function resolveEditorTrackingConfig(
  */
 export function isMaintainedEditorTrackingField(
   fieldName: string,
-  config?: EditorTrackingConfig
+  config?: EditorTrackingConfig,
 ): boolean {
   const resolved = resolveEditorTrackingConfig(config);
   return (
@@ -58,7 +58,7 @@ export function isMaintainedEditorTrackingField(
  */
 export function ensureEditorTrackingFields(
   fields: string[],
-  config?: EditorTrackingConfig
+  config?: EditorTrackingConfig,
 ): string[] {
   const resolved = resolveEditorTrackingConfig(config);
   if (!resolved.enabled) {
@@ -91,7 +91,7 @@ export function ensureEditorTrackingFields(
 export function stampFeaturePropertiesEditorTracking(
   properties: Record<string, unknown> | null | undefined,
   action: "create" | "update",
-  options?: EditorTrackingStampOptions
+  options?: EditorTrackingStampOptions,
 ): Record<string, unknown> {
   const resolved = resolveEditorTrackingConfig(options?.config);
   if (!resolved.enabled) {
@@ -123,7 +123,7 @@ export function stampFeaturePropertiesEditorTracking(
 export function stampFeatureEditorTracking<T extends Feature>(
   feature: T,
   action: "create" | "update",
-  options?: EditorTrackingStampOptions
+  options?: EditorTrackingStampOptions,
 ): T {
   const resolved = resolveEditorTrackingConfig(options?.config);
   if (!resolved.enabled) {
@@ -142,7 +142,7 @@ export function stampFeatureEditorTracking<T extends Feature>(
 export function stampFeatureCollectionEditorTracking(
   collection: FeatureCollection,
   action: "create" | "update",
-  options?: EditorTrackingStampOptions
+  options?: EditorTrackingStampOptions,
 ): FeatureCollection {
   const resolved = resolveEditorTrackingConfig(options?.config);
   if (!resolved.enabled) {
@@ -151,8 +151,6 @@ export function stampFeatureCollectionEditorTracking(
 
   return {
     ...collection,
-    features: collection.features.map((feat) =>
-      stampFeatureEditorTracking(feat, action, options)
-    ),
+    features: collection.features.map((feat) => stampFeatureEditorTracking(feat, action, options)),
   };
 }
