@@ -31,7 +31,6 @@ describe("editor-tracking", () => {
     }, /non-empty and unique/);
   });
 
-
   it("isMaintainedEditorTrackingField correctly identifies tracking columns", () => {
     const config = { enabled: true };
     assert.equal(isMaintainedEditorTrackingField("created_by", config), true);

@@ -169,8 +169,6 @@ export function stampFeatureCollectionEditorTracking(
 
   return {
     ...collection,
-    features: collection.features.map((feat) =>
-      stampFeatureEditorTracking(feat, action, opts)
-    ),
+    features: collection.features.map((feat) => stampFeatureEditorTracking(feat, action, opts)),
   };
 }
