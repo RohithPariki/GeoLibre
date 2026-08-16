@@ -59,8 +59,11 @@ export function EditorTrackingSection({ layer }: EditorTrackingSectionProps) {
   // one (see pickEditorIdentity), so the field is shown but not editable.
   const sessionIdentity = collabActive && collabName ? collabName : null;
 
-  // Read once per mount: localStorage is not reactive, and this input is the
-  // only thing in the panel that writes it.
+  // `localStorage` is not reactive and the Comments panel writes the same key,
+  // so this is seeded at mount and re-read whenever the field is focused. In the
+  // shared-rail layout the Style panel stays mounted while collapsed, so a name
+  // set from Comments would otherwise be invisible here — and worse, blurring
+  // this field would write the stale value back over it.
   const [authorName, setAuthorName] = useState(() => readStoredAuthorName());
 
   // Field names as typed, so a half-cleared name can be retyped instead of
@@ -145,6 +148,7 @@ export function EditorTrackingSection({ layer }: EditorTrackingSectionProps) {
               disabled={sessionIdentity !== null}
               placeholder={DEFAULT_EDITOR_IDENTITY}
               onChange={(event) => setAuthorName(event.target.value)}
+              onFocus={() => setAuthorName(readStoredAuthorName())}
               onBlur={() => setStoredAuthorName(authorName)}
             />
             <p className="text-xs text-muted-foreground">

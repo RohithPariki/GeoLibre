@@ -387,8 +387,15 @@ function featureCollectionsEquivalent(a: FeatureCollection, b: FeatureCollection
  * cost is that two DISTINCT features with no `id` and no `__gm_id`, identical
  * geometry, and the same array index now collide and one wins — which is the
  * lesser problem, since the alternative silently duplicates every stamped
- * id-less feature on each sync. Geoman assigns one id or the other to shapes it
- * draws, so the fallback is a last resort either way.
+ * id-less feature on each sync.
+ *
+ * Either way the fallback cannot give a feature a stable identity ACROSS a
+ * geometry change, so an id-less feature that is dragged reads as a new feature
+ * and has its creation stamp reset. Nothing reaches it today: every feature in
+ * this path enters through Geoman, which assigns `id`/`__gm_id` to shapes it
+ * draws and to anything imported via `loadGeoJson`. That is the invariant this
+ * fallback leans on — if Geoman ever stops guaranteeing it, editor tracking
+ * needs a real identity here, not a better hash.
  */
 function sketchFeatureKey(feature: Feature, index: number): string {
   const props = feature.properties as Record<string, unknown> | null;
