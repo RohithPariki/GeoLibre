@@ -56,6 +56,34 @@ describe("editor-tracking", () => {
     assert.equal(isMaintainedEditorTrackingField("created_by", customConfig), false);
   });
 
+  it("trims field names so they cannot become padded property keys", () => {
+    const resolved = resolveEditorTrackingConfig({ enabled: true, createdByField: "  author  " });
+    assert.equal(resolved.createdByField, "author");
+
+    const stamped = stampFeaturePropertiesEditorTracking({}, "create", {
+      config: { enabled: true, createdByField: "  author  " },
+      userIdentity: "alice",
+      timestamp: "2026-08-14T12:00:00.000Z",
+    });
+    assert.equal(stamped.author, "alice");
+    assert.equal("  author  " in stamped, false);
+  });
+
+  it("does not validate the field names of a disabled config", () => {
+    // A half-filled or hand-edited config left behind on a layer with tracking
+    // off must not make every save on that layer throw: nothing is written, so
+    // the names cannot matter.
+    assert.doesNotThrow(() =>
+      resolveEditorTrackingConfig({ enabled: false, createdByField: "", editedByField: "" }),
+    );
+    assert.deepEqual(
+      stampFeaturePropertiesEditorTracking({ id: 1 }, "update", {
+        config: { enabled: false, createdAtField: "same", editedAtField: "same" },
+      }),
+      { id: 1 },
+    );
+  });
+
   it("query helpers degrade to disabled instead of throwing on an invalid config", () => {
     // A half-filled settings form or a hand-edited project must not crash the
     // Attribute Table / Field Calculator, which call these once per field.

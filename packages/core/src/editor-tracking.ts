@@ -66,7 +66,10 @@ export function editorTrackingFieldNames(config?: EditorTrackingConfig): string[
 export interface EditorTrackingStampOptions {
   /** Optional custom editor tracking field configuration. */
   config?: EditorTrackingConfig;
-  /** Identity string of the author/editor (e.g. username, email, or client ID). Defaults to "local-user". */
+  /**
+   * Identity string of the author/editor (e.g. username, email, or client ID).
+   * Defaults to {@link DEFAULT_EDITOR_IDENTITY}.
+   */
   userIdentity?: string;
   /** ISO timestamp override for deterministic testing or batch operations. Defaults to `new Date().toISOString()`. */
   timestamp?: string;
@@ -78,13 +81,26 @@ export interface EditorTrackingStampOptions {
 export function resolveEditorTrackingConfig(
   config?: EditorTrackingConfig,
 ): Required<EditorTrackingConfig> {
+  // Trimmed on the way in, because these become literal GeoJSON property keys:
+  // a name typed as `" created_by "` in the settings form would otherwise pass
+  // validation and then write a column whose name has invisible padding,
+  // matching neither what the user typed nor the default it looks like.
   const resolved = {
     enabled: config?.enabled ?? DEFAULT_EDITOR_TRACKING_CONFIG.enabled,
-    createdByField: config?.createdByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdByField,
-    createdAtField: config?.createdAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdAtField,
-    editedByField: config?.editedByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedByField,
-    editedAtField: config?.editedAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedAtField,
+    createdByField: (
+      config?.createdByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdByField
+    ).trim(),
+    createdAtField: (
+      config?.createdAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.createdAtField
+    ).trim(),
+    editedByField: (config?.editedByField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedByField).trim(),
+    editedAtField: (config?.editedAtField ?? DEFAULT_EDITOR_TRACKING_CONFIG.editedAtField).trim(),
   };
+
+  // Tracking that is off writes nothing, so the names cannot matter — and a
+  // half-filled or hand-edited config left behind on a disabled layer must not
+  // make every save on that layer throw. Validate only what will be used.
+  if (!resolved.enabled) return resolved;
 
   const fields = [
     resolved.createdByField,
@@ -92,7 +108,7 @@ export function resolveEditorTrackingConfig(
     resolved.editedByField,
     resolved.editedAtField,
   ];
-  if (fields.some((field) => field.trim() === "") || new Set(fields).size !== fields.length) {
+  if (fields.some((field) => field === "") || new Set(fields).size !== fields.length) {
     throw new Error("Editor tracking field names must be non-empty and unique");
   }
 
@@ -184,7 +200,7 @@ export function stampFeaturePropertiesEditorTracking(
 
   const result: Record<string, unknown> = properties ? { ...properties } : {};
   const now = options?.timestamp ?? new Date().toISOString();
-  const actor = options?.userIdentity || "local-user";
+  const actor = options?.userIdentity || DEFAULT_EDITOR_IDENTITY;
 
   if (action === "create") {
     if (result[resolved.createdByField] === undefined || result[resolved.createdByField] === null) {
