@@ -111,7 +111,7 @@ kepler.gl, see the [Comparison](comparison.md).
 
 - Attribute table
     - **Browsing**: filtering, sorting, resize controls, feature highlighting with Ctrl- and Shift-click multi-row selection, optional zoom to selected features, and virtualized rows for large layers
-    - **Editing and derived fields**: add-field and field-calculator tools (including geometry length and area calculation), virtual fields (expression-backed computed columns that update with the data), and persistent attribute joins configured in layer properties
+    - **Editing and derived fields**: add-field and field-calculator tools (including geometry length and area calculation), virtual fields (expression-backed computed columns that update with the data), persistent attribute joins configured in layer properties, and automatic editor tracking (created by/at and edited by/at)
     - **Forms**: an attribute form designer with edit widgets, validation constraints, and conditional field visibility
     - **Analysis**: a Charts panel (histogram, scatter, bar, line, box) and a field statistics summary panel
     - **Columns**: rename, delete, hide/show, and reorder, plus a column explorer for finding and toggling fields in wide tables

@@ -377,7 +377,7 @@ function featureCollectionsEquivalent(a: FeatureCollection, b: FeatureCollection
 
 function sketchFeatureKey(feature: Feature, index: number): string {
   const props = feature.properties as Record<string, unknown> | null;
-  return String(feature.id ?? props?.__gm_id ?? `${JSON.stringify(feature)}@${index}`);
+  return String(feature.id ?? props?.__gm_id ?? `${JSON.stringify(feature.geometry)}@${index}`);
 }
 
 function unionFeatureCollections(...collections: FeatureCollection[]): FeatureCollection {
