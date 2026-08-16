@@ -671,3 +671,94 @@ describe("canonicalGeometryKey", () => {
     assert.notEqual(key(1), key(2));
   });
 });
+
+describe("editor tracking — copied and id-less features", () => {
+  const config = { enabled: true };
+  const stamp = { config, userIdentity: "ada", timestamp: "2026-08-16T00:00:00.000Z" };
+
+  it("records a duplicated feature as newly created, not as its source", () => {
+    // Geoman's `copy` edit mode clones properties, and the session loaded the
+    // layer's features with their tracking columns — so the copy arrives
+    // carrying the original's creation stamp for a feature that did not exist
+    // then. It has no tag, so it is new to the session and gets its own.
+    const original: FeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          id: 1,
+          geometry: { type: "Point", coordinates: [0, 0] },
+          properties: {
+            name: "source",
+            created_by: "bob",
+            created_at: "2020-01-01T00:00:00.000Z",
+            edited_by: "bob",
+            edited_at: "2020-01-01T00:00:00.000Z",
+          },
+        },
+      ],
+    };
+    const tagged = tagFeatureKeys(original);
+    const withCopy = structuredClone(tagged);
+    const copy = structuredClone(tagged.features[0]);
+    delete (copy.properties as Record<string, unknown>)[GEOMETRY_EDIT_FID_PROPERTY];
+    delete copy.id;
+    withCopy.features.push(copy);
+
+    const reconciled = reconcileEditedFeatures(withCopy, captureEditedProperties(tagged), {
+      ...stamp,
+      originalGeometries: captureEditedGeometries(tagged),
+    });
+
+    // The source is untouched: it was loaded and not moved.
+    assert.equal(reconciled.features[0].properties?.created_by, "bob");
+    assert.equal(reconciled.features[0].properties?.created_at, "2020-01-01T00:00:00.000Z");
+    assert.deepEqual(reconciled.features[1].properties, {
+      name: "source",
+      created_by: "ada",
+      created_at: "2026-08-16T00:00:00.000Z",
+      edited_by: "ada",
+      edited_at: "2026-08-16T00:00:00.000Z",
+    });
+  });
+
+  it("keeps matching an id-less feature after it has been stamped once", () => {
+    // The tracking columns only ever exist on the store side, so a key that read
+    // them would give one feature two identities once stamped and every sync
+    // would reset its creation stamp. `sketchFeatureKey`, replicated here,
+    // hashes the geometry rather than the whole feature for exactly this reason.
+    const keyOf = (feature: Feature, index: number) =>
+      String(
+        feature.id ?? feature.properties?.__gm_id ?? `${JSON.stringify(feature.geometry)}@${index}`,
+      );
+    const editorCopy: FeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [0, 0] },
+          properties: { note: "sketch" },
+        },
+      ],
+    };
+    const stored: FeatureCollection = {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [0, 0] },
+          properties: {
+            note: "sketch",
+            created_by: "ada",
+            created_at: "2026-08-01T00:00:00.000Z",
+            edited_by: "ada",
+            edited_at: "2026-08-01T00:00:00.000Z",
+          },
+        },
+      ],
+    };
+
+    const result = applySyncedEditorTracking(editorCopy, stored, keyOf, stamp);
+    assert.equal(result.features[0].properties?.created_at, "2026-08-01T00:00:00.000Z");
+  });
+});

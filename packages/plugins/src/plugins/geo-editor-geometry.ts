@@ -336,6 +336,7 @@ export function reconcileEditedFeatures(
   // One timestamp for the whole save, so features changed in a single session
   // share an `edited_at` instead of differing by however long the map took.
   const timestamp = tracking?.timestamp ?? new Date().toISOString();
+  const trackingFields = tracking ? editorTrackingFieldNames(tracking.config) : null;
   return {
     type: "FeatureCollection",
     features: collection.features.map((feature) => {
@@ -359,6 +360,14 @@ export function reconcileEditedFeatures(
           feature.geometry,
           tracking.originalGeometries,
         );
+        // The session loads the layer's features with their tracking columns, so
+        // a feature copied from a tracked one arrives carrying the original's
+        // creation stamp. It is a different feature that did not exist then, and
+        // the stamping helper preserves a creation stamp it finds — so clear the
+        // inherited one and let this session record the copy's own provenance.
+        if (action === "create" && trackingFields && properties) {
+          for (const field of trackingFields) delete properties[field];
+        }
         if (action) {
           properties = stampFeaturePropertiesEditorTracking(properties, action, {
             config: tracking.config,
@@ -419,6 +428,11 @@ export function applySyncedEditorTracking(
   const fields = editorTrackingFieldNames(tracking.config);
   if (!fields) return next;
 
+  // `keyOf` must not read the tracking columns: they only ever exist on the
+  // store side, so a key derived from them would give one feature two different
+  // identities once it had been stamped, and every later sync would read it as
+  // brand new and reset its creation stamp to "now". `sketchFeatureKey` satisfies
+  // this — its no-id fallback hashes the geometry rather than the whole feature.
   const previousByKey = new Map<string, Feature>();
   previous?.features.forEach((feature, index) => {
     previousByKey.set(keyOf(feature, index), feature);
