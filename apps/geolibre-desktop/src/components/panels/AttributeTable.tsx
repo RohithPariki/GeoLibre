@@ -970,7 +970,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
         layer.geojson.features,
         drafts,
         formFields,
-        layer.editorTracking?.enabled
+        editorTrackingFieldNames(layer.editorTracking)
           ? {
               config: layer.editorTracking,
               userIdentity: currentEditorIdentity(),

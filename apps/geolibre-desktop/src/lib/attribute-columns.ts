@@ -1,5 +1,6 @@
 import {
   currentEditorIdentity,
+  editorTrackingFieldNames,
   isMaintainedEditorTrackingField,
   stampFeaturePropertiesEditorTracking,
   styleValue,
@@ -329,8 +330,11 @@ export function calculateField(
   let errors = 0;
 
   // One identity and timestamp for the whole run: a calculation is a single
-  // edit, however many features it touches.
-  const stampOptions = layer.editorTracking?.enabled
+  // edit, however many features it touches. Gated on the resolved field names
+  // rather than `enabled` alone, so a config a hand-edited project or an older
+  // client left unusable reads as "not tracked" here exactly as it already does
+  // in the attribute table, instead of throwing out of the click that ran this.
+  const stampOptions = editorTrackingFieldNames(layer.editorTracking)
     ? {
         config: layer.editorTracking,
         userIdentity: currentEditorIdentity(),
@@ -398,6 +402,11 @@ export function renameColumn(
   if (!layer.geojson || !newKey || newKey === oldKey) return null;
   if (!discovered.includes(oldKey)) return null; // nothing to rename
   if (discovered.includes(newKey)) return null; // would clobber another column
+  // Renaming a maintained tracking column detaches the data from the config
+  // that names it: the next stamp recreates the configured name and the renamed
+  // copy is orphaned. Rename it in the layer's Editor Tracking settings, which
+  // is what the attribute table's disabled menu item points at.
+  if (isMaintainedEditorTrackingField(oldKey, layer.editorTracking)) return null;
   const settings = getColumnSettings(layer);
   return {
     geojson: renameFieldInGeojson(layer.geojson, oldKey, newKey),
@@ -415,6 +424,9 @@ export function deleteColumn(layer: GeoLibreLayer, key: string): Partial<GeoLibr
     (feature) => feature.properties != null && key in feature.properties,
   );
   if (!keyExists) return null;
+  // Same reason as renameColumn: the next stamp would recreate the column the
+  // config names, so deleting it here only discards the history it held.
+  if (isMaintainedEditorTrackingField(key, layer.editorTracking)) return null;
   const settings = getColumnSettings(layer);
   return {
     geojson: deleteFieldInGeojson(layer.geojson, key),

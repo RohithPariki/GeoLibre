@@ -4,6 +4,7 @@ import * as maplibregl from "maplibre-gl";
 import type { MapController } from "@geolibre/map";
 import {
   currentEditorIdentity,
+  editorTrackingFieldNames,
   getAttributeFormField,
   isAttributeFormFieldVisible,
   stampFeatureEditorTracking,
@@ -611,7 +612,7 @@ export function FieldCollectionDialog({
     const fc = current.geojson ?? emptyFeatureCollection();
     // Read the tracking config off `current`, not the render-time layer: the
     // form can sit open across a configuration change.
-    const tracked = current.editorTracking?.enabled
+    const tracked = editorTrackingFieldNames(current.editorTracking)
       ? stampFeatureEditorTracking(feature, "create", {
           config: current.editorTracking,
           userIdentity: currentEditorIdentity(),

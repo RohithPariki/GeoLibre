@@ -268,3 +268,30 @@ describe("calculateField — editor tracking", () => {
     ]);
   });
 });
+
+describe("calculateField — unusable tracking config", () => {
+  // A config with blank or colliding names can only arrive from a hand-edited
+  // project, an MCP-authored one, or an older client — the settings panel never
+  // stores one. The attribute table already reads such a layer as untracked, so
+  // a calculation must agree with it rather than throw out of the click.
+  const broken = (config: Record<string, unknown>) =>
+    makeLayer({ editorTracking: config as never });
+
+  it("treats a duplicate-name config as untracked instead of throwing", () => {
+    const layer = broken({ enabled: true, createdAtField: "x", editedAtField: "x" });
+    const result = calculateField(layer, DISCOVERED, "pop", false, "pop * 2", "number");
+    assert.ok(result && "patch" in result);
+    assert.deepEqual(Object.keys(result.patch.geojson?.features[0].properties ?? {}), [
+      "name",
+      "pop",
+      "area",
+    ]);
+  });
+
+  it("treats a blank-name config as untracked instead of throwing", () => {
+    const layer = broken({ enabled: true, createdByField: "   " });
+    const result = calculateField(layer, DISCOVERED, "pop", false, "pop * 2", "number");
+    assert.ok(result && "patch" in result);
+    assert.equal(result.patch.geojson?.features[0].properties?.edited_by, undefined);
+  });
+});
