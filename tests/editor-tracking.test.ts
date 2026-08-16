@@ -147,6 +147,30 @@ describe("editor-tracking", () => {
     assert.equal(stamped.edited_at, "2026-08-14T12:00:00.000Z");
   });
 
+  it("create overwrites a creation stamp copied from another feature", () => {
+    // Reachable two ways: the geometry editor's copy action clones a tracked
+    // feature's properties, and a Field Collection form can define a capture
+    // field whose key is a tracking column. Either would otherwise credit a
+    // brand-new feature to whoever created the thing it came from.
+    const copied = {
+      name: "duplicate",
+      created_by: "bob",
+      created_at: "2020-01-01T00:00:00.000Z",
+    };
+    const stamped = stampFeaturePropertiesEditorTracking(copied, "create", {
+      config: { enabled: true },
+      userIdentity: "ada",
+      timestamp: "2026-08-16T12:00:00.000Z",
+    });
+    assert.deepEqual(stamped, {
+      name: "duplicate",
+      created_by: "ada",
+      created_at: "2026-08-16T12:00:00.000Z",
+      edited_by: "ada",
+      edited_at: "2026-08-16T12:00:00.000Z",
+    });
+  });
+
   it("stampFeaturePropertiesEditorTracking updates edit info and preserves creation info on action='update'", () => {
     const props = {
       name: "Park",

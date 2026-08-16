@@ -182,11 +182,17 @@ export function ensureEditorTrackingFields(
 /**
  * Stamp editor tracking metadata onto a feature's properties object.
  *
- * On `"create"`:
- * Sets `created_by` and `created_at` (if not already set), as well as `edited_by` and `edited_at`.
+ * On `"create"`: sets all four columns to this editor and this timestamp.
+ * `"create"` states that the feature is being created here and now, so it is
+ * authoritative — a value already sitting in one of these columns describes
+ * some other feature, not this one. That case is reachable: the geometry
+ * editor's copy action clones a tracked feature's properties, and a Field
+ * Collection form can define a capture field whose key happens to be a tracking
+ * column. Both would otherwise credit a brand-new feature to whoever created
+ * the thing it was copied from.
  *
- * On `"update"`:
- * Sets or updates `edited_by` and `edited_at`. Preserves existing `created_by` and `created_at`.
+ * On `"update"`: sets `edited_by`/`edited_at` and preserves `created_by` /
+ * `created_at`, which record something this edit did not change.
  */
 export function stampFeaturePropertiesEditorTracking(
   properties: Record<string, unknown> | null | undefined,
@@ -203,12 +209,8 @@ export function stampFeaturePropertiesEditorTracking(
   const actor = options?.userIdentity || DEFAULT_EDITOR_IDENTITY;
 
   if (action === "create") {
-    if (result[resolved.createdByField] === undefined || result[resolved.createdByField] === null) {
-      result[resolved.createdByField] = actor;
-    }
-    if (result[resolved.createdAtField] === undefined || result[resolved.createdAtField] === null) {
-      result[resolved.createdAtField] = now;
-    }
+    result[resolved.createdByField] = actor;
+    result[resolved.createdAtField] = now;
   }
 
   result[resolved.editedByField] = actor;

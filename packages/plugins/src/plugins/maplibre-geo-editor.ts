@@ -375,6 +375,21 @@ function featureCollectionsEquivalent(a: FeatureCollection, b: FeatureCollection
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/**
+ * Identity of a sketch feature across two copies of the same collection — the
+ * editor's and the store's — for `unionFeatureCollections` and the editor
+ * tracking merge.
+ *
+ * The fallback hashes the geometry rather than the whole feature deliberately:
+ * properties are not stable across the two copies, because the store's carries
+ * the editor tracking columns and the editor's never does, so a key that read
+ * them would give one feature two identities the moment it was stamped. The
+ * cost is that two DISTINCT features with no `id` and no `__gm_id`, identical
+ * geometry, and the same array index now collide and one wins — which is the
+ * lesser problem, since the alternative silently duplicates every stamped
+ * id-less feature on each sync. Geoman assigns one id or the other to shapes it
+ * draws, so the fallback is a last resort either way.
+ */
 function sketchFeatureKey(feature: Feature, index: number): string {
   const props = feature.properties as Record<string, unknown> | null;
   return String(feature.id ?? props?.__gm_id ?? `${JSON.stringify(feature.geometry)}@${index}`);

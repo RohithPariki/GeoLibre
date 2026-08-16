@@ -336,7 +336,6 @@ export function reconcileEditedFeatures(
   // One timestamp for the whole save, so features changed in a single session
   // share an `edited_at` instead of differing by however long the map took.
   const timestamp = tracking?.timestamp ?? new Date().toISOString();
-  const trackingFields = tracking ? editorTrackingFieldNames(tracking.config) : null;
   return {
     type: "FeatureCollection",
     features: collection.features.map((feature) => {
@@ -360,14 +359,10 @@ export function reconcileEditedFeatures(
           feature.geometry,
           tracking.originalGeometries,
         );
-        // The session loads the layer's features with their tracking columns, so
-        // a feature copied from a tracked one arrives carrying the original's
-        // creation stamp. It is a different feature that did not exist then, and
-        // the stamping helper preserves a creation stamp it finds — so clear the
-        // inherited one and let this session record the copy's own provenance.
-        if (action === "create" && trackingFields && properties) {
-          for (const field of trackingFields) delete properties[field];
-        }
+        // A feature copied from a tracked one arrives carrying the original's
+        // creation stamp — the session loads the layer's features with their
+        // tracking columns. `"create"` is authoritative for exactly this reason,
+        // so the copy is recorded as created here rather than inheriting it.
         if (action) {
           properties = stampFeaturePropertiesEditorTracking(properties, action, {
             config: tracking.config,
