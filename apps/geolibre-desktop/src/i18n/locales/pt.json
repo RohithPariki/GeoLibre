@@ -4953,7 +4953,8 @@
       "editedByField": "Campo “Editado por”",
       "editedAtField": "Campo “Editado em”",
       "blankName": "Os nomes dos campos não podem ficar em branco.",
-      "duplicateName": "Cada campo de rastreamento precisa de um nome diferente."
+      "duplicateName": "Cada campo de rastreamento precisa de um nome diferente.",
+      "columnTaken": "“{{name}}” já é uma coluna de atributos. O rastreamento sobrescreveria seus valores."
     }
   },
   "vectorExport": {

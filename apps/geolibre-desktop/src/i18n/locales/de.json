@@ -4953,7 +4953,8 @@
       "editedByField": "Feld „Bearbeitet von“",
       "editedAtField": "Feld „Bearbeitet am“",
       "blankName": "Feldnamen dürfen nicht leer sein.",
-      "duplicateName": "Jedes Verfolgungsfeld benötigt einen eigenen Namen."
+      "duplicateName": "Jedes Verfolgungsfeld benötigt einen eigenen Namen.",
+      "columnTaken": "„{{name}}“ ist bereits eine Attributspalte. Die Verfolgung würde deren Werte überschreiben."
     }
   },
   "vectorExport": {

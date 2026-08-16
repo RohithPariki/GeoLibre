@@ -4888,7 +4888,8 @@
       "editedByField": "Trường “Người chỉnh sửa”",
       "editedAtField": "Trường “Thời điểm chỉnh sửa”",
       "blankName": "Tên trường không được để trống.",
-      "duplicateName": "Mỗi trường theo dõi cần một tên khác nhau."
+      "duplicateName": "Mỗi trường theo dõi cần một tên khác nhau.",
+      "columnTaken": "“{{name}}” đã là một trường thuộc tính. Việc theo dõi sẽ ghi đè các giá trị của nó."
     }
   },
   "layers": {

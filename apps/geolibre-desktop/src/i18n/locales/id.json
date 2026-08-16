@@ -4878,7 +4878,8 @@
       "editedByField": "Bidang “Disunting oleh”",
       "editedAtField": "Bidang “Disunting pada”",
       "blankName": "Nama bidang tidak boleh kosong.",
-      "duplicateName": "Setiap bidang pelacakan memerlukan nama yang berbeda."
+      "duplicateName": "Setiap bidang pelacakan memerlukan nama yang berbeda.",
+      "columnTaken": "“{{name}}” sudah menjadi bidang atribut. Pelacakan akan menimpa nilainya."
     }
   },
   "vectorExport": {

@@ -4878,7 +4878,8 @@
       "editedByField": "‘편집한 사람’ 필드",
       "editedAtField": "‘편집한 시간’ 필드",
       "blankName": "필드 이름은 비워 둘 수 없습니다.",
-      "duplicateName": "추적 필드마다 다른 이름이 필요합니다."
+      "duplicateName": "추적 필드마다 다른 이름이 필요합니다.",
+      "columnTaken": "“{{name}}”은(는) 이미 속성 필드입니다. 추적이 해당 값을 덮어씁니다."
     }
   },
   "vectorExport": {

@@ -4964,7 +4964,8 @@
       "editedByField": "Edited by column",
       "editedAtField": "Edited at column",
       "blankName": "Column names cannot be blank.",
-      "duplicateName": "Each tracking column needs a different name."
+      "duplicateName": "Each tracking column needs a different name.",
+      "columnTaken": "“{{name}}” is already an attribute column. Tracking would overwrite its values."
     }
   },
   "vectorExport": {

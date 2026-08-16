@@ -4878,7 +4878,8 @@
       "editedByField": "「更新者」フィールド",
       "editedAtField": "「更新日時」フィールド",
       "blankName": "フィールド名は空にできません。",
-      "duplicateName": "トラッキング フィールドにはそれぞれ異なる名前が必要です。"
+      "duplicateName": "トラッキング フィールドにはそれぞれ異なる名前が必要です。",
+      "columnTaken": "「{{name}}」は既に属性フィールドです。トラッキングはその値を上書きします。"
     }
   },
   "vectorExport": {

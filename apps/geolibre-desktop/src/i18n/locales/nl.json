@@ -4953,7 +4953,8 @@
       "editedByField": "Veld ‘Bewerkt door’",
       "editedAtField": "Veld ‘Bewerkt op’",
       "blankName": "Veldnamen mogen niet leeg zijn.",
-      "duplicateName": "Elk registratieveld heeft een eigen naam nodig."
+      "duplicateName": "Elk registratieveld heeft een eigen naam nodig.",
+      "columnTaken": "‘{{name}}’ is al een attribuutkolom. De registratie zou de waarden ervan overschrijven."
     }
   },
   "vectorExport": {

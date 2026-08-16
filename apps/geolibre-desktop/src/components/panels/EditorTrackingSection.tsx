@@ -10,31 +10,16 @@ import {
 import { Input, Label } from "@geolibre/ui";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { getAttributePropertyNames } from "../../lib/expression-inputs";
+import {
+  DEFAULT_EDITOR_TRACKING_NAMES,
+  EDITOR_TRACKING_FIELD_KEYS,
+  editorTrackingNameProblem,
+  type EditorTrackingFieldKey,
+} from "../../lib/editor-tracking-names";
 
 interface EditorTrackingSectionProps {
   layer: GeoLibreLayer;
-}
-
-/** The four configurable column names, in the order they are shown. */
-const FIELD_KEYS = ["createdByField", "createdAtField", "editedByField", "editedAtField"] as const;
-
-type FieldKey = (typeof FIELD_KEYS)[number];
-
-/** The default name for each configurable column. */
-const DEFAULT_NAMES = Object.fromEntries(
-  FIELD_KEYS.map((key) => [key, DEFAULT_EDITOR_TRACKING_CONFIG[key]]),
-) as Record<FieldKey, string>;
-
-/**
- * Why a set of column names is unusable, or `null` when it is fine. Mirrors the
- * rule `resolveEditorTrackingConfig` enforces, so the panel can report it as a
- * message instead of letting it surface as a throw when a feature is stamped.
- */
-function nameProblem(names: Record<FieldKey, string>): "blankName" | "duplicateName" | null {
-  const values = FIELD_KEYS.map((key) => names[key].trim());
-  if (values.some((value) => value === "")) return "blankName";
-  if (new Set(values).size !== values.length) return "duplicateName";
-  return null;
 }
 
 /**
@@ -68,45 +53,65 @@ export function EditorTrackingSection({ layer }: EditorTrackingSectionProps) {
 
   // Field names as typed, so a half-cleared name can be retyped instead of
   // snapping back to its stored value on every keystroke.
-  const [drafts, setDrafts] = useState<Record<FieldKey, string> | null>(null);
+  const [drafts, setDrafts] = useState<Record<EditorTrackingFieldKey, string> | null>(null);
   const storedNames = useMemo(
     () =>
       Object.fromEntries(
-        FIELD_KEYS.map((key) => [key, config?.[key] ?? DEFAULT_EDITOR_TRACKING_CONFIG[key]]),
-      ) as Record<FieldKey, string>,
+        EDITOR_TRACKING_FIELD_KEYS.map((key) => [
+          key,
+          config?.[key] ?? DEFAULT_EDITOR_TRACKING_CONFIG[key],
+        ]),
+      ) as Record<EditorTrackingFieldKey, string>,
     [config],
   );
   const names = drafts ?? storedNames;
 
-  // The same rule `resolveEditorTrackingConfig` enforces, surfaced before the
-  // configuration is stored rather than as a throw at stamping time.
-  const invalid = useMemo(() => nameProblem(names), [names]);
+  // The layer's own attribute columns, minus the ones tracking already
+  // maintains — pointing a tracking column back at its current name is how
+  // renaming works and must not read as a collision. Keyed on the data so an
+  // unrelated style edit does not repeat the property scan.
+  const { metadata: layerMetadata, geojson: layerGeojson } = layer;
+  const dataColumns = useMemo(() => {
+    const columns = new Set(
+      getAttributePropertyNames({ metadata: layerMetadata, geojson: layerGeojson }),
+    );
+    for (const key of EDITOR_TRACKING_FIELD_KEYS) columns.delete(storedNames[key]);
+    return columns;
+  }, [layerMetadata, layerGeojson, storedNames]);
+
+  const invalid = useMemo(
+    () => editorTrackingNameProblem(names, dataColumns),
+    [names, dataColumns],
+  );
 
   // What to persist when the drafts are unusable: the stored names, or the
   // defaults when a hand-edited project left those broken too. Writing an
   // invalid set would be a dead end — the inputs are only rendered while
   // tracking is on, so a bad set stored on the way out leaves no way back in.
-  const safeNames = invalid ? (nameProblem(storedNames) ? DEFAULT_NAMES : storedNames) : names;
+  const safeNames = invalid
+    ? editorTrackingNameProblem(storedNames, dataColumns)
+      ? DEFAULT_EDITOR_TRACKING_NAMES
+      : storedNames
+    : names;
 
   const write = (patch: Partial<EditorTrackingConfig>) => {
     const next: EditorTrackingConfig = {
       enabled,
-      ...(Object.fromEntries(FIELD_KEYS.map((key) => [key, safeNames[key].trim()])) as Record<
-        FieldKey,
-        string
-      >),
+      ...(Object.fromEntries(
+        EDITOR_TRACKING_FIELD_KEYS.map((key) => [key, safeNames[key].trim()]),
+      ) as Record<EditorTrackingFieldKey, string>),
       ...patch,
     };
     // Leave the defaults implicit: a layer that renames nothing stores just
     // `{ enabled: true }`, which keeps the project file and its diffs clean.
-    for (const key of FIELD_KEYS) {
+    for (const key of EDITOR_TRACKING_FIELD_KEYS) {
       if (next[key] === DEFAULT_EDITOR_TRACKING_CONFIG[key]) delete next[key];
     }
     // Turning tracking off keeps renamed columns configured, so switching it
     // back on resumes writing the same columns instead of starting a second
     // set beside the data already stamped. With nothing customized there is
     // nothing worth persisting, so the layer drops the key entirely.
-    const customized = FIELD_KEYS.some((key) => next[key] !== undefined);
+    const customized = EDITOR_TRACKING_FIELD_KEYS.some((key) => next[key] !== undefined);
     setLayerEditorTracking(layer.id, next.enabled || customized ? next : undefined);
   };
 
@@ -160,7 +165,7 @@ export function EditorTrackingSection({ layer }: EditorTrackingSectionProps) {
             </p>
           </div>
 
-          {FIELD_KEYS.map((key) => (
+          {EDITOR_TRACKING_FIELD_KEYS.map((key) => (
             <div key={key} className="space-y-1">
               <Label htmlFor={`et-${key}-${layer.id}`}>{t(`style.editorTracking.${key}`)}</Label>
               <Input
@@ -173,7 +178,11 @@ export function EditorTrackingSection({ layer }: EditorTrackingSectionProps) {
             </div>
           ))}
           {invalid && (
-            <p className="text-xs text-destructive">{t(`style.editorTracking.${invalid}`)}</p>
+            <p className="text-xs text-destructive">
+              {invalid.reason === "columnTaken"
+                ? t("style.editorTracking.columnTaken", { name: invalid.name })
+                : t(`style.editorTracking.${invalid.reason}`)}
+            </p>
           )}
         </>
       )}

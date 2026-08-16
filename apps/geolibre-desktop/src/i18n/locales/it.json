@@ -4953,7 +4953,8 @@
       "editedByField": "Campo «Modificato da»",
       "editedAtField": "Campo «Modificato il»",
       "blankName": "I nomi dei campi non possono essere vuoti.",
-      "duplicateName": "Ogni campo di tracciamento deve avere un nome diverso."
+      "duplicateName": "Ogni campo di tracciamento deve avere un nome diverso.",
+      "columnTaken": "«{{name}}» è già una colonna di attributi. Il tracciamento ne sovrascriverebbe i valori."
     }
   },
   "vectorExport": {

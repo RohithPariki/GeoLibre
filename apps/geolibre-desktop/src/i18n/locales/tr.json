@@ -4953,7 +4953,8 @@
       "editedByField": "“Düzenleyen” alanı",
       "editedAtField": "“Düzenlenme zamanı” alanı",
       "blankName": "Alan adları boş olamaz.",
-      "duplicateName": "Her takip alanının farklı bir adı olmalıdır."
+      "duplicateName": "Her takip alanının farklı bir adı olmalıdır.",
+      "columnTaken": "“{{name}}” zaten bir öznitelik alanı. Takip, değerlerinin üzerine yazar."
     }
   },
   "vectorExport": {

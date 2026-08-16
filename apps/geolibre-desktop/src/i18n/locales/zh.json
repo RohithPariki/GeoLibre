@@ -4878,7 +4878,8 @@
       "editedByField": "“修改者”字段",
       "editedAtField": "“修改时间”字段",
       "blankName": "字段名称不能为空。",
-      "duplicateName": "每个跟踪字段需要不同的名称。"
+      "duplicateName": "每个跟踪字段需要不同的名称。",
+      "columnTaken": "“{{name}}”已是属性字段，跟踪会覆盖其中的值。"
     }
   },
   "vectorExport": {

@@ -4953,7 +4953,8 @@
       "editedByField": "Champ « Modifié par »",
       "editedAtField": "Champ « Modifié le »",
       "blankName": "Les noms de champ ne peuvent pas être vides.",
-      "duplicateName": "Chaque champ de suivi doit avoir un nom différent."
+      "duplicateName": "Chaque champ de suivi doit avoir un nom différent.",
+      "columnTaken": "« {{name}} » est déjà une colonne d'attributs. Le suivi écraserait ses valeurs."
     }
   },
   "vectorExport": {

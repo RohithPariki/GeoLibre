@@ -4953,7 +4953,8 @@
       "editedByField": "Campo «Editado por»",
       "editedAtField": "Campo «Editado el»",
       "blankName": "Los nombres de campo no pueden estar vacíos.",
-      "duplicateName": "Cada campo de seguimiento necesita un nombre distinto."
+      "duplicateName": "Cada campo de seguimiento necesita un nombre distinto.",
+      "columnTaken": "«{{name}}» ya es una columna de atributos. El seguimiento sobrescribiría sus valores."
     }
   },
   "vectorExport": {
