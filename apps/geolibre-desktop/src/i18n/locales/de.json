@@ -4367,6 +4367,7 @@
     "deleteField": "Feld löschen",
     "joinedColumnTitle": "Verknüpfte Spalte, abgeleitet aus einer Verknüpfungstabelle. Bearbeiten Sie stattdessen die Tabelle oder die Verknüpfungsdefinition.",
     "virtualColumnTitle": "Virtuelles Feld, berechnet aus einem Ausdruck. Bearbeiten Sie stattdessen seine Definition im Stilbereich des Layers.",
+    "trackingColumnTitle": "Feld der Bearbeitungsverfolgung, wird automatisch gepflegt. Benennen Sie es in den Einstellungen zur Bearbeitungsverfolgung des Layers um.",
     "deleteFieldConfirm": "Dadurch wird das Feld „{{field}}“ dauerhaft aus jedem Objekt in „{{layer}}“ entfernt. Darauf verweisende Stile oder Beschriftungen werden gelöscht. Dies kann nicht rückgängig gemacht werden.",
     "addFieldDescription": "Fügen Sie jedem Objekt in „{{layer}}“ ein neues Feld hinzu.",
     "fieldName": "Feldname",
@@ -4939,6 +4940,20 @@
       "save": "Speichern",
       "noFields": "Die Ebene hat keine Attributfelder zum Konfigurieren.",
       "minMaxInvalid": "Min muss kleiner oder gleich Max sein."
+    },
+    "editorTracking": {
+      "heading": "Bearbeitungsverfolgung",
+      "description": "Erfassen Sie, wer jedes Objekt erstellt und wer es zuletzt geändert hat. Die Felder unten werden automatisch gefüllt, wenn Objekte gezeichnet, bearbeitet, berechnet oder erfasst werden.",
+      "enable": "Bearbeitungen in diesem Layer verfolgen",
+      "identity": "Ihr Name",
+      "identityHint": "Bearbeitungen werden als „{{name}}“ erfasst.",
+      "identityFromSession": "Aus der Kollaborationssitzung übernommen, in der Sie sich befinden.",
+      "createdByField": "Feld „Erstellt von“",
+      "createdAtField": "Feld „Erstellt am“",
+      "editedByField": "Feld „Bearbeitet von“",
+      "editedAtField": "Feld „Bearbeitet am“",
+      "blankName": "Feldnamen dürfen nicht leer sein.",
+      "duplicateName": "Jedes Verfolgungsfeld benötigt einen eigenen Namen."
     }
   },
   "vectorExport": {

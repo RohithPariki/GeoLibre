@@ -4367,6 +4367,7 @@
     "deleteField": "Eliminar campo",
     "joinedColumnTitle": "Columna unida, derivada de una tabla de unión. Edita la tabla o la definición de la unión en su lugar.",
     "virtualColumnTitle": "Campo virtual, calculado a partir de una expresión. Edita su definición en el panel de estilo de la capa en su lugar.",
+    "trackingColumnTitle": "Campo de seguimiento de edición, mantenido automáticamente. Cámbiale el nombre en la configuración de seguimiento de edición de la capa.",
     "deleteFieldConfirm": "Esto elimina permanentemente el campo \"{{field}}\" de todas las entidades de \"{{layer}}\". El estilo o las etiquetas que lo referencian se borrarán. Esto no se puede deshacer.",
     "addFieldDescription": "Añada un nuevo campo a todas las entidades de \"{{layer}}\".",
     "fieldName": "Nombre del campo",
@@ -4939,6 +4940,20 @@
       "save": "Guardar",
       "noFields": "La capa no tiene campos de atributos para configurar.",
       "minMaxInvalid": "El mínimo debe ser menor o igual que el máximo."
+    },
+    "editorTracking": {
+      "heading": "Seguimiento de edición",
+      "description": "Registra quién creó cada entidad y quién la modificó por última vez. Los campos siguientes se rellenan automáticamente cuando se dibujan, editan, calculan o capturan entidades.",
+      "enable": "Registrar las ediciones de esta capa",
+      "identity": "Tu nombre",
+      "identityHint": "Las ediciones se registrarán como «{{name}}».",
+      "identityFromSession": "Tomado de la sesión de colaboración en la que estás.",
+      "createdByField": "Campo «Creado por»",
+      "createdAtField": "Campo «Creado el»",
+      "editedByField": "Campo «Editado por»",
+      "editedAtField": "Campo «Editado el»",
+      "blankName": "Los nombres de campo no pueden estar vacíos.",
+      "duplicateName": "Cada campo de seguimiento necesita un nombre distinto."
     }
   },
   "vectorExport": {

@@ -11,6 +11,56 @@ export const DEFAULT_EDITOR_TRACKING_CONFIG: Required<EditorTrackingConfig> = {
 };
 
 /**
+ * Identity written to the author fields when nothing better is known.
+ *
+ * Deliberately NOT translated: it is written into the user's data, where a
+ * value that changes with the UI language would make the same editor appear as
+ * several different people across a project's history.
+ */
+export const DEFAULT_EDITOR_IDENTITY = "local-user";
+
+/**
+ * `localStorage` key holding the display name this browser edits under.
+ *
+ * Shared with the Comments panel, which asks for the same name and stores it
+ * here, so a user who has introduced themselves once is recognized by both
+ * features instead of being prompted twice.
+ */
+export const EDITOR_IDENTITY_STORAGE_KEY = "geolibre_author_name";
+
+/**
+ * Choose the identity to stamp, most authoritative source first.
+ *
+ * A live collaboration session names its participants, so that name wins: it is
+ * the one other people in the session see attached to the same edits. Otherwise
+ * fall back to the locally configured display name, then to
+ * {@link DEFAULT_EDITOR_IDENTITY}.
+ *
+ * @param collabName Display name from an active collaboration session.
+ * @param storedName Locally configured display name.
+ * @returns A non-empty identity string.
+ */
+export function pickEditorIdentity(collabName?: string | null, storedName?: string | null): string {
+  return collabName?.trim() || storedName?.trim() || DEFAULT_EDITOR_IDENTITY;
+}
+
+/**
+ * The four maintained column names, or `null` when tracking is off or the
+ * configuration is unusable. Ordered created-then-edited so callers that render
+ * the columns get a stable, meaningful order.
+ */
+export function editorTrackingFieldNames(config?: EditorTrackingConfig): string[] | null {
+  const resolved = resolveEditorTrackingConfigForQuery(config);
+  if (!resolved?.enabled) return null;
+  return [
+    resolved.createdByField,
+    resolved.createdAtField,
+    resolved.editedByField,
+    resolved.editedAtField,
+  ];
+}
+
+/**
  * Options for editor tracking stamping functions.
  */
 export interface EditorTrackingStampOptions {
@@ -100,17 +150,11 @@ export function ensureEditorTrackingFields(
   fields: string[],
   config?: EditorTrackingConfig,
 ): string[] {
-  const resolved = resolveEditorTrackingConfigForQuery(config);
-  if (!resolved?.enabled) {
+  const trackingFields = editorTrackingFieldNames(config);
+  if (!trackingFields) {
     return fields;
   }
   const result = [...fields];
-  const trackingFields = [
-    resolved.createdByField,
-    resolved.createdAtField,
-    resolved.editedByField,
-    resolved.editedAtField,
-  ];
   for (const tf of trackingFields) {
     if (!result.includes(tf)) {
       result.push(tf);

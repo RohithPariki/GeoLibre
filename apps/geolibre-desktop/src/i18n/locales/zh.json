@@ -4296,6 +4296,7 @@
     "deleteField": "删除字段",
     "joinedColumnTitle": "连接列，由连接表格派生。请改为编辑连接表格或连接定义。",
     "virtualColumnTitle": "虚拟字段，由表达式计算得出。请改为在图层的样式面板中编辑其定义。",
+    "trackingColumnTitle": "编辑跟踪字段，由系统自动维护。请在图层的编辑跟踪设置中重命名。",
     "deleteFieldConfirm": "此操作会从“{{layer}}”中的每个要素永久删除字段“{{field}}”。引用该字段的样式或标签将被清除。此操作无法撤销。",
     "addFieldDescription": "为“{{layer}}”中的每个要素添加一个新字段。",
     "fieldName": "字段名称",
@@ -4864,6 +4865,20 @@
       "save": "保存",
       "noFields": "该图层没有可配置的属性字段。",
       "minMaxInvalid": "最小值必须小于或等于最大值。"
+    },
+    "editorTracking": {
+      "heading": "编辑跟踪",
+      "description": "记录每个要素由谁创建、最后由谁修改。绘制、编辑、计算或采集要素时，下列字段会自动填写。",
+      "enable": "跟踪该图层的编辑",
+      "identity": "您的姓名",
+      "identityHint": "编辑将记录为“{{name}}”。",
+      "identityFromSession": "取自您所在的协作会话。",
+      "createdByField": "“创建者”字段",
+      "createdAtField": "“创建时间”字段",
+      "editedByField": "“修改者”字段",
+      "editedAtField": "“修改时间”字段",
+      "blankName": "字段名称不能为空。",
+      "duplicateName": "每个跟踪字段需要不同的名称。"
     }
   },
   "vectorExport": {

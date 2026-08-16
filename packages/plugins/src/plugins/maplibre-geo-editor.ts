@@ -1,12 +1,22 @@
-import { type GeoLibreLayer, lineWidthValue, styleValue, useAppStore } from "@geolibre/core";
+import {
+  currentEditorIdentity,
+  editorTrackingFieldNames,
+  lineWidthValue,
+  styleValue,
+  useAppStore,
+  type GeoLibreLayer,
+} from "@geolibre/core";
 import { Geoman, defaultLayerStyles } from "@geoman-io/maplibre-geoman-free";
 import type { Feature, FeatureCollection } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import { GeoEditor, type GeoEditorOptions } from "maplibre-gl-geo-editor";
 import {
   type EditedFeatureProperties,
+  type GeometryEditTrackingOptions,
   SKETCHES_SOURCE_KIND,
+  applySyncedEditorTracking,
   canEditLayerGeometry,
+  captureEditedGeometries,
   captureEditedProperties,
   planGeoEditorOverlayOrder,
   reconcileEditedFeatures,
@@ -108,6 +118,13 @@ let editTargetOriginalVisible: boolean | null = null;
  * `GEOMAN_SHAPE_PROPERTIES` in `./geo-editor-geometry`.
  */
 let editTargetOriginalProperties: EditedFeatureProperties | null = null;
+/**
+ * Geometry of each feature as the session loaded it, keyed by the same feature
+ * tag as `editTargetOriginalProperties`. Only used when the target layer has
+ * editor tracking enabled, to stamp the features the session actually changed
+ * rather than every feature it loaded.
+ */
+let editTargetOriginalGeometries: ReadonlyMap<string, string> | null = null;
 /** Listeners notified when a geometry edit session starts or ends. */
 const geometryEditListeners = new Set<() => void>();
 
@@ -391,6 +408,16 @@ function syncSketchesToStore(): void {
     unionSketchesWithStoreOnNextSync = false;
   }
 
+  // The editor holds its own copy of the features and never sees the tracking
+  // columns, so they are merged back in from the store layer here rather than
+  // being lost on every sync.
+  if (existing && editorTrackingFieldNames(existing.editorTracking)) {
+    collection = applySyncedEditorTracking(collection, existing.geojson, sketchFeatureKey, {
+      config: existing.editorTracking!,
+      userIdentity: currentEditorIdentity(),
+    });
+  }
+
   pushingSketchesToStore = true;
   try {
     if (existing) {
@@ -592,6 +619,7 @@ function syncEditTargetToStore(): void {
   const edited = reconcileEditedFeatures(
     cloneFeatureCollection(geoEditorControl.getAllFeatureCollection()),
     editTargetOriginalProperties ?? undefined,
+    geometryEditTracking(layer),
   );
 
   pushingSketchesToStore = true;
@@ -605,6 +633,20 @@ function syncEditTargetToStore(): void {
   // own rather than from `layer.geojson`, so push the edits there too or the map
   // would keep showing the pre-edit geometry.
   writeBackToVectorSource(layer, edited);
+}
+
+/**
+ * Editor tracking options for the session's write-back, or `undefined` when the
+ * target layer does not track edits (the common case, so the geometry baseline
+ * is simply ignored rather than never captured).
+ */
+function geometryEditTracking(layer: GeoLibreLayer): GeometryEditTrackingOptions | undefined {
+  if (!editorTrackingFieldNames(layer.editorTracking)) return undefined;
+  return {
+    config: layer.editorTracking!,
+    userIdentity: currentEditorIdentity(),
+    originalGeometries: editTargetOriginalGeometries ?? new Map(),
+  };
 }
 
 /** Source id of an Add-Vector-Layer geojson-mode layer, or null. */
@@ -711,6 +753,7 @@ export async function startLayerGeometryEdit(
     // edits geometry, so these values are what must come back out. Read from the
     // pre-tag `source` so a feature with null properties stays null.
     editTargetOriginalProperties = captureEditedProperties(tagged, source);
+    editTargetOriginalGeometries = captureEditedGeometries(tagged);
     await geoEditorControl.loadGeoJson(tagged, SKETCHES_SOURCE_PATH);
     loaded = true;
   } catch (error) {
@@ -736,6 +779,7 @@ export async function startLayerGeometryEdit(
     setEditTargetStoreVisible(layerId, editTargetOriginalVisible ?? true);
     editTargetOriginalVisible = null;
     editTargetOriginalProperties = null;
+    editTargetOriginalGeometries = null;
     editTargetLayerId = null;
     await restoreSketchesAfterSession();
     applySketchesMapDisplay();
@@ -781,6 +825,7 @@ export async function endLayerGeometryEdit(
     editTargetLayerId = null;
     editTargetOriginalVisible = null;
     editTargetOriginalProperties = null;
+    editTargetOriginalGeometries = null;
     sketchesIdleDisplayOverride = false;
     unionSketchesWithStoreOnNextSync = false;
     notifyGeometryEdit();
@@ -803,6 +848,7 @@ export async function endLayerGeometryEdit(
     editTargetOriginalVisible = null;
     // The snapshot only describes the session that just ended.
     editTargetOriginalProperties = null;
+    editTargetOriginalGeometries = null;
     // Await the sketches restore so a caller switching sessions does not start a
     // new edit while the previous restore is still clearing/loading the editor.
     await restoreSketchesAfterSession();
@@ -825,6 +871,7 @@ function abortGeometryEditSession(): void {
   // (restoreSketchesAfterSession exits Geoman edit modes.)
   editTargetOriginalVisible = null;
   editTargetOriginalProperties = null;
+  editTargetOriginalGeometries = null;
   editTargetLayerId = null;
   sketchesIdleDisplayOverride = false;
   unionSketchesWithStoreOnNextSync = false;

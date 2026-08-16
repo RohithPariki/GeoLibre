@@ -4296,6 +4296,7 @@
     "deleteField": "Hapus bidang",
     "joinedColumnTitle": "Kolom gabungan, diturunkan dari tabel gabungan. Edit tabel atau definisi gabungan sebagai gantinya.",
     "virtualColumnTitle": "Bidang virtual, dihitung dari ekspresi. Edit definisinya di panel gaya layer sebagai gantinya.",
+    "trackingColumnTitle": "Bidang pelacakan penyuntingan, dikelola otomatis. Ganti namanya di pengaturan Pelacakan Penyuntingan lapisan.",
     "deleteFieldConfirm": "Ini menghapus bidang \"{{field}}\" secara permanen dari setiap fitur di \"{{layer}}\". Penataan gaya atau label yang mengacu padanya akan dihapus. Ini tidak dapat dibatalkan.",
     "addFieldDescription": "Tambahkan bidang baru ke setiap fitur di \"{{layer}}\".",
     "fieldName": "Nama bidang",
@@ -4864,6 +4865,20 @@
       "save": "Simpan",
       "noFields": "Lapisan tidak memiliki bidang atribut untuk dikonfigurasi.",
       "minMaxInvalid": "Min harus kurang dari atau sama dengan Maks."
+    },
+    "editorTracking": {
+      "heading": "Pelacakan Penyuntingan",
+      "description": "Catat siapa yang membuat setiap fitur dan siapa yang terakhir mengubahnya. Bidang di bawah diisi otomatis saat fitur digambar, disunting, dihitung, atau dikumpulkan.",
+      "enable": "Lacak suntingan pada lapisan ini",
+      "identity": "Nama Anda",
+      "identityHint": "Suntingan akan dicatat sebagai “{{name}}”.",
+      "identityFromSession": "Diambil dari sesi kolaborasi yang Anda ikuti.",
+      "createdByField": "Bidang “Dibuat oleh”",
+      "createdAtField": "Bidang “Dibuat pada”",
+      "editedByField": "Bidang “Disunting oleh”",
+      "editedAtField": "Bidang “Disunting pada”",
+      "blankName": "Nama bidang tidak boleh kosong.",
+      "duplicateName": "Setiap bidang pelacakan memerlukan nama yang berbeda."
     }
   },
   "vectorExport": {

@@ -2,9 +2,12 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { Feature, FeatureCollection } from "geojson";
 import {
+  DEFAULT_EDITOR_IDENTITY,
   DEFAULT_EDITOR_TRACKING_CONFIG,
+  editorTrackingFieldNames,
   ensureEditorTrackingFields,
   isMaintainedEditorTrackingField,
+  pickEditorIdentity,
   resolveEditorTrackingConfig,
   stampFeatureCollectionEditorTracking,
   stampFeatureEditorTracking,
@@ -174,5 +177,57 @@ describe("editor-tracking", () => {
       config: { enabled: false },
     });
     assert.deepEqual(stamped, { name: "Lake" });
+  });
+});
+
+describe("pickEditorIdentity", () => {
+  it("prefers the collaboration session's name", () => {
+    // Everyone else in the session sees the same edits attributed to that name,
+    // so it has to win over whatever this browser was configured with.
+    assert.equal(pickEditorIdentity("Ada (session)", "ada-local"), "Ada (session)");
+  });
+
+  it("falls back to the locally configured name", () => {
+    assert.equal(pickEditorIdentity(undefined, "ada-local"), "ada-local");
+    assert.equal(pickEditorIdentity("   ", "ada-local"), "ada-local");
+  });
+
+  it("falls back to the anonymous default", () => {
+    assert.equal(pickEditorIdentity(), DEFAULT_EDITOR_IDENTITY);
+    assert.equal(pickEditorIdentity(null, "  "), DEFAULT_EDITOR_IDENTITY);
+  });
+
+  it("trims the name it returns", () => {
+    assert.equal(pickEditorIdentity(" Ada "), "Ada");
+  });
+});
+
+describe("editorTrackingFieldNames", () => {
+  it("lists the maintained columns, creation first", () => {
+    assert.deepEqual(editorTrackingFieldNames({ enabled: true }), [
+      "created_by",
+      "created_at",
+      "edited_by",
+      "edited_at",
+    ]);
+  });
+
+  it("honors renamed columns", () => {
+    assert.deepEqual(editorTrackingFieldNames({ enabled: true, createdByField: "author" }), [
+      "author",
+      "created_at",
+      "edited_by",
+      "edited_at",
+    ]);
+  });
+
+  it("reports nothing for a disabled, absent, or unusable configuration", () => {
+    assert.equal(editorTrackingFieldNames(), null);
+    assert.equal(editorTrackingFieldNames({ enabled: false }), null);
+    assert.equal(editorTrackingFieldNames({ enabled: true, createdByField: "  " }), null);
+    assert.equal(
+      editorTrackingFieldNames({ enabled: true, createdAtField: "x", editedAtField: "x" }),
+      null,
+    );
   });
 });

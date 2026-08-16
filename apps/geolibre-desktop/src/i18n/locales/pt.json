@@ -4367,6 +4367,7 @@
     "deleteField": "Excluir campo",
     "joinedColumnTitle": "Coluna unida, derivada de uma tabela de junção. Edite a tabela ou a definição da junção em vez disso.",
     "virtualColumnTitle": "Campo virtual, calculado a partir de uma expressão. Edite a definição dele no painel de estilo da camada em vez disso.",
+    "trackingColumnTitle": "Campo de rastreamento de edição, mantido automaticamente. Renomeie-o nas configurações de rastreamento de edição da camada.",
     "deleteFieldConfirm": "Isso remove permanentemente o campo \"{{field}}\" de todas as feições em \"{{layer}}\". O estilo ou os rótulos que fazem referência a ele serão apagados. Isso não pode ser desfeito.",
     "addFieldDescription": "Adicione um novo campo a todas as feições em \"{{layer}}\".",
     "fieldName": "Nome do campo",
@@ -4939,6 +4940,20 @@
       "save": "Salvar",
       "noFields": "A camada não tem campos de atributos para configurar.",
       "minMaxInvalid": "O mínimo deve ser menor ou igual ao máximo."
+    },
+    "editorTracking": {
+      "heading": "Rastreamento de edição",
+      "description": "Registre quem criou cada feição e quem a alterou por último. Os campos abaixo são preenchidos automaticamente quando feições são desenhadas, editadas, calculadas ou coletadas.",
+      "enable": "Rastrear edições nesta camada",
+      "identity": "Seu nome",
+      "identityHint": "As edições serão registradas como “{{name}}”.",
+      "identityFromSession": "Obtido da sessão de colaboração em que você está.",
+      "createdByField": "Campo “Criado por”",
+      "createdAtField": "Campo “Criado em”",
+      "editedByField": "Campo “Editado por”",
+      "editedAtField": "Campo “Editado em”",
+      "blankName": "Os nomes dos campos não podem ficar em branco.",
+      "duplicateName": "Cada campo de rastreamento precisa de um nome diferente."
     }
   },
   "vectorExport": {

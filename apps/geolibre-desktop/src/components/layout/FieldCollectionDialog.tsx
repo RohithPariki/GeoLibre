@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next";
 import * as maplibregl from "maplibre-gl";
 import type { MapController } from "@geolibre/map";
 import {
+  currentEditorIdentity,
   getAttributeFormField,
   isAttributeFormFieldVisible,
+  stampFeatureEditorTracking,
   useAppStore,
   validateAttributeFormValues,
   type AttributeFormConfig,
@@ -607,7 +609,15 @@ export function FieldCollectionDialog({
       return;
     }
     const fc = current.geojson ?? emptyFeatureCollection();
-    updateLayer(activeLayer.id, { geojson: appendFeature(fc, feature) });
+    // Read the tracking config off `current`, not the render-time layer: the
+    // form can sit open across a configuration change.
+    const tracked = current.editorTracking?.enabled
+      ? stampFeatureEditorTracking(feature, "create", {
+          config: current.editorTracking,
+          userIdentity: currentEditorIdentity(),
+        })
+      : feature;
+    updateLayer(activeLayer.id, { geojson: appendFeature(fc, tracked) });
 
     savedCountRef.current += 1;
     setNotice(

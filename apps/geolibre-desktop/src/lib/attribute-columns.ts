@@ -1,4 +1,11 @@
-import { styleValue, type GeoLibreLayer, type LayerStyle } from "@geolibre/core";
+import {
+  currentEditorIdentity,
+  isMaintainedEditorTrackingField,
+  stampFeaturePropertiesEditorTracking,
+  styleValue,
+  type GeoLibreLayer,
+  type LayerStyle,
+} from "@geolibre/core";
 import type { FeatureCollection } from "geojson";
 import {
   coerceComputedValue,
@@ -302,6 +309,11 @@ export function calculateField(
   if (!target) return null;
   if (createField && discovered.includes(target)) return null; // would clobber
   if (!createField && !discovered.includes(target)) return null; // nothing to set
+  // A maintained tracking column is written by the app, not by the user: a
+  // calculated value would be overwritten by the next edit's stamp, and the
+  // column would stop meaning what its name says. The UI already hides these
+  // from the target picker; this is the guard for a hand-typed new-field name.
+  if (isMaintainedEditorTrackingField(target, layer.editorTracking)) return null;
 
   let compiled;
   try {
@@ -316,11 +328,22 @@ export function calculateField(
   let evaluated = 0;
   let errors = 0;
 
+  // One identity and timestamp for the whole run: a calculation is a single
+  // edit, however many features it touches.
+  const stampOptions = layer.editorTracking?.enabled
+    ? {
+        config: layer.editorTracking,
+        userIdentity: currentEditorIdentity(),
+        timestamp: new Date().toISOString(),
+      }
+    : null;
+
   const features = layer.geojson.features.map((feature, index) => {
     const inScope = scoped === null || scoped.has(featureKey(feature, index));
     if (!inScope) {
       // Out-of-scope feature on a new field: seed null so the column exists for
-      // every feature. An existing field is left exactly as it was.
+      // every feature. An existing field is left exactly as it was. Seeding a
+      // null is not an edit to that feature's attributes, so it is not stamped.
       if (!createField) return feature;
       return {
         ...feature,
@@ -338,7 +361,13 @@ export function calculateField(
       evaluated += 1;
       errors += 1;
     }
-    return { ...feature, properties: { ...props, [target]: value } };
+    const properties = { ...props, [target]: value };
+    return {
+      ...feature,
+      properties: stampOptions
+        ? stampFeaturePropertiesEditorTracking(properties, "update", stampOptions)
+        : properties,
+    };
   });
 
   const geojson: FeatureCollection = { ...layer.geojson, features };

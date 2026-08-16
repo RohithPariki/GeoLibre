@@ -4367,6 +4367,7 @@
     "deleteField": "Alanı sil",
     "joinedColumnTitle": "Birleştirme tablosundan türetilen birleştirilmiş sütun. Bunun yerine tabloyu veya birleştirme tanımını düzenleyin.",
     "virtualColumnTitle": "İfadeden hesaplanan sanal alan. Bunun yerine tanımını katmanın stil panelinde düzenleyin.",
+    "trackingColumnTitle": "Düzenleme takibi alanı, otomatik olarak yönetilir. Adını katmanın Düzenleme Takibi ayarlarından değiştirin.",
     "deleteFieldConfirm": "Bu işlem, \"{{field}}\" alanını \"{{layer}}\" katmanındaki her öğeden kalıcı olarak kaldırır. Buna başvuran stil veya etiketler temizlenir. Bu işlem geri alınamaz.",
     "addFieldDescription": "\"{{layer}}\" katmanındaki her öğeye yeni bir alan ekleyin.",
     "fieldName": "Alan adı",
@@ -4939,6 +4940,20 @@
       "save": "Kaydet",
       "noFields": "Katmanda yapılandırılacak öznitelik alanı yok.",
       "minMaxInvalid": "Min, Maks değerinden küçük veya ona eşit olmalıdır."
+    },
+    "editorTracking": {
+      "heading": "Düzenleme Takibi",
+      "description": "Her nesneyi kimin oluşturduğunu ve en son kimin değiştirdiğini kaydedin. Nesneler çizildiğinde, düzenlendiğinde, hesaplandığında veya toplandığında aşağıdaki alanlar otomatik doldurulur.",
+      "enable": "Bu katmandaki düzenlemeleri takip et",
+      "identity": "Adınız",
+      "identityHint": "Düzenlemeler “{{name}}” olarak kaydedilecek.",
+      "identityFromSession": "Katıldığınız iş birliği oturumundan alındı.",
+      "createdByField": "“Oluşturan” alanı",
+      "createdAtField": "“Oluşturulma zamanı” alanı",
+      "editedByField": "“Düzenleyen” alanı",
+      "editedAtField": "“Düzenlenme zamanı” alanı",
+      "blankName": "Alan adları boş olamaz.",
+      "duplicateName": "Her takip alanının farklı bir adı olmalıdır."
     }
   },
   "vectorExport": {

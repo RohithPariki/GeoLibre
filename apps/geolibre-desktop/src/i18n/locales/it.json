@@ -4367,6 +4367,7 @@
     "deleteField": "Elimina campo",
     "joinedColumnTitle": "Colonna unita, derivata da una tabella di join. Modifica invece la tabella o la definizione del join.",
     "virtualColumnTitle": "Campo virtuale, calcolato da un'espressione. Modifica invece la sua definizione nel pannello di stile del layer.",
+    "trackingColumnTitle": "Campo di tracciamento delle modifiche, gestito automaticamente. Rinominalo nelle impostazioni di tracciamento delle modifiche del livello.",
     "deleteFieldConfirm": "Questa operazione rimuove definitivamente il campo \"{{field}}\" da ogni elemento in \"{{layer}}\". Lo stile o le etichette che vi fanno riferimento verranno cancellati. L'operazione non può essere annullata.",
     "addFieldDescription": "Aggiungi un nuovo campo a ogni elemento in \"{{layer}}\".",
     "fieldName": "Nome del campo",
@@ -4939,6 +4940,20 @@
       "save": "Salva",
       "noFields": "Il layer non ha campi attributo da configurare.",
       "minMaxInvalid": "Il minimo deve essere minore o uguale al massimo."
+    },
+    "editorTracking": {
+      "heading": "Tracciamento delle modifiche",
+      "description": "Registra chi ha creato ogni elemento e chi lo ha modificato per ultimo. I campi seguenti vengono compilati automaticamente quando gli elementi vengono disegnati, modificati, calcolati o rilevati.",
+      "enable": "Traccia le modifiche di questo livello",
+      "identity": "Il tuo nome",
+      "identityHint": "Le modifiche verranno registrate come «{{name}}».",
+      "identityFromSession": "Ripreso dalla sessione di collaborazione in corso.",
+      "createdByField": "Campo «Creato da»",
+      "createdAtField": "Campo «Creato il»",
+      "editedByField": "Campo «Modificato da»",
+      "editedAtField": "Campo «Modificato il»",
+      "blankName": "I nomi dei campi non possono essere vuoti.",
+      "duplicateName": "Ogni campo di tracciamento deve avere un nome diverso."
     }
   },
   "vectorExport": {
