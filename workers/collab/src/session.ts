@@ -9,6 +9,7 @@ import type {
   PresenceEntry,
   ServerMessage,
   ParticipantIdentity,
+  SessionLogEntry,
 } from "./protocol";
 import {
   isBoundedId,
@@ -334,6 +335,17 @@ export class CollabSession extends DurableObject<Env> {
       return new Response(null, { status: 101, webSocket: client });
     }
 
+    if (url.pathname === "/log" && request.method === "GET") {
+      const hostToken = await this.ctx.storage.get<string>("hostToken");
+      const clientToken = url.searchParams.get("hostToken");
+      if (hostToken === undefined || hostToken !== clientToken) {
+        return new Response("Forbidden", { status: 403 });
+      }
+      const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
+      const log = Array.isArray(raw) ? raw : [];
+      return Response.json(log);
+    }
+
     return new Response("Not found", { status: 404 });
   }
 
@@ -389,7 +401,7 @@ export class CollabSession extends DurableObject<Env> {
         await this.handleSetMode(ws, attachment, message.mode);
         break;
       case "set-participant-mode":
-        this.handleSetParticipantMode(ws, attachment, message);
+        await this.handleSetParticipantMode(ws, attachment, message);
         break;
       case "chat":
         await this.handleChat(ws, attachment, message);
@@ -420,7 +432,14 @@ export class CollabSession extends DurableObject<Env> {
 
   async webSocketClose(ws: WebSocket): Promise<void> {
     const attachment = ws.deserializeAttachment() as SocketAttachment | null;
-    if (attachment) this.presence.delete(attachment.clientId);
+    if (attachment) {
+      this.presence.delete(attachment.clientId);
+      await this.appendLog({
+        type: "leave",
+        ts: Date.now(),
+        clientId: attachment.clientId,
+      });
+    }
     try {
       ws.close();
     } catch {
@@ -563,6 +582,13 @@ export class CollabSession extends DurableObject<Env> {
     };
     ws.serializeAttachment(attachment);
 
+    await this.appendLog({
+      type: "join",
+      ts: Date.now(),
+      clientId: socketClientId,
+      identity,
+    });
+
     const welcomeInvites = role === "host" ? this.readInvites() : undefined;
 
     this.send(ws, {
@@ -633,6 +659,12 @@ export class CollabSession extends DurableObject<Env> {
     const rev = ((await this.ctx.storage.get<number>("rev")) ?? 0) + 1;
     await this.writeSnapshot(JSON.stringify(project));
     await this.ctx.storage.put("rev", rev);
+    await this.appendLog({
+      type: "snapshot",
+      ts: Date.now(),
+      rev,
+      origin: attachment.clientId,
+    });
 
     this.broadcast(
       {
@@ -679,6 +711,11 @@ export class CollabSession extends DurableObject<Env> {
     }
     const next = normalizeMode(mode);
     await this.ctx.storage.put("mode", next);
+    await this.appendLog({
+      type: "set-mode",
+      ts: Date.now(),
+      mode: next,
+    });
     // A session-wide mode change is authoritative: clear any per-participant
     // overrides so the new mode applies to everyone. Without this, a guest the
     // host previously pinned to can-edit would keep editing through a later
@@ -704,11 +741,11 @@ export class CollabSession extends DurableObject<Env> {
     this.broadcast({ type: "mode", mode: next });
   }
 
-  private handleSetParticipantMode(
+  private async handleSetParticipantMode(
     ws: WebSocket,
     attachment: SocketAttachment,
     message: Extract<ClientMessage, { type: "set-participant-mode" }>,
-  ): void {
+  ): Promise<void> {
     const forbidden = authorizeHostAction(attachment, "participant permissions");
     if (forbidden) {
       this.send(ws, {
@@ -737,6 +774,12 @@ export class CollabSession extends DurableObject<Env> {
     const targetKey = getParticipantKey(target.attachment);
     this.writeDurableOverride(targetKey, target.attachment.editOverride);
     target.socket.serializeAttachment(target.attachment);
+    await this.appendLog({
+      type: "set-participant-mode",
+      ts: Date.now(),
+      clientId: message.clientId,
+      canEdit: message.canEdit,
+    });
     // Everyone re-derives effective permission from the participants list (the
     // affected guest learns its own change here too), so a single broadcast
     // suffices.
@@ -804,6 +847,17 @@ export class CollabSession extends DurableObject<Env> {
   }
 
   // -- helpers ----------------------------------------------------------------
+
+  private async appendLog(entry: SessionLogEntry): Promise<void> {
+    const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
+    const log = Array.isArray(raw) ? raw : [];
+    log.push(entry);
+    // Bound the session log to max 5000 entries so it does not grow indefinitely.
+    if (log.length > 5000) {
+      log.shift();
+    }
+    await this.ctx.storage.put("sessionLog", log);
+  }
 
   /**
    * Live sockets paired with their deserialized attachment. Callers mutate the
