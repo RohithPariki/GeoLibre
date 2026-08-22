@@ -131,9 +131,6 @@ class ProjectActivity(Base):
     count: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[str] = mapped_column(String(32), index=True)
 
-    project: Mapped[Project] = relationship()
-    actor: Mapped[Account | None] = relationship()
-
 
 # project_json reads project.owner.username and len(project.versions), both lazy.
 # Without these a single listing page (up to 100 rows) fires ~201 queries instead

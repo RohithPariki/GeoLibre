@@ -82,6 +82,16 @@ export interface Env {
 // second), so we don't allocate a new encoder per message.
 const ENCODER = new TextEncoder();
 
+function parseStoredSessionLog(raw: string | undefined): SessionLogEntry[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as SessionLogEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 // Characters per stored snapshot chunk. A Durable Object caps a SQLite string
 // at 2 MB of UTF-8, and a JS string character can encode to 4 bytes, so this
 // leaves a chunk at half the ceiling even for text that is entirely non-ASCII.
@@ -357,9 +367,8 @@ export class CollabSession extends DurableObject<Env> {
         await this.ctx.storage.delete("sessionLog");
         return new Response(null, { status: 204 });
       }
-      const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
-      const log = Array.isArray(raw) ? raw : [];
-      return new Response(JSON.stringify(log), {
+      const raw = await this.ctx.storage.get<string>("sessionLog");
+      return new Response(raw ?? "[]", {
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
@@ -873,8 +882,7 @@ export class CollabSession extends DurableObject<Env> {
     // inline and still have to close the socket, broadcast, or arm the
     // empty-session alarm afterwards.
     try {
-      const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
-      const log = Array.isArray(raw) ? raw : [];
+      const log = parseStoredSessionLog(await this.ctx.storage.get<string>("sessionLog"));
       log.push(entry);
       // Bound by count AND serialized bytes, the same way the chat history is:
       // `join` entries carry an identity of unbounded size, so the count cap
@@ -885,7 +893,9 @@ export class CollabSession extends DurableObject<Env> {
         byteLen -= ENCODER.encode(JSON.stringify(trimmed[0])).length + 1;
         trimmed = trimmed.slice(1);
       }
-      await this.ctx.storage.put("sessionLog", trimmed);
+      // Stored as the same JSON string the budget was measured against (the
+      // chat history does the same), so the cap bounds what is persisted.
+      await this.ctx.storage.put("sessionLog", JSON.stringify(trimmed));
     } catch {
       // Persisting failed (e.g. a single entry still exceeds the value cap).
       // The log is best-effort; the session state change it describes has
