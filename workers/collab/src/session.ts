@@ -31,6 +31,7 @@ import {
   isIdentityConfigured,
   MAX_CHAT_STORAGE_BYTES,
   MAX_CHAT_TEXT_LENGTH,
+  MAX_SESSION_LOG_STORAGE_BYTES,
   MAX_SNAPSHOT_BYTES,
   parseStoredChat,
   MIN_CHAT_INTERVAL_MS,
@@ -38,6 +39,7 @@ import {
   participantCanEdit,
   sanitizeColor,
   sanitizeCursor,
+  SESSION_LOG_LIMIT,
   sanitizeDisplayName,
   sanitizeView,
   setParticipantOverride,
@@ -335,15 +337,31 @@ export class CollabSession extends DurableObject<Env> {
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    if (url.pathname === "/log" && request.method === "GET") {
+    // Host-only session log. The host token is a bearer credential, so it
+    // travels in the Authorization header rather than the query string (which
+    // lands in server logs, browser history and referrers). Both the stored and
+    // the presented token must be non-empty: /init persists "" for a session
+    // created without a token, and "" === "" must not grant access.
+    if (url.pathname === "/log" && (request.method === "GET" || request.method === "DELETE")) {
       const hostToken = await this.ctx.storage.get<string>("hostToken");
-      const clientToken = url.searchParams.get("hostToken");
-      if (hostToken === undefined || hostToken !== clientToken) {
+      const authorization = request.headers.get("Authorization") ?? "";
+      const clientToken = authorization.startsWith("Bearer ")
+        ? authorization.slice("Bearer ".length).trim()
+        : "";
+      if (!hostToken || !clientToken || hostToken !== clientToken) {
         return new Response("Forbidden", { status: 403 });
+      }
+      if (request.method === "DELETE") {
+        // Owner-initiated deletion of the log alone; the session itself and
+        // its snapshot are untouched.
+        await this.ctx.storage.delete("sessionLog");
+        return new Response(null, { status: 204 });
       }
       const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
       const log = Array.isArray(raw) ? raw : [];
-      return Response.json(log);
+      return new Response(JSON.stringify(log), {
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
     }
 
     return new Response("Not found", { status: 404 });
@@ -778,7 +796,9 @@ export class CollabSession extends DurableObject<Env> {
       type: "set-participant-mode",
       ts: Date.now(),
       clientId: message.clientId,
-      canEdit: message.canEdit,
+      // Record the normalized value that was actually applied, not the raw
+      // client-supplied one.
+      canEdit: target.attachment.editOverride === true,
     });
     // Everyone re-derives effective permission from the participants list (the
     // affected guest learns its own change here too), so a single broadcast
@@ -849,14 +869,28 @@ export class CollabSession extends DurableObject<Env> {
   // -- helpers ----------------------------------------------------------------
 
   private async appendLog(entry: SessionLogEntry): Promise<void> {
-    const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
-    const log = Array.isArray(raw) ? raw : [];
-    log.push(entry);
-    // Bound the session log to max 5000 entries so it does not grow indefinitely.
-    if (log.length > 5000) {
-      log.shift();
+    // Never let log persistence abort the caller: several handlers await this
+    // inline and still have to close the socket, broadcast, or arm the
+    // empty-session alarm afterwards.
+    try {
+      const raw = await this.ctx.storage.get<SessionLogEntry[]>("sessionLog");
+      const log = Array.isArray(raw) ? raw : [];
+      log.push(entry);
+      // Bound by count AND serialized bytes, the same way the chat history is:
+      // `join` entries carry an identity of unbounded size, so the count cap
+      // alone cannot keep the value under the ~128 KiB per-value storage cap.
+      let trimmed = log.slice(-SESSION_LOG_LIMIT);
+      let byteLen = ENCODER.encode(JSON.stringify(trimmed)).length;
+      while (trimmed.length > 1 && byteLen > MAX_SESSION_LOG_STORAGE_BYTES) {
+        byteLen -= ENCODER.encode(JSON.stringify(trimmed[0])).length + 1;
+        trimmed = trimmed.slice(1);
+      }
+      await this.ctx.storage.put("sessionLog", trimmed);
+    } catch {
+      // Persisting failed (e.g. a single entry still exceeds the value cap).
+      // The log is best-effort; the session state change it describes has
+      // already been applied.
     }
-    await this.ctx.storage.put("sessionLog", log);
   }
 
   /**

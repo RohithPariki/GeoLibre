@@ -9,7 +9,7 @@ import re
 import secrets
 import shutil
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import quote
@@ -168,6 +168,18 @@ def now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
+# Activity rows older than this are pruned the next time the project logs an
+# event, so the log never grows without bound (GeoLibre#1678 asks for a stated
+# retention period plus owner-initiated deletion, the latter being
+# DELETE /api/projects/{id}/activity).
+ACTIVITY_RETENTION_DAYS = int(os.getenv("GEOLIBRE_ACTIVITY_RETENTION_DAYS", "90"))
+# Actions an anonymous visitor can trigger. These are never stored per hit:
+# they are aggregated into one row per project, action and UTC day carrying a
+# count, so the owner learns "opened 40 times on 2026-08-21" and nothing about
+# who did it.
+AGGREGATED_ANONYMOUS_ACTIONS = frozenset({"open", "fetch"})
+
+
 def log_project_activity(
     session: Session,
     project_id: str,
@@ -175,15 +187,65 @@ def log_project_activity(
     action: str,
     details: dict | None = None,
 ) -> None:
-    activity = ProjectActivity(
-        id=str(uuid.uuid4()),
-        project_id=project_id,
-        actor_id=actor_id,
-        action=action,
-        details_json=json.dumps(details or {}),
-        created_at=now(),
+    """Record a project event, aggregating anonymous opens/fetches per day.
+
+    Args:
+        session: The open database session; the caller commits.
+        project_id: The project the event belongs to.
+        actor_id: The authenticated account, or ``None`` for an anonymous visitor.
+        action: A short action name such as ``"fork"`` or ``"visibility_change"``.
+        details: Optional JSON-serializable context stored with the row.
+    """
+    timestamp = now()
+    if actor_id is None and action in AGGREGATED_ANONYMOUS_ACTIONS:
+        day = timestamp[:10]
+        bucket = session.scalars(
+            select(ProjectActivity)
+            .where(
+                ProjectActivity.project_id == project_id,
+                ProjectActivity.actor_id.is_(None),
+                ProjectActivity.action == action,
+                ProjectActivity.created_at.like(f"{day}%"),
+            )
+            .limit(1)
+        ).first()
+        if bucket is not None:
+            counted = json.loads(bucket.details_json)
+            counted["count"] = int(counted.get("count", 0)) + 1
+            bucket.details_json = json.dumps(counted)
+            return
+        details = {"date": day, "count": 1}
+    session.add(
+        ProjectActivity(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            actor_id=actor_id,
+            action=action,
+            details_json=json.dumps(details or {}),
+            created_at=timestamp,
+        )
     )
-    session.add(activity)
+    cutoff = (
+        (datetime.now(UTC) - timedelta(days=ACTIVITY_RETENTION_DAYS))
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+    session.execute(
+        delete(ProjectActivity).where(
+            ProjectActivity.project_id == project_id, ProjectActivity.created_at < cutoff
+        )
+    )
+
+
+def activity_json(act: ProjectActivity) -> dict:
+    """Serialize an activity row with the API's camelCase field names."""
+    return {
+        "id": act.id,
+        "action": act.action,
+        "actorId": act.actor_id,
+        "details": json.loads(act.details_json),
+        "createdAt": act.created_at,
+    }
 
 
 def password_hash(password: str, salt: bytes | None = None) -> str:
@@ -686,18 +748,18 @@ def create_app(
             .order_by(ProjectActivity.created_at.desc())
             .limit(100)
         ).all()
-        return {
-            "activity": [
-                {
-                    "id": act.id,
-                    "action": act.action,
-                    "actor_id": act.actor_id,
-                    "details": json.loads(act.details_json),
-                    "created_at": act.created_at,
-                }
-                for act in activities
-            ]
-        }
+        return {"activity": [activity_json(act) for act in activities]}
+
+    @app.delete("/api/projects/{project_id}/activity", status_code=204)
+    def delete_project_activity(
+        project_id: str,
+        account: Account = Depends(required_account),
+        session: Session = Depends(db),
+    ):
+        project = owned(session.get(Project, project_id), account)
+        session.execute(delete(ProjectActivity).where(ProjectActivity.project_id == project.id))
+        session.commit()
+        return Response(status_code=204)
 
     @app.patch("/api/projects/{project_id}")
     def patch_project(
