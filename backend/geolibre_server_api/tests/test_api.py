@@ -325,3 +325,40 @@ def test_activity_log_aggregates_anonymous_opens_and_is_owner_only(client):
     assert client.get(f"/api/projects/{project_id}/activity", headers=auth(token)).json() == {
         "activity": []
     }
+
+
+def test_anonymous_bucket_insert_race_falls_back_to_increment(client):
+    from geolibre_server_api.main import ProjectActivity, log_project_activity
+    from sqlalchemy import select
+    from sqlalchemy.orm import Session
+
+    token = account(client)
+    project, _ = create_project(client, token)
+
+    class MissedUpdate:
+        rowcount = 0
+
+    class RacingSession(Session):
+        """Pretends the first UPDATE found no bucket, as if another request
+        inserted it between our UPDATE and our INSERT."""
+
+        missed = False
+
+        def execute(self, statement, *args, **kwargs):
+            if not self.missed and "UPDATE" in str(statement):
+                self.missed = True
+                return MissedUpdate()
+            return super().execute(statement, *args, **kwargs)
+
+    with Session(client.app.state.engine) as session:
+        log_project_activity(session, project["id"], None, "open")
+        session.commit()
+    with RacingSession(client.app.state.engine) as session:
+        log_project_activity(session, project["id"], None, "open")
+        session.commit()
+        assert session.missed
+        rows = session.scalars(
+            select(ProjectActivity).where(ProjectActivity.project_id == project["id"])
+        ).all()
+    assert len(rows) == 1
+    assert rows[0].count == 2

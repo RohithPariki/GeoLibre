@@ -123,6 +123,12 @@ class ProjectActivity(Base):
     )
     action: Mapped[str] = mapped_column(String(50))
     details_json: Mapped[str] = mapped_column(Text, default="{}")
+    # Anonymous open/fetch events collapse into one row per project, action and
+    # UTC day: `bucket_key` ("<project>:<action>:<YYYY-MM-DD>") is unique so two
+    # concurrent requests cannot create duplicate buckets, and `count` is
+    # incremented database-side so they cannot lose each other's increment.
+    bucket_key: Mapped[str | None] = mapped_column(String(100), nullable=True, unique=True)
+    count: Mapped[int] = mapped_column(Integer, default=1)
     created_at: Mapped[str] = mapped_column(String(32), index=True)
 
     project: Mapped[Project] = relationship()
@@ -197,34 +203,6 @@ def log_project_activity(
         details: Optional JSON-serializable context stored with the row.
     """
     timestamp = now()
-    if actor_id is None and action in AGGREGATED_ANONYMOUS_ACTIONS:
-        day = timestamp[:10]
-        bucket = session.scalars(
-            select(ProjectActivity)
-            .where(
-                ProjectActivity.project_id == project_id,
-                ProjectActivity.actor_id.is_(None),
-                ProjectActivity.action == action,
-                ProjectActivity.created_at.like(f"{day}%"),
-            )
-            .limit(1)
-        ).first()
-        if bucket is not None:
-            counted = json.loads(bucket.details_json)
-            counted["count"] = int(counted.get("count", 0)) + 1
-            bucket.details_json = json.dumps(counted)
-            return
-        details = {"date": day, "count": 1}
-    session.add(
-        ProjectActivity(
-            id=str(uuid.uuid4()),
-            project_id=project_id,
-            actor_id=actor_id,
-            action=action,
-            details_json=json.dumps(details or {}),
-            created_at=timestamp,
-        )
-    )
     cutoff = (
         (datetime.now(UTC) - timedelta(days=ACTIVITY_RETENTION_DAYS))
         .isoformat()
@@ -235,15 +213,58 @@ def log_project_activity(
             ProjectActivity.project_id == project_id, ProjectActivity.created_at < cutoff
         )
     )
+    bucket_key = None
+    if actor_id is None and action in AGGREGATED_ANONYMOUS_ACTIONS:
+        day = timestamp[:10]
+        bucket_key = f"{project_id}:{action}:{day}"
+        details = {"date": day}
+        # Atomic increment: no read-modify-write, so two concurrent hits cannot
+        # overwrite each other's count.
+        updated = session.execute(
+            update(ProjectActivity)
+            .where(ProjectActivity.bucket_key == bucket_key)
+            .values(count=ProjectActivity.count + 1)
+        ).rowcount
+        if updated:
+            return
+    row = ProjectActivity(
+        id=str(uuid.uuid4()),
+        project_id=project_id,
+        actor_id=actor_id,
+        action=action,
+        details_json=json.dumps(details or {}),
+        bucket_key=bucket_key,
+        count=1,
+        created_at=timestamp,
+    )
+    if bucket_key is None:
+        session.add(row)
+        return
+    # Two requests can both miss the UPDATE and race to create the day's bucket;
+    # the unique key makes the loser's INSERT fail, and it falls back to the
+    # increment.
+    try:
+        with session.begin_nested():
+            session.add(row)
+            session.flush()
+    except IntegrityError:
+        session.execute(
+            update(ProjectActivity)
+            .where(ProjectActivity.bucket_key == bucket_key)
+            .values(count=ProjectActivity.count + 1)
+        )
 
 
 def activity_json(act: ProjectActivity) -> dict:
     """Serialize an activity row with the API's camelCase field names."""
+    details = json.loads(act.details_json)
+    if act.bucket_key is not None:
+        details["count"] = act.count
     return {
         "id": act.id,
         "action": act.action,
         "actorId": act.actor_id,
-        "details": json.loads(act.details_json),
+        "details": details,
         "createdAt": act.created_at,
     }
 
