@@ -3087,10 +3087,10 @@ export function LayerPanel({
                 ((layer.geojson?.features?.length ?? 0) > 0 ||
                   (typeof layer.source.url === "string" && layer.source.url.trim()) ||
                   layer.sourcePath)) ||
-              layer.type === "vector-tiles" ||
-              (layer.type === "mbtiles" && layer.metadata.tileType === "vector") ||
-              layer.type === "cog" ||
-              hasNativeIdentifyLayers(layer));
+                layer.type === "vector-tiles" ||
+                (layer.type === "mbtiles" && layer.metadata.tileType === "vector") ||
+                layer.type === "cog" ||
+                hasNativeIdentifyLayers(layer));
             const identifyActive = identifyLayerId === layer.id;
             const isPixelIdentify = layer.type === "cog" || layer.metadata.pixelIdentify === true;
             const identifyLabel = canIdentify

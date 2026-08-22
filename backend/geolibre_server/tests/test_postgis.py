@@ -284,7 +284,6 @@ def test_write_request_capabilities_parsing() -> None:
     assert req.capabilities == {"update": False, "create": True, "delete": False}
 
 
-
 # --- Live round-trip tests ---------------------------------------------------
 
 
@@ -882,4 +881,3 @@ def test_write_enforces_layer_capabilities(live_table) -> None:
         )
     assert exc_delete.value.status_code == 403
     assert "deletion" in str(exc_delete.value.detail)
-

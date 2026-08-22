@@ -18,14 +18,8 @@ export function inferLayerCapabilities(layer: GeoLibreLayer): Required<LayerCapa
   const isSketches = layer.metadata?.sourceKind === "geoeditor-sketches";
   const isSqlQuery = layer.metadata?.sourceKind === "sql-query";
 
-  const isReadOnlyVector =
-    isExternalNative && layer.metadata?.sourceKind !== "maplibre-gl-vector";
-  const isEditable =
-    isVector &&
-    !isDuckDB &&
-    !isReadOnlyVector &&
-    !isSketches &&
-    !isSqlQuery;
+  const isReadOnlyVector = isExternalNative && layer.metadata?.sourceKind !== "maplibre-gl-vector";
+  const isEditable = isVector && !isDuckDB && !isReadOnlyVector && !isSketches && !isSqlQuery;
 
   return {
     query: true,
@@ -70,9 +64,7 @@ export function resolveLayerCapabilities(
 /**
  * Normalizes an untrusted capabilities value from JSON/project data.
  */
-export function normalizeLayerCapabilities(
-  raw: unknown,
-): LayerCapabilities | undefined {
+export function normalizeLayerCapabilities(raw: unknown): LayerCapabilities | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const obj = raw as Record<string, unknown>;
   const caps: LayerCapabilities = {};
