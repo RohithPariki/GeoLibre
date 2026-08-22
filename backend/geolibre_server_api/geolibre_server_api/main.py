@@ -1015,7 +1015,7 @@ def create_app(
             project.id,
             account.id if account else None,
             "fetch",
-            {"version": project.versions[-1].number if project.versions else None},
+            {"version": project.versions[-1].number},
         )
         session.commit()
         return body

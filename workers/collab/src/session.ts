@@ -82,8 +82,11 @@ export interface Env {
 // second), so we don't allocate a new encoder per message.
 const ENCODER = new TextEncoder();
 
-function parseStoredSessionLog(raw: string | undefined): SessionLogEntry[] {
-  if (!raw) return [];
+function parseStoredSessionLog(raw: unknown): SessionLogEntry[] {
+  // Accept either the JSON string this code writes or a bare array, so a
+  // value persisted in another shape is kept rather than silently discarded.
+  if (Array.isArray(raw)) return raw as SessionLogEntry[];
+  if (typeof raw !== "string" || !raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as SessionLogEntry[]) : [];
@@ -367,8 +370,8 @@ export class CollabSession extends DurableObject<Env> {
         await this.ctx.storage.delete("sessionLog");
         return new Response(null, { status: 204 });
       }
-      const raw = await this.ctx.storage.get<string>("sessionLog");
-      return new Response(raw ?? "[]", {
+      const log = parseStoredSessionLog(await this.ctx.storage.get<unknown>("sessionLog"));
+      return new Response(JSON.stringify(log), {
         headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
       });
     }
@@ -882,7 +885,7 @@ export class CollabSession extends DurableObject<Env> {
     // inline and still have to close the socket, broadcast, or arm the
     // empty-session alarm afterwards.
     try {
-      const log = parseStoredSessionLog(await this.ctx.storage.get<string>("sessionLog"));
+      const log = parseStoredSessionLog(await this.ctx.storage.get<unknown>("sessionLog"));
       log.push(entry);
       // Bound by count AND serialized bytes, the same way the chat history is:
       // `join` entries carry an identity of unbounded size, so the count cap
