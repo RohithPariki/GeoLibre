@@ -2,6 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import {
   createEmptyProject,
+  DEFAULT_LAYER_STYLE,
   inferLayerCapabilities,
   normalizeLayerCapabilities,
   parseProject,
@@ -20,17 +21,7 @@ function makeLayer(overrides: Partial<GeoLibreLayer>): GeoLibreLayer {
     source: {},
     visible: true,
     opacity: 1,
-    style: {
-      color: "#000000",
-      opacity: 1,
-      radius: 5,
-      weight: 1,
-      fillColor: "#000000",
-      fillOpacity: 1,
-      dashArray: "",
-      lineCap: "round",
-      lineJoin: "round",
-    },
+    style: { ...DEFAULT_LAYER_STYLE },
     metadata: {},
     geojson: {
       type: "FeatureCollection",
@@ -173,6 +164,19 @@ describe("Layer capabilities", () => {
         update: false,
         export: false,
       });
+    });
+
+    test("drops a malformed capabilities value rather than carrying it through", () => {
+      const project = createEmptyProject("Malformed Capabilities");
+      project.layers = [
+        makeLayer({
+          capabilities: { bogus: "yes" } as unknown as GeoLibreLayer["capabilities"],
+        }),
+      ];
+
+      const parsed = parseProject(serializeProject(project));
+
+      assert.equal(parsed.layers[0].capabilities, undefined);
     });
 
     test("redactCredentials strips geojson when export capability is false", () => {

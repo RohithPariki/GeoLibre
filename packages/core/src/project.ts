@@ -1404,9 +1404,14 @@ function isPlainObject(value: object): boolean {
 }
 
 function normalizeLayer(layer: GeoLibreLayer): GeoLibreLayer {
-  const capabilities = normalizeLayerCapabilities(layer.capabilities);
+  // `capabilities` is split off the spread rather than overwritten: a raw value
+  // that normalizes to nothing (`{}`, an array, a string, an object with no
+  // boolean flag) must not survive into the normalized layer and be written
+  // back out on the next save.
+  const { capabilities: rawCapabilities, ...rest } = layer;
+  const capabilities = normalizeLayerCapabilities(rawCapabilities);
   return {
-    ...layer,
+    ...rest,
     style: { ...DEFAULT_LAYER_STYLE, ...layer.style },
     visible: layer.visible ?? true,
     opacity: layer.opacity ?? 1,

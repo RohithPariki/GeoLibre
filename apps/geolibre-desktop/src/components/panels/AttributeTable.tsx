@@ -959,7 +959,11 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
   };
 
   const saveDrafts = () => {
-    if (!layer || !hasEdits || hasInvalidDrafts || hasFormErrors) return;
+    // Re-read the capability here rather than trusting the disabled state:
+    // edit mode (and the dialogs below) can be open across a project reload or
+    // a collaborator's change that revokes the capability, and the commit would
+    // otherwise still run.
+    if (!layer || !layerCaps.update || !hasEdits || hasInvalidDrafts || hasFormErrors) return;
 
     if (isDuckDBLayer) {
       updateDuckDBLayerRows(layer.id, applyDraftsToDuckDBRows(attributeRows, drafts));
@@ -1055,7 +1059,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
   };
 
   const commitColumnRename = () => {
-    if (suppressColumnBlurRef.current || !editingColumn || !layer) {
+    if (suppressColumnBlurRef.current || !editingColumn || !layer || !canManageColumns) {
       suppressColumnBlurRef.current = false;
       return;
     }
@@ -1114,7 +1118,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
   };
 
   const confirmDeleteColumn = () => {
-    if (!layer || !columnPendingDelete) return;
+    if (!layer || !canManageColumns || !layerCaps.delete || !columnPendingDelete) return;
     const patch = deleteColumn(layer, columnPendingDelete);
     if (patch) updateLayer(layer.id, patch);
     // Drop a sort that pointed at the deleted column, which would otherwise
@@ -1156,7 +1160,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
   };
 
   const confirmAddColumn = () => {
-    if (!layer || !canSubmitNewColumn) return;
+    if (!layer || !canManageColumns || !canSubmitNewColumn) return;
     const patch = addColumn(
       layer,
       discoveredColumns,
@@ -1331,7 +1335,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
     calcPreview.kind !== "syntax";
 
   const confirmCalculate = () => {
-    if (!layer || !calcCanSubmit) return;
+    if (!layer || !canManageColumns || !calcCanSubmit) return;
     const targetName = calcMode === "create" ? calcNewNameTrimmed : calcTargetField;
     const scope =
       calcSelectedOnly && selectedFeatureIds.length > 0 ? new Set(selectedFeatureIds) : undefined;
@@ -1613,7 +1617,9 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
                   : t("attributeTable.saveEdits")
           }
           aria-label={t("attributeTable.saveEdits")}
-          disabled={!isEditing || !hasEdits || hasInvalidDrafts || hasFormErrors}
+          disabled={
+            !isEditing || !layerCaps.update || !hasEdits || hasInvalidDrafts || hasFormErrors
+          }
           onClick={saveDrafts}
         >
           <Save className="h-3.5 w-3.5" />
@@ -2125,7 +2131,11 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
             <Button variant="outline" onClick={() => setColumnPendingDelete(null)}>
               {t("common.cancel")}
             </Button>
-            <Button variant="destructive" onClick={confirmDeleteColumn}>
+            <Button
+              variant="destructive"
+              disabled={!canManageColumns || !layerCaps.delete}
+              onClick={confirmDeleteColumn}
+            >
               {t("attributeTable.deleteField")}
             </Button>
           </div>
@@ -2216,7 +2226,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
             <Button variant="outline" onClick={() => setAddingColumn(false)}>
               {t("common.cancel")}
             </Button>
-            <Button disabled={!canSubmitNewColumn} onClick={confirmAddColumn}>
+            <Button disabled={!canManageColumns || !canSubmitNewColumn} onClick={confirmAddColumn}>
               {t("attributeTable.addField")}
             </Button>
           </div>
@@ -2417,7 +2427,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
             <Button variant="outline" onClick={() => setCalcOpen(false)}>
               {t("common.cancel")}
             </Button>
-            <Button disabled={!calcCanSubmit} onClick={confirmCalculate}>
+            <Button disabled={!canManageColumns || !calcCanSubmit} onClick={confirmCalculate}>
               {t("attributeTable.buttons.calculate")}
             </Button>
           </div>

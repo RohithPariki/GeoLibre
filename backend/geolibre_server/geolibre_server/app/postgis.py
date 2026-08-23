@@ -273,7 +273,12 @@ class PostgisWriteRequest(BaseModel):
     # session between the read and this save survive. When omitted, every row
     # absent from the payload is deleted (full-table diff).
     baseline_keys: Optional[list] = None
-    # Optional layer capability overrides enforcing create/update/delete restrictions.
+    # The layer's declared capabilities, forwarded by the client so a save
+    # cannot quietly perform an operation the layer's own configuration
+    # disallows. This is a consistency guard, not an access-control boundary:
+    # the sidecar has no independent record of a table's capabilities, so a
+    # caller that omits the field (or sends its own) is trusted. Anything that
+    # must hold against an untrusted caller belongs in database grants.
     capabilities: Optional[dict[str, bool]] = None
 
 
@@ -690,6 +695,8 @@ def postgis_write(request: PostgisWriteRequest) -> dict[str, Any]:
         geom_ident = sql.Identifier(info["geometry_column"])
         geom_param = _geometry_param(sql, info["srid"])
 
+        # Absent flags default to allowed, matching the frontend's inference
+        # for a layer that declares no explicit capabilities.
         caps = request.capabilities or {}
         allow_create = caps.get("create", True)
         allow_update = caps.get("update", True)

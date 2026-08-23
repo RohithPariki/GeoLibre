@@ -231,10 +231,21 @@ bound to a missing or non-attribute layer are shown as empty.
 ```
 
 A layer can define an optional `capabilities` set (`query`, `create`, `update`,
-`delete`, `export`) to explicitly declare allowed user and session actions.
-Omitted capabilities default to standard inferred behavior based on the layer's
-source kind. When `export` is `false`, project sharing/publishing automatically
-strips embedded GeoJSON for that layer.
+`delete`, `export`) to explicitly declare allowed user and session actions. Each
+flag gates only the actions it names: `query` the identify/attribute-table and
+feature-selection paths, `create`/`update`/`delete` the feature writes, and
+`export` the paths that copy the layer's data out (Export, Save to Layer
+Library, Export selection). Renaming a layer or removing it from the project is
+not a feature edit and stays available. Omitted capabilities default to the
+behavior inferred from the layer's source kind. When `export` is `false`,
+project sharing/publishing strips embedded GeoJSON for that layer.
+
+`capabilities` describes the layer, and the app enforces it in the UI; it is not
+an access-control mechanism. The PostGIS sidecar refuses writes that contradict
+the capabilities the client sends with a save, which keeps an in-app edit from
+contradicting the layer's own configuration, but the sidecar has no independent
+record of a table's capabilities and cannot tell one caller from another. Use
+database grants for restrictions that must hold against an untrusted client.
 
 For WFS GetFeature and GeoJSON URL layers, `metadata.refresh` can persist an
 optional auto-refresh interval. `intervalMs` can be any positive interval in
