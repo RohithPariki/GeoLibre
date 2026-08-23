@@ -1573,7 +1573,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
           className="ms-auto h-7 px-2"
           title={
             !layerCaps.update
-              ? t("attributeTable.editTitleReadOnly")
+              ? t("attributeTable.editTitleCapabilityDisabled")
               : isGeometryEditing
                 ? t("attributeTable.editTitleFinishGeometry")
                 : isReadOnlyVectorLayer
@@ -1769,7 +1769,7 @@ export function AttributeTable({ mapControllerRef }: AttributeTableProps) {
               className="h-7 px-2"
               title={
                 !layerCaps.export
-                  ? t("attributeTable.exportTitleDisabled")
+                  ? t("attributeTable.exportTitleCapabilityDisabled")
                   : layer?.geojson
                     ? t("attributeTable.exportSelectedLayer")
                     : t("attributeTable.exportTitleDisabled")

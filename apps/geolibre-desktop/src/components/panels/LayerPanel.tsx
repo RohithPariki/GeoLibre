@@ -3124,7 +3124,13 @@ export function LayerPanel({
                 : isPixelIdentify
                   ? t("layers.identifyInspectPixels")
                   : t("layers.identifyFeatures")
-              : t("layers.identifyUnavailable");
+              : // A layer whose `query` capability is denied is not the same as
+                // one whose type has no identify route, and saying "only
+                // available for vector, WMS, and COG layers" on a vector layer
+                // reads as a bug.
+                layerCaps.query
+                ? t("layers.identifyUnavailable")
+                : t("layers.identifyCapabilityDisabled");
             const canEditGeometry = canEditLayerGeometry(layer) && layerCaps.update;
             // A vector layer whose in-view features can be loaded into the
             // GeoEditor (a copy, not in-place): geojson and vector tile layers
