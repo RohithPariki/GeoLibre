@@ -240,6 +240,14 @@ not a feature edit and stays available. Omitted capabilities default to the
 behavior inferred from the layer's source kind. When `export` is `false`,
 project sharing/publishing strips embedded GeoJSON for that layer.
 
+`export: false` strips the feature data the project file itself carries — the
+layer's inline `geojson` and its `metadata.embeddedGeoJSON` snapshot. It does
+not remove the layer's `source` or `connection`, so a layer that fetches its
+data live (WFS, ArcGIS FeatureServer, a remote GeoJSON or tile URL) is still
+shared with a reachable URL and re-fetches the same data when the project is
+opened. For that class of layer the flag hides the copy in the file, not the
+data itself.
+
 `capabilities` describes the layer, and the app enforces it in the UI; it is not
 an access-control mechanism. The PostGIS sidecar refuses writes that contradict
 the capabilities the client sends with a save, which keeps an in-app edit from

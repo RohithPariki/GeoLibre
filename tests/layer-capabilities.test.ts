@@ -75,6 +75,27 @@ describe("Layer capabilities", () => {
       });
     });
 
+    // The Load-into-Editor gate in LayerPanel depends on this: a tile layer
+    // infers `create: false`, so gating that action on `create` would remove
+    // it from every vector-tiles/pmtiles/mbtiles layer by default. It is gated
+    // on `export` instead.
+    test("infers create/update/delete false but export true for tile layers", () => {
+      for (const type of ["vector-tiles", "pmtiles", "mbtiles"] as const) {
+        const layer = makeLayer({ type, geojson: undefined });
+        assert.deepEqual(
+          inferLayerCapabilities(layer),
+          {
+            query: true,
+            create: false,
+            update: false,
+            delete: false,
+            export: true,
+          },
+          type,
+        );
+      }
+    });
+
     test("infers read-only for external native vector layers", () => {
       const layer = makeLayer({
         metadata: { externalNativeLayer: true, sourceKind: "xyz" },

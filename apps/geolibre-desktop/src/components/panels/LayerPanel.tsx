@@ -2025,7 +2025,11 @@ export function LayerPanel({
             // The baseline lives on the layer metadata, so it survives a
             // project reload.
             baseline_keys: postgisBaselineKeys(layer),
-            capabilities: layer.capabilities,
+            // Resolved, not `layer.capabilities`: the sidecar reads an omitted
+            // flag as allowed, so a partial override has to be filled in from
+            // the same inferred defaults the UI gated on, or the two can
+            // disagree about a flag the override never mentioned.
+            capabilities: resolveLayerCapabilities(layer),
           });
           // Re-read the table so inserted features pick up their database-
           // assigned primary keys; without this a second save would insert
@@ -3129,11 +3133,15 @@ export function LayerPanel({
             // included here (unlike Edit geometry) because loading grabs a copy
             // of what is rendered rather than editing the source in place;
             // raster PMTiles/MBTiles have no vector features so are excluded.
-            // Loading writes new features into the editor's own layer, so this
-            // is a `create` action and stays available on a layer whose
-            // `update` is denied.
+            // Gated on `export`, not `create`/`update`: the action copies this
+            // layer's features into the editor's own layer, so it is the same
+            // kind of copy-out as Export selection and Save to Layer Library.
+            // `create` would be wrong twice over — the features are created in
+            // the editor's layer, not this one, and `inferLayerCapabilities`
+            // infers `create: false` for every tile layer in the list below,
+            // which would remove the action from all of them by default.
             const canLoadIntoEditor =
-              layerCaps.create &&
+              layerCaps.export &&
               layer.metadata.sourceKind !== SKETCHES_SOURCE_KIND &&
               layer.metadata.tileType !== "raster" &&
               (layer.type === "geojson" ||

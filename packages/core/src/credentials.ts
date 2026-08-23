@@ -366,6 +366,13 @@ export function redactProjectCredentials(project: GeoLibreProject): CredentialRe
   }
 
   const layers = (project.layers ?? []).map((layer, index) => {
+    // `export: false` strips the feature data this project *carries* — the
+    // inline `geojson` and the `embeddedGeoJSON` snapshot. It deliberately
+    // leaves `source`/`connection` alone, so a layer that fetches live (WFS,
+    // ArcGIS FeatureServer, a remote GeoJSON or tile URL) still travels with a
+    // reachable URL and re-fetches the same data when the shared project is
+    // opened. Stripping those would ship a layer that cannot render at all;
+    // whether that is the right trade is tracked in the docs' caveat.
     const isNoExport = layer.capabilities?.export === false;
     const cleanMetadata = redactConfigurationValue(
       layer.metadata,
