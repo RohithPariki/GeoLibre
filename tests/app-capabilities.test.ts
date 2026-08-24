@@ -113,11 +113,19 @@ describe("application capability model", () => {
     });
 
     it("correctly computes intersection of multiple role privilege sets", () => {
-      const deploymentPrivileges: AppPrivilege[] = ["export:image", "export:data", "processing:run"];
+      const deploymentPrivileges: AppPrivilege[] = [
+        "export:image",
+        "export:data",
+        "processing:run",
+      ];
       const userPrivileges: AppPrivilege[] = ["export:image", "layers:edit", "processing:run"];
       const shareLinkPrivileges: AppPrivilege[] = ["export:image", "export:data"];
 
-      const effective = intersectPrivileges(deploymentPrivileges, userPrivileges, shareLinkPrivileges);
+      const effective = intersectPrivileges(
+        deploymentPrivileges,
+        userPrivileges,
+        shareLinkPrivileges,
+      );
       assert.deepEqual(effective, ["export:image"]);
     });
 
@@ -176,7 +184,9 @@ describe("application capability model", () => {
     });
 
     it("setAppPrivileges updates custom privileges and reason", () => {
-      useAppStore.getState().setAppPrivileges(["export:data", "processing:run"], "Custom classroom");
+      useAppStore
+        .getState()
+        .setAppPrivileges(["export:data", "processing:run"], "Custom classroom");
       const state = useAppStore.getState();
       assert.equal(state.capabilities.role, "custom");
       assert.deepEqual(state.capabilities.privileges, ["export:data", "processing:run"]);
@@ -220,9 +230,17 @@ describe("application capability model", () => {
     it("capabilities slice is ephemeral and excluded from project serialization and undo history", () => {
       useAppStore.getState().setAppRole("viewer", { reason: "Demo mode" });
       const project = projectFromStore(useAppStore.getState());
-      assert.equal("capabilities" in project, false, "projectFromStore must not include capabilities");
+      assert.equal(
+        "capabilities" in project,
+        false,
+        "projectFromStore must not include capabilities",
+      );
       const serialized = JSON.parse(serializeProject(project));
-      assert.equal("capabilities" in serialized, false, "capabilities must not be serialized into project file");
+      assert.equal(
+        "capabilities" in serialized,
+        false,
+        "capabilities must not be serialized into project file",
+      );
 
       // Undo/redo must not alter capabilities state
       useAppStore.getState().setBasemapOpacity(0.5);

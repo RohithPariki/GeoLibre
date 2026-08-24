@@ -169,9 +169,7 @@ export function resolveRolePrivileges(
  * Intersects multiple sets of privileges to derive the effective permissions when multiple
  * policies (e.g. deployment, organization, and share link) apply simultaneously.
  */
-export function intersectPrivileges(
-  ...privilegeSets: (readonly AppPrivilege[])[]
-): AppPrivilege[] {
+export function intersectPrivileges(...privilegeSets: (readonly AppPrivilege[])[]): AppPrivilege[] {
   if (privilegeSets.length === 0) return [];
   if (privilegeSets.length === 1) return [...new Set(privilegeSets[0])];
   let current = new Set<AppPrivilege>(privilegeSets[0]);
