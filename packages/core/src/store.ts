@@ -18,6 +18,12 @@ import {
 } from "./project";
 import { initialLayerStyle } from "./layer-defaults";
 import {
+  createDefaultAppCapabilities,
+  hasAppPrivilege,
+  normalizeAppPrivileges,
+  resolveRolePrivileges,
+} from "./capabilities";
+import {
   createDefaultPrintLayout,
   printLayoutConfigsEqual,
   scrubPrintLayoutForRemovedLayers,
@@ -41,6 +47,9 @@ import {
   MAX_PROCESSING_HISTORY,
   MIN_DASHBOARD_COLUMNS,
   type AddTileLayerOptions,
+  type AppCapabilities,
+  type AppPrivilege,
+  type AppRole,
   type CollabInvite,
   type CollaborationChatMessage,
   type CollaborationParticipant,
@@ -304,6 +313,12 @@ export interface AppState {
   // excluded from the project file (project.ts never reads it) and from undo
   // history (partialize never lists it).
   collaboration: CollaborationState;
+  /**
+   * Ephemeral application capability model (issue #1672). Gating role and
+   * privileges for the current session/deployment. Excluded from the project file
+   * and undo history.
+   */
+  capabilities: AppCapabilities;
   ui: {
     processingOpen: boolean;
     /**
@@ -576,6 +591,25 @@ export interface AppState {
   forgetRecentProject: (path: string) => void;
   clearRecentProjects: () => void;
   markSaved: () => void;
+
+  /**
+   * Assign an application role (e.g. "viewer", "editor", "publisher", "administrator", "custom"),
+   * deriving the effective privileges and optional reason.
+   */
+  setAppRole: (
+    role: AppRole,
+    options?: { customPrivileges?: AppPrivilege[]; reason?: string },
+  ) => void;
+  /** Set explicit custom privileges and an optional reason. */
+  setAppPrivileges: (privileges: AppPrivilege[], reason?: string) => void;
+  /** Grant an individual application privilege. */
+  grantAppPrivilege: (privilege: AppPrivilege) => void;
+  /** Revoke an individual application privilege with an optional reason. */
+  revokeAppPrivilege: (privilege: AppPrivilege, reason?: string) => void;
+  /** Reset application capabilities back to the default unconstrained Administrator role. */
+  resetAppCapabilities: () => void;
+  /** Check if the current capabilities grant the requested privilege. */
+  hasAppPrivilege: (privilege: AppPrivilege) => boolean;
 
   addLayer: (layer: GeoLibreLayer, beforeLayerId?: string | null) => void;
   removeLayer: (id: string) => void;
@@ -1045,6 +1079,7 @@ export const useAppStore = create<AppState>()(
       recentProjects: [],
       attributeFilter: "",
       collaboration: DEFAULT_COLLABORATION_STATE,
+      capabilities: createDefaultAppCapabilities(),
       ui: {
         processingOpen: false,
         processingInitialTool: null,
@@ -2324,6 +2359,58 @@ export const useAppStore = create<AppState>()(
           });
         }
       },
+
+      setAppRole: (role, options) => {
+        const privileges = resolveRolePrivileges(role, options?.customPrivileges);
+        set({
+          capabilities: {
+            role,
+            privileges,
+            reason: options?.reason,
+          },
+        });
+      },
+
+      setAppPrivileges: (privileges, reason) => {
+        set({
+          capabilities: {
+            role: "custom",
+            privileges: normalizeAppPrivileges(privileges) ?? [],
+            reason,
+          },
+        });
+      },
+
+      grantAppPrivilege: (privilege) => {
+        const current = get().capabilities;
+        if (current.privileges.includes(privilege)) return;
+        set({
+          capabilities: {
+            ...current,
+            privileges: [...current.privileges, privilege],
+          },
+        });
+      },
+
+      revokeAppPrivilege: (privilege, reason) => {
+        const current = get().capabilities;
+        if (!current.privileges.includes(privilege)) return;
+        set({
+          capabilities: {
+            ...current,
+            privileges: current.privileges.filter((p) => p !== privilege),
+            reason: reason ?? current.reason,
+          },
+        });
+      },
+
+      resetAppCapabilities: () => {
+        set({ capabilities: createDefaultAppCapabilities() });
+      },
+
+      hasAppPrivilege: (privilege) => {
+        return hasAppPrivilege(get().capabilities, privilege);
+      },
     }),
     {
       // Only these fields participate in undo/redo; everything else (selection,
@@ -2513,4 +2600,18 @@ export function clearHistory(): void {
     projectRestoreRedo = null;
     notifyProjectRestoreHistory();
   }
+}
+
+/**
+ * React hook for consuming application capability state for a specific privilege.
+ *
+ * @param privilege - The privilege to check.
+ * @returns `{ granted: boolean, reason?: string }`
+ */
+export function useAppCapability(privilege: AppPrivilege): { granted: boolean; reason?: string } {
+  const capabilities = useAppStore((state) => state.capabilities);
+  return {
+    granted: capabilities.privileges.includes(privilege),
+    reason: capabilities.reason,
+  };
 }

@@ -52,6 +52,7 @@ export {
   redo,
   undo,
   useAppStore,
+  useAppCapability,
   type AppState,
   type ConversionToolKind,
   type GpsStatusFix,

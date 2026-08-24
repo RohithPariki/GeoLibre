@@ -1,4 +1,4 @@
-import { type NetworkToolKind, useAppStore } from "@geolibre/core";
+import { type NetworkToolKind, useAppCapability, useAppStore } from "@geolibre/core";
 import { isEarthEngineAvailable } from "@geolibre/plugins";
 import {
   Button,
@@ -73,6 +73,9 @@ export function ProcessingMenu({
   const setAssistantOpen = useAppStore((s) => s.setAssistantOpen);
   const setDashboardOpen = useAppStore((s) => s.setDashboardOpen);
   const setProcessingHistoryOpen = useAppStore((s) => s.setProcessingHistoryOpen);
+  const processingCap = useAppCapability("processing:run");
+  const sidecarCap = useAppCapability("processing:sidecar");
+  const assistantCap = useAppCapability("assistant:use");
 
   // Format Conversion, Raster tools, and AI Segmentation require the Python
   // sidecar, which cannot run on Android/iOS — hide them on mobile so they don't
@@ -143,7 +146,10 @@ export function ProcessingMenu({
         <DropdownMenuSeparator />
         {show("processing.assistant") && (
           <>
-            <DropdownMenuItem onSelect={() => setAssistantOpen(true)}>
+            <DropdownMenuItem
+              onSelect={() => setAssistantOpen(true)}
+              disabled={!assistantCap.granted}
+            >
               {t("toolbar.command.assistant")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
@@ -157,7 +163,10 @@ export function ProcessingMenu({
             does; pairs with the GeoLibre Toolbox trigger below. Reuses the
             dialog's own heading string, already translated in every locale. */}
         {showWhitebox && (
-          <DropdownMenuItem onSelect={() => setProcessingOpen(true)}>
+          <DropdownMenuItem
+            onSelect={() => setProcessingOpen(true)}
+            disabled={!processingCap.granted}
+          >
             {t("processing.whitebox.toolbox")}
           </DropdownMenuItem>
         )}

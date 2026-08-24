@@ -1,4 +1,4 @@
-import { projectPathLabel, useAppStore } from "@geolibre/core";
+import { projectPathLabel, useAppCapability, useAppStore } from "@geolibre/core";
 import {
   Button,
   DropdownMenu,
@@ -102,6 +102,8 @@ export function ProjectMenu({
   const clearRecentProjects = useAppStore((s) => s.clearRecentProjects);
   const setStorymapPanelOpen = useAppStore((s) => s.setStorymapPanelOpen);
   const uiProfile = useDesktopSettingsStore((s) => s.desktopSettings.uiProfile);
+  const saveCapability = useAppCapability("project:save");
+  const shareCapability = useAppCapability("project:share");
   const show = (id: string) => isMenuItemVisible(uiProfile, id);
   // A deployment that turned sharing off should not advertise it; one that named
   // a host we rejected should say so rather than leave the user wondering.
@@ -271,25 +273,25 @@ export function ProjectMenu({
         )}
         {showSaveGroup && <DropdownMenuSeparator />}
         {show("project.save") && (
-          <DropdownMenuItem onSelect={onSave}>
+          <DropdownMenuItem onSelect={onSave} disabled={!saveCapability.granted}>
             <Save className="me-2 h-3.5 w-3.5" />
             {t("common.save")}
           </DropdownMenuItem>
         )}
         {show("project.saveAs") && (
-          <DropdownMenuItem onSelect={onSaveAs}>
+          <DropdownMenuItem onSelect={onSaveAs} disabled={!saveCapability.granted}>
             <FilePen className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.saveAsEllipsis")}
           </DropdownMenuItem>
         )}
         {show("project.duplicate") && onDuplicate && (
-          <DropdownMenuItem onSelect={onDuplicate}>
+          <DropdownMenuItem onSelect={onDuplicate} disabled={!saveCapability.granted}>
             <Copy className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.duplicate")}
           </DropdownMenuItem>
         )}
         {show("project.saveAsTemplate") && onSaveAsTemplate && (
-          <DropdownMenuItem onSelect={onSaveAsTemplate}>
+          <DropdownMenuItem onSelect={onSaveAsTemplate} disabled={!saveCapability.granted}>
             <Bookmark className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.saveAsTemplateEllipsis")}
           </DropdownMenuItem>
@@ -298,7 +300,7 @@ export function ProjectMenu({
           <>
             <DropdownMenuItem
               onSelect={onShare}
-              disabled={shareBroken}
+              disabled={shareBroken || !shareCapability.granted}
               aria-describedby={shareBroken ? SHARE_UNAVAILABLE_ID : undefined}
             >
               <Share2 className="me-2 h-3.5 w-3.5" />
