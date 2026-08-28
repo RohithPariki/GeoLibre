@@ -116,6 +116,35 @@ const PROJECT_MENU_ITEM_CAPABILITIES: Readonly<Record<string, DeploymentCapabili
 };
 
 /**
+ * The capability each Edit-menu item needs, keyed by its `ui-profile.ts`
+ * menu-item catalog id.
+ *
+ * Only the items that change the project are listed. The selection tools
+ * (select by expression/location, invert, clear, zoom to selection) act on
+ * `selectedFeatureIds`, which is ephemeral store state that never reaches the
+ * project file — a kiosk still wants them.
+ */
+const EDIT_MENU_ITEM_CAPABILITIES: Readonly<Record<string, DeploymentCapability>> = {
+  "edit.undo": "project:edit",
+  "edit.redo": "project:edit",
+  // "Export Selection" names an export but adds a layer built from features
+  // already loaded — no file, URL, or service — so by the vocabulary's own
+  // definitions this is authoring the project, not `data:add` or `export:data`.
+  "edit.exportSelection": "project:edit",
+};
+
+/**
+ * The capability an Edit-menu item requires, or undefined when it requires
+ * none.
+ *
+ * @param id - The menu-item catalog id, e.g. `"edit.undo"`.
+ * @returns The required capability, or undefined for unprivileged items.
+ */
+export function editMenuItemCapability(id: string): DeploymentCapability | undefined {
+  return EDIT_MENU_ITEM_CAPABILITIES[id];
+}
+
+/**
  * The capability a Project-menu item requires, or undefined when it requires
  * none.
  *

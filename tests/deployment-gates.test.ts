@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import type { Command } from "../apps/geolibre-desktop/src/lib/commands";
 import {
   commandCapability,
+  editMenuItemCapability,
   filterCommandsByCapabilities,
   projectMenuItemCapability,
 } from "../apps/geolibre-desktop/src/lib/deployment-gates";
@@ -135,5 +136,26 @@ describe("projectMenuItemCapability", () => {
 
   it("returns undefined for an id it does not gate", () => {
     assert.equal(projectMenuItemCapability("project.unknown"), undefined);
+  });
+});
+
+describe("editMenuItemCapability", () => {
+  it("gates the items that change the project on project:edit", () => {
+    assert.equal(editMenuItemCapability("edit.undo"), "project:edit");
+    assert.equal(editMenuItemCapability("edit.redo"), "project:edit");
+    assert.equal(editMenuItemCapability("edit.exportSelection"), "project:edit");
+  });
+
+  it("leaves the selection tools unprivileged", () => {
+    // Selection lives in ephemeral store state, never in the project file.
+    for (const id of [
+      "edit.selectByExpression",
+      "edit.selectByLocation",
+      "edit.zoomToSelection",
+      "edit.invertSelection",
+      "edit.clearSelection",
+    ]) {
+      assert.equal(editMenuItemCapability(id), undefined, id);
+    }
   });
 });
