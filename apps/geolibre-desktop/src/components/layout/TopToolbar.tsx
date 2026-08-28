@@ -113,6 +113,7 @@ import { KeyboardShortcutsDialog } from "../command/KeyboardShortcutsDialog";
 import { useGlobalShortcuts } from "../../hooks/useGlobalShortcuts";
 import { useViewportHistory } from "../../hooks/useViewportHistory";
 import type { Command } from "../../lib/commands";
+import { filterCommandsByCapabilities } from "../../lib/deployment-gates";
 import { IS_MAS_BUILD } from "../../lib/build-flags";
 import { pluginDisplayName } from "../../lib/plugin-display-name";
 import { masHidesDataSource } from "../../lib/mas-build";
@@ -1893,9 +1894,22 @@ export function TopToolbar({
   // keyless. Everything else carrying a `shortcut` authors the project
   // (`project.*`, `add.comment`), so filtering to `view.*` drops exactly the
   // authoring keyboard surface.
+  //
+  // Independently of the viewer preset, a deployment that withholds a
+  // capability withholds it everywhere: the menu gates below only hide menus,
+  // while the palette, the cheat sheet, and the shortcut layer call `run()`
+  // directly. Filtering the registry once here is what keeps those three from
+  // advertising and invoking what the deployment denied.
+  const allowedCommands = useMemo(
+    () => filterCommandsByCapabilities(commands, deploymentCapabilities),
+    [commands, deploymentCapabilities],
+  );
   const shortcutCommands = useMemo(
-    () => (viewer ? commands.filter((command) => command.id.startsWith("view.")) : commands),
-    [commands, viewer],
+    () =>
+      viewer
+        ? allowedCommands.filter((command) => command.id.startsWith("view."))
+        : allowedCommands,
+    [allowedCommands, viewer],
   );
   useGlobalShortcuts({
     commands: shortcutCommands,
@@ -2255,14 +2269,14 @@ export function TopToolbar({
       {!viewer && (
         <CommandPalette
           open={commandPaletteOpen}
-          commands={commands}
+          commands={allowedCommands}
           onOpenChange={setCommandPaletteOpen}
         />
       )}
       {!viewer && (
         <KeyboardShortcutsDialog
           open={shortcutsOpen}
-          commands={commands}
+          commands={allowedCommands}
           onOpenChange={setShortcutsOpen}
         />
       )}

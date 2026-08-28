@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { shallow } from "zustand/shallow";
 import { temporal } from "zundo";
+import { ALL_DEPLOYMENT_CAPABILITIES, type DeploymentCapability } from "./deployment-capabilities";
 import {
   getHistoryCoalesceMs,
   getMaxHistoryFeatureCount,
@@ -303,6 +304,16 @@ export interface AppState {
   metadata: Record<string, unknown>;
   recentProjects: RecentProjectEntry[];
   attributeFilter: string;
+  /**
+   * What this *deployment* is allowed to do (issue #1673). Set once at startup
+   * from the deployment configuration; never from a project file, a URL
+   * parameter, or anything else the visitor controls, and never edited from the
+   * UI. Defaults to the full set so an unconfigured build behaves as before.
+   *
+   * Excluded from the project file and from undo history: it describes the
+   * server that served the app, not the document being edited.
+   */
+  deploymentCapabilities: ReadonlySet<DeploymentCapability>;
   // Ephemeral live-collaboration session state (issue #307). Deliberately
   // excluded from the project file (project.ts never reads it) and from undo
   // history (partialize never lists it).
@@ -574,6 +585,11 @@ export interface AppState {
   ) => void;
   setProjectPath: (path: string | null) => void;
   setProjectName: (name: string) => void;
+  /**
+   * Narrow what this deployment may do. Intended for the startup path only —
+   * calling it later would leave already-rendered surfaces stale.
+   */
+  setDeploymentCapabilities: (capabilities: Iterable<DeploymentCapability>) => void;
   setRecentProjects: (projects: RecentProjectEntry[]) => void;
   rememberRecentProject: (entry: RecentProjectEntry) => void;
   forgetRecentProject: (path: string) => void;
@@ -1060,6 +1076,7 @@ export const useAppStore = create<AppState>()(
       metadata: {},
       recentProjects: [],
       attributeFilter: "",
+      deploymentCapabilities: ALL_DEPLOYMENT_CAPABILITIES,
       collaboration: DEFAULT_COLLABORATION_STATE,
       ui: {
         processingOpen: false,
@@ -1679,6 +1696,8 @@ export const useAppStore = create<AppState>()(
 
       setProjectPath: (path) => set({ projectPath: path }),
       setProjectName: (name) => set({ projectName: name, isDirty: true }),
+      setDeploymentCapabilities: (capabilities) =>
+        set({ deploymentCapabilities: new Set(capabilities) }),
       setRecentProjects: (projects) => set({ recentProjects: normalizeRecentProjects(projects) }),
       rememberRecentProject: (entry) =>
         set((s) => ({
