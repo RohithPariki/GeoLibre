@@ -25,6 +25,12 @@ describe("commandCapability", () => {
     assert.equal(commandCapability("settings.style-manager"), "settings:manage");
   });
 
+  it("puts plugin activation and the marketplace under plugins:install", () => {
+    assert.equal(commandCapability("plugin.reverse-geocode"), "plugins:install");
+    // Despite its `settings.` id, "Manage plugins" opens the marketplace.
+    assert.equal(commandCapability("settings.manage-plugins"), "plugins:install");
+  });
+
   it("treats the print layout as an export, not project authoring", () => {
     assert.equal(commandCapability("project.print-layout"), "export:data");
   });

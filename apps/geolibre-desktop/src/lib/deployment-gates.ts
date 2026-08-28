@@ -31,6 +31,12 @@ const COMMAND_CAPABILITY_PREFIXES: ReadonlyArray<readonly [string, DeploymentCap
   // Includes opening a different project: a deployment that pins what may be
   // authored also pins which project is on screen.
   ["project.", "project:edit"],
+  // Activating a plugin and opening the marketplace both belong to the plugin
+  // gate, not the settings one: the toolbar hides the whole Plugins menu on
+  // `plugins:install`, and "Manage plugins" is the marketplace despite its
+  // `settings.` id.
+  ["plugin.", "plugins:install"],
+  ["settings.manage-plugins", "plugins:install"],
   ["settings.", "settings:manage"],
   // `control.`, `view.`, and `help.` are unprivileged: they move the camera,
   // toggle map decorations, and open documentation. A locked-down deployment
