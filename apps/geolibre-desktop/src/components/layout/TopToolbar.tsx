@@ -2025,15 +2025,17 @@ export function TopToolbar({
           onOpenOsmPbfDialog={() => osmPbf.setDialogOpen(true)}
         />
       )}
-      {!viewer && isMenuVisible(uiProfile, "processing") && deploymentCapabilities.has("processing:run") && (
-        <ProcessingMenu
-          chrome={chrome}
-          earthEnginePanel={panels.earthEngine}
-          onOpenNetworkTool={consent.openNetworkTool}
-          onOpenPlanetaryComputer={handleOpenPlanetaryComputer}
-          onOpenGeoreferencer={() => setGeoreferencerOpen(true)}
-        />
-      )}
+      {!viewer &&
+        isMenuVisible(uiProfile, "processing") &&
+        deploymentCapabilities.has("processing:run") && (
+          <ProcessingMenu
+            chrome={chrome}
+            earthEnginePanel={panels.earthEngine}
+            onOpenNetworkTool={consent.openNetworkTool}
+            onOpenPlanetaryComputer={handleOpenPlanetaryComputer}
+            onOpenGeoreferencer={() => setGeoreferencerOpen(true)}
+          />
+        )}
       {isMenuVisible(uiProfile, "controls") && (
         <ControlsMenu
           chrome={chrome}
@@ -2063,22 +2065,26 @@ export function TopToolbar({
           onOpenRecordVideo={() => setRecordVideoOpen(true)}
         />
       )}
-      {!viewer && isMenuVisible(uiProfile, "plugins") && deploymentCapabilities.has("plugins:install") && (
-        <PluginsMenu
-          chrome={chrome}
-          appApi={appApi}
-          plugins={plugins}
-          isActive={isActive}
-          toggle={toggle}
-          getMapControlPosition={getMapControlPosition}
-          setMapControlPosition={setMapControlPosition}
-          hiddenPluginIds={hiddenPluginIds}
-        />
-      )}
+      {!viewer &&
+        isMenuVisible(uiProfile, "plugins") &&
+        deploymentCapabilities.has("plugins:install") && (
+          <PluginsMenu
+            chrome={chrome}
+            appApi={appApi}
+            plugins={plugins}
+            isActive={isActive}
+            toggle={toggle}
+            getMapControlPosition={getMapControlPosition}
+            setMapControlPosition={setMapControlPosition}
+            hiddenPluginIds={hiddenPluginIds}
+          />
+        )}
       {/* Top-level toolbar menus registered by built-in plugins via
           app.registerToolbarMenu(); external plugin menus render after Help
           (below). Renders nothing when none exist. */}
-      {!viewer && deploymentCapabilities.has("plugins:install") ? <PluginToolbarMenus chrome={chrome} placement="builtin" /> : null}
+      {!viewer && deploymentCapabilities.has("plugins:install") ? (
+        <PluginToolbarMenus chrome={chrome} placement="builtin" />
+      ) : null}
       {!viewer && deploymentCapabilities.has("settings:manage") ? (
         <SettingsDialog
           buttonClassName={toolbarButtonClass}
@@ -2202,7 +2208,9 @@ export function TopToolbar({
       )}
       {/* External plugin toolbar menus render after Help so third-party menus
           sit at the end of the banner, past the built-in menus. */}
-      {!viewer && deploymentCapabilities.has("plugins:install") ? <PluginToolbarMenus chrome={chrome} placement="external" /> : null}
+      {!viewer && deploymentCapabilities.has("plugins:install") ? (
+        <PluginToolbarMenus chrome={chrome} placement="external" />
+      ) : null}
       <AddDataDialog
         kind={addDataKind}
         mapControllerRef={mapControllerRef}
