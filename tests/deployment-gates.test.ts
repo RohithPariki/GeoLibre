@@ -31,8 +31,31 @@ describe("commandCapability", () => {
     assert.equal(commandCapability("settings.manage-plugins"), "plugins:install");
   });
 
-  it("treats the print layout as an export, not project authoring", () => {
+  it("treats the print layout and Share as exports, not project authoring", () => {
     assert.equal(commandCapability("project.print-layout"), "export:data");
+    assert.equal(commandCapability("project.share"), "export:data");
+  });
+
+  it("classifies a command the same way the Project menu classifies it", () => {
+    // The two tables key off different ids for the same action, so they can
+    // silently disagree; a mismatch hides an item in the menu while leaving it
+    // live in the palette.
+    for (const [commandId, menuItemId] of [
+      ["project.new", "project.new"],
+      ["project.save", "project.save"],
+      ["project.save-as", "project.saveAs"],
+      ["project.open-file", "project.openFrom"],
+      ["project.open-url", "project.openFrom"],
+      ["project.share", "project.share"],
+      ["project.collaborate", "project.collaborate"],
+      ["project.print-layout", "project.printLayout"],
+    ] as const) {
+      assert.equal(
+        commandCapability(commandId),
+        projectMenuItemCapability(menuItemId),
+        `${commandId} vs ${menuItemId}`,
+      );
+    }
   });
 
   it("treats a review comment as project authoring, not adding data", () => {

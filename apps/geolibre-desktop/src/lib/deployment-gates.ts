@@ -26,8 +26,13 @@ const COMMAND_CAPABILITY_PREFIXES: ReadonlyArray<readonly [string, DeploymentCap
   ["add.comment", "project:edit"],
   ["add.", "data:add"],
   ["proc.", "processing:run"],
-  // The print layout designer exists to get a rendering back out.
+  // The print layout designer exists to get a rendering back out, and sharing
+  // puts the project itself on a server outside the deployment. Both are
+  // classified the same way in PROJECT_MENU_ITEM_CAPABILITIES below; the two
+  // tables disagreeing is what leaves an action hidden in the menu but live in
+  // the palette.
   ["project.print-layout", "export:data"],
+  ["project.share", "export:data"],
   // Includes opening a different project: a deployment that pins what may be
   // authored also pins which project is on screen.
   ["project.", "project:edit"],

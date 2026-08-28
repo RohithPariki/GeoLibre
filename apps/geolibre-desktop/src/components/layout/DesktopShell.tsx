@@ -1871,10 +1871,14 @@ export function DesktopShell({
   const handleDragOver = useCallback(
     (event: DragEvent<HTMLDivElement>) => {
       // Leaving the default action in place makes the browser refuse the drop,
-      // so the overlay never appears and nothing is imported.
-      if (dropDisabled || !hasDroppedFiles(event)) return;
+      // so the overlay never appears and nothing is imported. A drop we will
+      // *not* import still has to be cancelled here, though: the browser's own
+      // default is to navigate the tab to the dropped file, which would take a
+      // viewer or a locked-down kiosk out of the app entirely. Cancel either
+      // way, and say so with the cursor.
+      if (!hasDroppedFiles(event)) return;
       event.preventDefault();
-      event.dataTransfer.dropEffect = "copy";
+      event.dataTransfer.dropEffect = dropDisabled ? "none" : "copy";
     },
     [dropDisabled],
   );
@@ -1891,8 +1895,11 @@ export function DesktopShell({
 
   const handleDrop = useCallback(
     async (event: DragEvent<HTMLDivElement>) => {
-      if (dropDisabled || !hasDroppedFiles(event)) return;
+      if (!hasDroppedFiles(event)) return;
+      // Cancel before the capability check, for the same reason as dragover:
+      // an uncancelled drop navigates away from the app.
       event.preventDefault();
+      if (dropDisabled) return;
       dragDepthRef.current = 0;
       setIsDraggingFiles(false);
       setDropError(null);
