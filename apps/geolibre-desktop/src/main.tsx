@@ -77,6 +77,7 @@ import {
   fetchDesktopSettings,
   sharedSettingsLanguage,
 } from "./lib/desktop-settings-url";
+import { useAppStore } from "@geolibre/core";
 
 installDiagnosticsCapture();
 let nativeSidecarFetchReady: Promise<void> = Promise.resolve();
@@ -132,6 +133,15 @@ if (isTauri()) {
 // Recover from chunks orphaned by a web redeploy (stale lazy import → 404). A
 // no-op in the desktop build, whose chunks are bundled locally.
 installStaleChunkReload();
+import { readDeploymentEnvValue } from "./lib/deployment-env";
+
+const capabilitiesStr = readDeploymentEnvValue("VITE_GEOLIBRE_CAPABILITIES");
+if (capabilitiesStr) {
+  // It's a comma separated list of capabilities
+  const caps = new Set(capabilitiesStr.split(",") as any[]);
+  useAppStore.getState().setDeploymentCapabilities(caps);
+}
+
 // "Web app" here means the *build*, never anything the visitor controls: the
 // desktop shell and the Jupyter embed wheel are compiled without the gate, but a
 // hosted deployment gates every request. In particular this must NOT consult

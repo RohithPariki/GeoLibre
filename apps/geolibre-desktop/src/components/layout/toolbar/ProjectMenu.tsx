@@ -101,8 +101,21 @@ export function ProjectMenu({
   const forgetRecentProject = useAppStore((s) => s.forgetRecentProject);
   const clearRecentProjects = useAppStore((s) => s.clearRecentProjects);
   const setStorymapPanelOpen = useAppStore((s) => s.setStorymapPanelOpen);
+  const deploymentCapabilities = useAppStore((s) => s.deploymentCapabilities);
   const uiProfile = useDesktopSettingsStore((s) => s.desktopSettings.uiProfile);
-  const show = (id: string) => isMenuItemVisible(uiProfile, id);
+  const show = (id: string) => {
+    if (id === "project.exportHtml" && !deploymentCapabilities.has("export:data")) return false;
+    if (
+      (id === "project.save" ||
+        id === "project.saveAs" ||
+        id === "project.duplicate" ||
+        id === "project.new") &&
+      !deploymentCapabilities.has("project:edit")
+    ) {
+      return false;
+    }
+    return isMenuItemVisible(uiProfile, id);
+  };
   // A deployment that turned sharing off should not advertise it; one that named
   // a host we rejected should say so rather than leave the user wondering.
   const shareHidden = shareHostStatus === "disabled";

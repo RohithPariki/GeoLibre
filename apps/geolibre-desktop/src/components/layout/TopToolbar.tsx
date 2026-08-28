@@ -224,6 +224,7 @@ export function TopToolbar({
   viewer = false,
 }: TopToolbarProps) {
   const { t, i18n } = useTranslation();
+  const deploymentCapabilities = useAppStore((state) => state.deploymentCapabilities);
   // The reverse-geocode plugin lives in the framework-agnostic plugins package
   // and cannot call t() itself, so push the translated popup strings into it
   // here and refresh them whenever the active language changes.
@@ -2011,7 +2012,7 @@ export function TopToolbar({
         onSaveCurrentProject={projectFiles.handleSave}
         onProjectCreated={resetRuntimeControlsForNewProject}
       />
-      {!viewer && isMenuVisible(uiProfile, "addData") && (
+      {!viewer && isMenuVisible(uiProfile, "addData") && deploymentCapabilities.has("data:add") && (
         <AddDataMenu
           chrome={chrome}
           addLayer={addLayer}
@@ -2024,7 +2025,7 @@ export function TopToolbar({
           onOpenOsmPbfDialog={() => osmPbf.setDialogOpen(true)}
         />
       )}
-      {!viewer && isMenuVisible(uiProfile, "processing") && (
+      {!viewer && isMenuVisible(uiProfile, "processing") && deploymentCapabilities.has("processing:run") && (
         <ProcessingMenu
           chrome={chrome}
           earthEnginePanel={panels.earthEngine}
@@ -2062,7 +2063,7 @@ export function TopToolbar({
           onOpenRecordVideo={() => setRecordVideoOpen(true)}
         />
       )}
-      {!viewer && isMenuVisible(uiProfile, "plugins") && (
+      {!viewer && isMenuVisible(uiProfile, "plugins") && deploymentCapabilities.has("plugins:install") && (
         <PluginsMenu
           chrome={chrome}
           appApi={appApi}
@@ -2077,8 +2078,8 @@ export function TopToolbar({
       {/* Top-level toolbar menus registered by built-in plugins via
           app.registerToolbarMenu(); external plugin menus render after Help
           (below). Renders nothing when none exist. */}
-      {!viewer ? <PluginToolbarMenus chrome={chrome} placement="builtin" /> : null}
-      {!viewer ? (
+      {!viewer && deploymentCapabilities.has("plugins:install") ? <PluginToolbarMenus chrome={chrome} placement="builtin" /> : null}
+      {!viewer && deploymentCapabilities.has("settings:manage") ? (
         <SettingsDialog
           buttonClassName={toolbarButtonClass}
           buttonSize={toolbarButtonSize}
@@ -2201,7 +2202,7 @@ export function TopToolbar({
       )}
       {/* External plugin toolbar menus render after Help so third-party menus
           sit at the end of the banner, past the built-in menus. */}
-      {!viewer ? <PluginToolbarMenus chrome={chrome} placement="external" /> : null}
+      {!viewer && deploymentCapabilities.has("plugins:install") ? <PluginToolbarMenus chrome={chrome} placement="external" /> : null}
       <AddDataDialog
         kind={addDataKind}
         mapControllerRef={mapControllerRef}
