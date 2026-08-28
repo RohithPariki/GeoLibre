@@ -55,6 +55,17 @@ export function isDeploymentCapability(value: string): value is DeploymentCapabi
 }
 
 /**
+ * The reserved token that grants nothing, for a deployment that wants the map
+ * and nothing else.
+ *
+ * Needed because a blank value cannot mean it: the deployment env reader treats
+ * an empty string as unset (a `-e VAR=` produces one), and unset has to keep
+ * meaning "full" so existing deployments are unchanged. Without a spelling for
+ * "none", the most locked-down configuration would be the one you cannot write.
+ */
+export const NO_DEPLOYMENT_CAPABILITIES = "none";
+
+/**
  * Parse a comma-separated capability list from deployment configuration.
  *
  * Unknown tokens are dropped rather than throwing: a newer container image may
@@ -71,6 +82,7 @@ export function isDeploymentCapability(value: string): value is DeploymentCapabi
  */
 export function parseDeploymentCapabilities(raw: string): ReadonlySet<DeploymentCapability> {
   const granted = new Set<DeploymentCapability>();
+  if (raw.trim().toLowerCase() === NO_DEPLOYMENT_CAPABILITIES) return granted;
   for (const token of raw.split(",")) {
     const name = token.trim();
     if (isDeploymentCapability(name)) granted.add(name);

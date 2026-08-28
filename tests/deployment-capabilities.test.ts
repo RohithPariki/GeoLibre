@@ -29,6 +29,11 @@ describe("parseDeploymentCapabilities", () => {
     assert.equal(parseDeploymentCapabilities(",,").size, 0);
   });
 
+  it('grants nothing for the reserved "none" token', () => {
+    assert.equal(parseDeploymentCapabilities("none").size, 0);
+    assert.equal(parseDeploymentCapabilities("  NONE  ").size, 0);
+  });
+
   it("accepts every capability it advertises", () => {
     assert.deepEqual(
       [...parseDeploymentCapabilities(DEPLOYMENT_CAPABILITIES.join(","))],
