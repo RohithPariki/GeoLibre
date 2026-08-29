@@ -49,6 +49,8 @@ const GALLERY_UNAVAILABLE_ID = "project-menu-gallery-unavailable";
 // name an id the element does not own.
 const SAVE_DENIED_ID = "project-menu-save-denied";
 const SHARE_DENIED_ID = "project-menu-share-denied";
+const EXPORT_DATA_DENIED_ID = "project-menu-export-data-denied";
+const EXPORT_IMAGE_DENIED_ID = "project-menu-export-image-denied";
 
 interface ProjectMenuProps {
   chrome: ToolbarChrome;
@@ -112,10 +114,19 @@ export function ProjectMenu({
   const uiProfile = useDesktopSettingsStore((s) => s.desktopSettings.uiProfile);
   const saveCapability = useAppCapability("project:save");
   const shareCapability = useAppCapability("project:share");
+  // Everything that gets something back out of the app, split the way the
+  // privilege vocabulary splits it: Export HTML writes the project and its data
+  // into a standalone file and the offline basemap downloads tiles, so both are
+  // `export:data`; the print layout designer exists to produce a rendering, so
+  // it is `export:image`. Share has its own `project:share` above.
+  const exportDataCapability = useAppCapability("export:data");
+  const exportImageCapability = useAppCapability("export:image");
   // A disabled DropdownMenuItem is `pointer-events-none`, so the reason has to
   // be a rendered line the item points at, exactly like shareBrokenNote below.
   const saveDeniedBy = capabilityNoticeId(SAVE_DENIED_ID, saveCapability);
   const shareDeniedBy = capabilityNoticeId(SHARE_DENIED_ID, shareCapability);
+  const exportDataDeniedBy = capabilityNoticeId(EXPORT_DATA_DENIED_ID, exportDataCapability);
+  const exportImageDeniedBy = capabilityNoticeId(EXPORT_IMAGE_DENIED_ID, exportImageCapability);
   // Two independent gates, and the deployment's comes first: the interface
   // profile is a decluttering preference the user can undo, while a capability
   // the deployment withheld is not on offer at all (issue #1673).
@@ -156,6 +167,9 @@ export function ProjectMenu({
     show("project.saveAs") ||
     (show("project.duplicate") && Boolean(onDuplicate)) ||
     (show("project.saveAsTemplate") && Boolean(onSaveAsTemplate));
+  // The two `export:data` entries sit in different groups, so their shared note
+  // renders at the menu's foot and needs to know whether either is on screen.
+  const showExportDataActions = show("project.exportHtml") || show("project.offlineRegion");
   const showPrintGroup = show("project.printLayout") || show("project.offlineRegion");
 
   return (
@@ -360,7 +374,11 @@ export function ProjectMenu({
           </>
         )}
         {show("project.exportHtml") && (
-          <DropdownMenuItem onSelect={onExportHtml}>
+          <DropdownMenuItem
+            onSelect={onExportHtml}
+            disabled={!exportDataCapability.granted}
+            aria-describedby={exportDataDeniedBy}
+          >
             <FileCode2 className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.exportHtmlEllipsis")}
           </DropdownMenuItem>
@@ -373,13 +391,21 @@ export function ProjectMenu({
         )}
         {showPrintGroup && <DropdownMenuSeparator />}
         {show("project.printLayout") && (
-          <DropdownMenuItem onSelect={onPrintLayout}>
+          <DropdownMenuItem
+            onSelect={onPrintLayout}
+            disabled={!exportImageCapability.granted}
+            aria-describedby={exportImageDeniedBy}
+          >
             <Printer className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.printLayoutEllipsis")}
           </DropdownMenuItem>
         )}
         {show("project.offlineRegion") && (
-          <DropdownMenuItem onSelect={onOpenOfflineBasemap}>
+          <DropdownMenuItem
+            onSelect={onOpenOfflineBasemap}
+            disabled={!exportDataCapability.granted}
+            aria-describedby={exportDataDeniedBy}
+          >
             <HardDriveDownload className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.offlineBasemapEllipsis")}
           </DropdownMenuItem>
@@ -392,6 +418,15 @@ export function ProjectMenu({
               {t("toolbar.item.storymapEllipsis")}
             </DropdownMenuItem>
           </>
+        )}
+        {/* One line per export privilege, at the menu's foot: Export HTML and the
+            offline basemap sit either side of a separator, so a note next to one
+            of them would be orphaned when only the other is on screen. */}
+        {showExportDataActions && (
+          <CapabilityNotice id={EXPORT_DATA_DENIED_ID} capability={exportDataCapability} />
+        )}
+        {show("project.printLayout") && (
+          <CapabilityNotice id={EXPORT_IMAGE_DENIED_ID} capability={exportImageCapability} />
         )}
       </DropdownMenuContent>
     </DropdownMenu>
