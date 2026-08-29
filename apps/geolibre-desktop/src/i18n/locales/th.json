@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "บันทึกเป็นเทมเพลต...",
       "shareEllipsis": "แชร์...",
       "shareHostUnavailable": "ใช้งานไม่ได้: ที่อยู่เซิร์ฟเวอร์สำหรับแชร์ของการติดตั้งใช้งานนี้ไม่ถูกต้อง",
+      "capabilityDenied": "ไม่พร้อมใช้งานสำหรับบทบาทปัจจุบันของคุณ",
       "exportHtmlEllipsis": "ส่งออกเป็น HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "ทำงานร่วมกัน...",

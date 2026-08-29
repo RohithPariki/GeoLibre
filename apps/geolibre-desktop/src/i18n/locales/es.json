@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "Guardar como plantilla...",
       "shareEllipsis": "Compartir...",
       "shareHostUnavailable": "No disponible: la dirección del servidor para compartir de esta implementación no es válida.",
+      "capabilityDenied": "No disponible con tu rol actual.",
       "exportHtmlEllipsis": "Exportar como HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Colaborar...",

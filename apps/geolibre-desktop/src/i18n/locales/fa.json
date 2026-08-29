@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "ذخیره به‌عنوان الگو...",
       "shareEllipsis": "هم‌رسانی...",
       "shareHostUnavailable": "در دسترس نیست: نشانی سرور هم‌رسانی این استقرار معتبر نیست.",
+      "capabilityDenied": "با نقش فعلی شما در دسترس نیست.",
       "exportHtmlEllipsis": "خروجی به‌صورت HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "هم‌کاری...",

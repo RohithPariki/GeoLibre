@@ -2828,6 +2828,7 @@
       "saveAsTemplateEllipsis": "الحفظ كقالب...",
       "shareEllipsis": "مشاركة...",
       "shareHostUnavailable": "غير متاح: عنوان خادم المشاركة في هذا النشر غير صالح.",
+      "capabilityDenied": "غير متاح مع دورك الحالي.",
       "exportHtmlEllipsis": "تصدير كملف HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "تعاون...",

@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "टेम्पलेट के रूप में सहेजें...",
       "shareEllipsis": "साझा करें...",
       "shareHostUnavailable": "अनुपलब्ध: इस परिनियोजन के साझाकरण सर्वर का पता अमान्य है।",
+      "capabilityDenied": "आपकी वर्तमान भूमिका के साथ उपलब्ध नहीं है।",
       "exportHtmlEllipsis": "HTML के रूप में निर्यात करें...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "सहयोग करें...",

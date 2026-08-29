@@ -1149,8 +1149,19 @@ export interface AppCapabilities {
   role: AppRole;
   /** List of granted privileges for the active role or custom configuration. */
   privileges: AppPrivilege[];
-  /** Optional human-readable restriction reason (e.g. "Action disabled by deployment policy"). */
+  /**
+   * Optional human-readable reason covering the whole set (e.g. "Action disabled
+   * by deployment policy"), used for any privilege without its own.
+   */
   reason?: string;
+  /**
+   * Per-privilege reasons, and why they exist: two privileges can be withheld by
+   * different causes — a role bundle plus a licence limit, say — and a single
+   * `reason` would make the second revocation relabel the first, so every gate
+   * would explain itself with whichever cause happened to be recorded last.
+   * Takes precedence over `reason` for the privileges it names.
+   */
+  privilegeReasons?: Partial<Record<AppPrivilege, string>>;
 }
 
 export interface GeoLibreLayer {

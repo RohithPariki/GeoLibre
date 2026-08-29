@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "Salva come modello...",
       "shareEllipsis": "Condividi...",
       "shareHostUnavailable": "Non disponibile: l'indirizzo del server di condivisione di questo deployment non è valido.",
+      "capabilityDenied": "Non disponibile con il tuo ruolo attuale.",
       "exportHtmlEllipsis": "Esporta come HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Collabora...",

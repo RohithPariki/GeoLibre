@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "შაბლონად შენახვა...",
       "shareEllipsis": "გაზიარება...",
       "shareHostUnavailable": "მიუწვდომელია: ამ განთავსების გაზიარების სერვერის მისამართი არასწორია.",
+      "capabilityDenied": "თქვენი ამჟამინდელი როლით მიუწვდომელია.",
       "exportHtmlEllipsis": "ექსპორტი HTML-ად...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "თანამშრომლობა...",

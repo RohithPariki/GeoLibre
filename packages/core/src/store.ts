@@ -20,6 +20,7 @@ import {
 } from "./project";
 import { initialLayerStyle } from "./layer-defaults";
 import {
+  appPrivilegeReason,
   createDefaultAppCapabilities,
   hasAppPrivilege,
   normalizeAppPrivileges,
@@ -2413,6 +2414,9 @@ export const useAppStore = create<AppState>()(
         }
       },
 
+      // A new role or privilege list is a new policy, so the per-privilege reasons
+      // recorded against the old one go with it — carrying them forward would
+      // explain a grant that is no longer withheld for that cause.
       setAppRole: (role, options) => {
         const privileges = resolveRolePrivileges(role, options?.customPrivileges);
         set({
@@ -2437,14 +2441,19 @@ export const useAppStore = create<AppState>()(
       grantAppPrivilege: (privilege) => {
         const current = get().capabilities;
         if (current.privileges.includes(privilege)) return;
+        const { [privilege]: _granted, ...privilegeReasons } = current.privilegeReasons ?? {};
         set({
           capabilities: {
             ...current,
             privileges: [...current.privileges, privilege],
+            privilegeReasons,
           },
         });
       },
 
+      // The reason is filed against this privilege, not against the whole set:
+      // revoking a second privilege for a different cause must not relabel the
+      // first one's explanation. `reason` stays the fallback for the rest.
       revokeAppPrivilege: (privilege, reason) => {
         const current = get().capabilities;
         if (!current.privileges.includes(privilege)) return;
@@ -2452,7 +2461,9 @@ export const useAppStore = create<AppState>()(
           capabilities: {
             ...current,
             privileges: current.privileges.filter((p) => p !== privilege),
-            reason: reason ?? current.reason,
+            privilegeReasons: reason
+              ? { ...current.privilegeReasons, [privilege]: reason }
+              : current.privilegeReasons,
           },
         });
       },
@@ -2667,6 +2678,6 @@ export function useAppCapability(privilege: AppPrivilege): { granted: boolean; r
   const capabilities = useAppStore((state) => state.capabilities);
   return {
     granted: capabilities.privileges.includes(privilege),
-    reason: capabilities.reason,
+    reason: appPrivilegeReason(capabilities, privilege),
   };
 }

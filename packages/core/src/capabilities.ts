@@ -192,6 +192,22 @@ export function hasAppPrivilege(
 }
 
 /**
+ * Resolves why a privilege is withheld: its own reason if it has one, otherwise
+ * the reason recorded for the capability set as a whole.
+ *
+ * @param capabilities - The active capability set, if any.
+ * @param privilege - The privilege being explained.
+ * @returns The reason, or undefined when none was recorded.
+ */
+export function appPrivilegeReason(
+  capabilities: AppCapabilities | undefined,
+  privilege: AppPrivilege,
+): string | undefined {
+  if (!capabilities) return undefined;
+  return capabilities.privilegeReasons?.[privilege] ?? capabilities.reason;
+}
+
+/**
  * Creates the default unconstrained application capabilities (Administrator role).
  */
 export function createDefaultAppCapabilities(): AppCapabilities {

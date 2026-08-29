@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "Şablon olarak kaydet...",
       "shareEllipsis": "Paylaş...",
       "shareHostUnavailable": "Kullanılamıyor: bu dağıtımın paylaşım sunucusu adresi geçersiz.",
+      "capabilityDenied": "Mevcut rolünüzle kullanılamıyor.",
       "exportHtmlEllipsis": "HTML Olarak Dışa Aktar...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "İş Birliği Yap...",

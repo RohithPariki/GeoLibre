@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "另存为模板...",
       "shareEllipsis": "共享...",
       "shareHostUnavailable": "不可用：此部署的共享服务器地址无效。",
+      "capabilityDenied": "当前角色无法使用此功能。",
       "exportHtmlEllipsis": "导出为 HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "协作...",

@@ -14,6 +14,7 @@
 // visible and explained, so the user can tell "not allowed" from "not here".
 
 import { DropdownMenuLabel } from "@geolibre/ui";
+import { useTranslation } from "react-i18next";
 
 /** What `useAppCapability` reports: whether a privilege is granted, and why not. */
 export interface CapabilityState {
@@ -22,18 +23,35 @@ export interface CapabilityState {
 }
 
 /**
+ * The text explaining a denial, or undefined when the privilege is granted.
+ *
+ * `setAppRole` and `setAppPrivileges` take no reason, so a role bundle denies
+ * privileges without recording a cause. Falling back to a generic line keeps
+ * every disabled entry explained: a greyed-out item with no explanation reads
+ * as a bug rather than as policy.
+ *
+ * @param capability - The capability state from `useAppCapability`.
+ * @returns The recorded reason, the generic fallback, or undefined when granted.
+ */
+export function useCapabilityReason(capability: CapabilityState): string | undefined {
+  const { t } = useTranslation();
+  if (capability.granted) return undefined;
+  return capability.reason ?? t("toolbar.item.capabilityDenied");
+}
+
+/**
  * The `aria-describedby` target for capability-disabled entries, or undefined.
  *
- * Undefined when the privilege is granted or carries no reason, because
- * `aria-describedby` only resolves against an element that is actually mounted
- * and `<CapabilityNotice>` renders nothing in those cases.
+ * Undefined when the privilege is granted, because `aria-describedby` only
+ * resolves against an element that is actually mounted and `<CapabilityNotice>`
+ * renders nothing in that case.
  *
  * @param id - The dom id the matching `<CapabilityNotice>` renders with.
  * @param capability - The capability state from `useAppCapability`.
  * @returns The id, or undefined when no note will be rendered.
  */
 export function capabilityNoticeId(id: string, capability: CapabilityState): string | undefined {
-  return !capability.granted && capability.reason ? id : undefined;
+  return capability.granted ? undefined : id;
 }
 
 /**
@@ -41,13 +59,14 @@ export function capabilityNoticeId(id: string, capability: CapabilityState): str
  *
  * @param props.id - The dom id the disabled entries point at with `aria-describedby`.
  * @param props.capability - The capability state from `useAppCapability`.
- * @returns The note, or null when the privilege is granted or unexplained.
+ * @returns The note, or null when the privilege is granted.
  */
 export function CapabilityNotice({ id, capability }: { id: string; capability: CapabilityState }) {
-  if (capability.granted || !capability.reason) return null;
+  const reason = useCapabilityReason(capability);
+  if (!reason) return null;
   return (
     <DropdownMenuLabel id={id} className="pt-0 text-xs font-normal text-muted-foreground">
-      {capability.reason}
+      {reason}
     </DropdownMenuLabel>
   );
 }

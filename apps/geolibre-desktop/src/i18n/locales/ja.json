@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "テンプレートとして保存...",
       "shareEllipsis": "共有...",
       "shareHostUnavailable": "利用できません: このデプロイの共有サーバーのアドレスが無効です。",
+      "capabilityDenied": "現在のロールでは利用できません。",
       "exportHtmlEllipsis": "HTML としてエクスポート...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "共同編集...",

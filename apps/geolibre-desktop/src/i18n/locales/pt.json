@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "Salvar como modelo...",
       "shareEllipsis": "Compartilhar...",
       "shareHostUnavailable": "Indisponível: o endereço do servidor de compartilhamento desta implantação não é válido.",
+      "capabilityDenied": "Não disponível com a sua função atual.",
       "exportHtmlEllipsis": "Exportar como HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Colaborar...",

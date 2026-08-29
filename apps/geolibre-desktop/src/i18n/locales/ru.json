@@ -2737,6 +2737,7 @@
       "saveAsTemplateEllipsis": "Сохранить как шаблон...",
       "shareEllipsis": "Поделиться...",
       "shareHostUnavailable": "Недоступно: адрес сервера публикации в этом развёртывании некорректен.",
+      "capabilityDenied": "Недоступно для вашей текущей роли.",
       "exportHtmlEllipsis": "Экспортировать как HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Совместная работа...",

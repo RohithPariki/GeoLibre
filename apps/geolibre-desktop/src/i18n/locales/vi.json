@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "Lưu dưới dạng mẫu...",
       "shareEllipsis": "Chia sẻ...",
       "shareHostUnavailable": "Không khả dụng: địa chỉ máy chủ chia sẻ của triển khai này không hợp lệ.",
+      "capabilityDenied": "Không khả dụng với vai trò hiện tại của bạn.",
       "exportHtmlEllipsis": "Xuất dưới dạng HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Hợp tác...",

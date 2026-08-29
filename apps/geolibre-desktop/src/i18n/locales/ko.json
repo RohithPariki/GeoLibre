@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "템플릿으로 저장...",
       "shareEllipsis": "공유...",
       "shareHostUnavailable": "사용할 수 없음: 이 배포의 공유 서버 주소가 올바르지 않습니다.",
+      "capabilityDenied": "현재 역할에서는 사용할 수 없습니다.",
       "exportHtmlEllipsis": "HTML로 내보내기...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "공동 작업...",

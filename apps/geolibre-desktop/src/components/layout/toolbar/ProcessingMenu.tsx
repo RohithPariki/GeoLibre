@@ -23,7 +23,7 @@ import { masHidesMenuItem } from "../../../lib/mas-build";
 import { isMenuItemVisible } from "../../../lib/ui-profile";
 import { whiteboxMenuSubcategorySlug } from "../../../lib/processing-tool-i18n";
 import { WHITEBOX_MENU_CATALOG } from "../../../lib/whitebox-menu-catalog";
-import { CapabilityNotice, capabilityNoticeId } from "./CapabilityNotice";
+import { CapabilityNotice, capabilityNoticeId, useCapabilityReason } from "./CapabilityNotice";
 import type { ToolbarChrome } from "./constants";
 
 // aria-describedby targets for the "your role does not allow this" explanations.
@@ -98,9 +98,10 @@ export function ProcessingMenu({
   const processingDeniedBy = capabilityNoticeId(PROCESSING_DENIED_ID, processingCap);
   const sidecarDeniedBy = capabilityNoticeId(SIDECAR_DENIED_ID, sidecarDeniedCap);
   // A disabled submenu trigger keeps its pointer events on purpose, so it can
-  // explain itself with a native tooltip instead of a rendered line.
-  const processingDeniedTitle = processingDenied ? processingCap.reason : undefined;
-  const sidecarDeniedTitle = sidecarDenied ? sidecarDeniedCap.reason : undefined;
+  // explain itself with a native tooltip instead of a rendered line. Same text
+  // the rendered notes use, generic fallback included.
+  const processingDeniedTitle = useCapabilityReason(processingCap);
+  const sidecarDeniedTitle = useCapabilityReason(sidecarDeniedCap);
 
   // Format Conversion, Raster tools, and AI Segmentation require the Python
   // sidecar, which cannot run on Android/iOS — hide them on mobile so they don't

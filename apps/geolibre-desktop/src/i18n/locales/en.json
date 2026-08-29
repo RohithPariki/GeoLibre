@@ -2663,6 +2663,7 @@
       "saveAsTemplateEllipsis": "Save as template...",
       "shareEllipsis": "Share...",
       "shareHostUnavailable": "Unavailable: this deployment's sharing server address is not valid.",
+      "capabilityDenied": "Not available with your current role.",
       "exportHtmlEllipsis": "Export as HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Collaborate...",

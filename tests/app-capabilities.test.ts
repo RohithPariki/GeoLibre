@@ -3,6 +3,7 @@ import { beforeEach, describe, it } from "node:test";
 import {
   ALL_APP_PRIVILEGES,
   ROLE_PRIVILEGES,
+  appPrivilegeReason,
   createDefaultAppCapabilities,
   hasAppPrivilege,
   intersectPrivileges,
@@ -214,7 +215,49 @@ describe("application capability model", () => {
 
       useAppStore.getState().revokeAppPrivilege("layers:edit", "Read-only mode");
       assert.equal(useAppStore.getState().hasAppPrivilege("layers:edit"), false);
-      assert.equal(useAppStore.getState().capabilities.reason, "Read-only mode");
+      assert.equal(
+        appPrivilegeReason(useAppStore.getState().capabilities, "layers:edit"),
+        "Read-only mode",
+      );
+    });
+
+    it("keeps each revocation's reason to itself", () => {
+      useAppStore.getState().setAppRole("editor");
+      useAppStore.getState().revokeAppPrivilege("layers:edit", "Read-only mode");
+      useAppStore.getState().revokeAppPrivilege("project:save", "License limit");
+
+      const { capabilities } = useAppStore.getState();
+      assert.equal(appPrivilegeReason(capabilities, "layers:edit"), "Read-only mode");
+      assert.equal(appPrivilegeReason(capabilities, "project:save"), "License limit");
+    });
+
+    it("falls back to the set-wide reason for a privilege with none of its own", () => {
+      useAppStore.getState().setAppRole("viewer", { reason: "Kiosk deployment" });
+      const { capabilities } = useAppStore.getState();
+      assert.equal(appPrivilegeReason(capabilities, "project:save"), "Kiosk deployment");
+
+      useAppStore.getState().revokeAppPrivilege("export:data", "License limit");
+      const revoked = useAppStore.getState().capabilities;
+      assert.equal(appPrivilegeReason(revoked, "export:data"), "License limit");
+      assert.equal(appPrivilegeReason(revoked, "project:save"), "Kiosk deployment");
+    });
+
+    it("granting a privilege back drops the reason it was revoked with", () => {
+      useAppStore.getState().setAppRole("editor");
+      useAppStore.getState().revokeAppPrivilege("layers:edit", "Read-only mode");
+      useAppStore.getState().grantAppPrivilege("layers:edit");
+
+      const { capabilities } = useAppStore.getState();
+      assert.equal(capabilities.privilegeReasons?.["layers:edit"], undefined);
+    });
+
+    it("setAppRole clears per-privilege reasons from the previous policy", () => {
+      useAppStore.getState().setAppRole("editor");
+      useAppStore.getState().revokeAppPrivilege("project:save", "License limit");
+      useAppStore.getState().setAppRole("viewer", { reason: "Kiosk deployment" });
+
+      const { capabilities } = useAppStore.getState();
+      assert.equal(appPrivilegeReason(capabilities, "project:save"), "Kiosk deployment");
     });
 
     it("resetAppCapabilities restores default administrator role", () => {

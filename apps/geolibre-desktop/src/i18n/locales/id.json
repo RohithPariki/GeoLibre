@@ -2599,6 +2599,7 @@
       "saveAsTemplateEllipsis": "Simpan sebagai templat...",
       "shareEllipsis": "Bagikan...",
       "shareHostUnavailable": "Tidak tersedia: alamat server pembagian pada penerapan ini tidak valid.",
+      "capabilityDenied": "Tidak tersedia dengan peran Anda saat ini.",
       "exportHtmlEllipsis": "Ekspor sebagai HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Kolaborasi...",

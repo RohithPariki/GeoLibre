@@ -2645,6 +2645,7 @@
       "saveAsTemplateEllipsis": "Opslaan als sjabloon...",
       "shareEllipsis": "Delen...",
       "shareHostUnavailable": "Niet beschikbaar: het adres van de deelserver van deze implementatie is ongeldig.",
+      "capabilityDenied": "Niet beschikbaar met uw huidige rol.",
       "exportHtmlEllipsis": "Exporteren als HTML...",
       "htmlFile": "HTML",
       "collaborateEllipsis": "Samenwerken...",
