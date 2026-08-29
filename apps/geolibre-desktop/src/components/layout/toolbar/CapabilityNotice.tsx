@@ -28,7 +28,12 @@ export interface CapabilityState {
  * `setAppRole` and `setAppPrivileges` take no reason, so a role bundle denies
  * privileges without recording a cause. Falling back to a generic line keeps
  * every disabled entry explained: a greyed-out item with no explanation reads
- * as a bug rather than as policy.
+ * as a bug rather than as policy. A blank reason counts as no reason — `??`
+ * would let `""` through and render an empty explanation line, which is the
+ * same silence with extra steps.
+ *
+ * Never undefined for a denied capability, which is what lets
+ * {@link capabilityNoticeId} promise its id will be mounted.
  *
  * @param capability - The capability state from `useAppCapability`.
  * @returns The recorded reason, the generic fallback, or undefined when granted.
@@ -36,7 +41,7 @@ export interface CapabilityState {
 export function useCapabilityReason(capability: CapabilityState): string | undefined {
   const { t } = useTranslation();
   if (capability.granted) return undefined;
-  return capability.reason ?? t("toolbar.item.capabilityDenied");
+  return capability.reason?.trim() || t("toolbar.item.capabilityDenied");
 }
 
 /**
