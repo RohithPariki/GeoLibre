@@ -38,11 +38,17 @@ import { useDesktopSettingsStore } from "../../../hooks/useDesktopSettings";
 import { projectMenuItemCapability } from "../../../lib/deployment-gates";
 import { isMenuItemVisible } from "../../../lib/ui-profile";
 import type { ShareHostStatus } from "../../../lib/share-geolibre";
+import { CapabilityNotice, capabilityNoticeId } from "./CapabilityNotice";
 import { formatRecentProjectTime, type ToolbarChrome } from "./constants";
 
 // aria-describedby targets for the "sharing server unavailable" explanation.
 const SHARE_UNAVAILABLE_ID = "project-menu-share-unavailable";
 const GALLERY_UNAVAILABLE_ID = "project-menu-gallery-unavailable";
+// …and for the "your role does not allow this" explanations. One per privilege,
+// not per item: the four save entries share a reason, and aria-describedby may
+// name an id the element does not own.
+const SAVE_DENIED_ID = "project-menu-save-denied";
+const SHARE_DENIED_ID = "project-menu-share-denied";
 
 interface ProjectMenuProps {
   chrome: ToolbarChrome;
@@ -106,6 +112,10 @@ export function ProjectMenu({
   const uiProfile = useDesktopSettingsStore((s) => s.desktopSettings.uiProfile);
   const saveCapability = useAppCapability("project:save");
   const shareCapability = useAppCapability("project:share");
+  // A disabled DropdownMenuItem is `pointer-events-none`, so the reason has to
+  // be a rendered line the item points at, exactly like shareBrokenNote below.
+  const saveDeniedBy = capabilityNoticeId(SAVE_DENIED_ID, saveCapability);
+  const shareDeniedBy = capabilityNoticeId(SHARE_DENIED_ID, shareCapability);
   // Two independent gates, and the deployment's comes first: the interface
   // profile is a decluttering preference the user can undo, while a capability
   // the deployment withheld is not on offer at all (issue #1673).
@@ -139,6 +149,13 @@ export function ProjectMenu({
     (!shareHidden && show("project.share")) ||
     show("project.exportHtml") ||
     (collaborationEnabled && show("project.collaborate"));
+  // Narrower than showSaveGroup, which also covers share/export/collaborate: the
+  // `project:save` note must not render when only those siblings are on screen.
+  const showSaveActions =
+    show("project.save") ||
+    show("project.saveAs") ||
+    (show("project.duplicate") && Boolean(onDuplicate)) ||
+    (show("project.saveAsTemplate") && Boolean(onSaveAsTemplate));
   const showPrintGroup = show("project.printLayout") || show("project.offlineRegion");
 
   return (
@@ -282,40 +299,64 @@ export function ProjectMenu({
         )}
         {showSaveGroup && <DropdownMenuSeparator />}
         {show("project.save") && (
-          <DropdownMenuItem onSelect={onSave} disabled={!saveCapability.granted}>
+          <DropdownMenuItem
+            onSelect={onSave}
+            disabled={!saveCapability.granted}
+            aria-describedby={saveDeniedBy}
+          >
             <Save className="me-2 h-3.5 w-3.5" />
             {t("common.save")}
           </DropdownMenuItem>
         )}
         {show("project.saveAs") && (
-          <DropdownMenuItem onSelect={onSaveAs} disabled={!saveCapability.granted}>
+          <DropdownMenuItem
+            onSelect={onSaveAs}
+            disabled={!saveCapability.granted}
+            aria-describedby={saveDeniedBy}
+          >
             <FilePen className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.saveAsEllipsis")}
           </DropdownMenuItem>
         )}
         {show("project.duplicate") && onDuplicate && (
-          <DropdownMenuItem onSelect={onDuplicate} disabled={!saveCapability.granted}>
+          <DropdownMenuItem
+            onSelect={onDuplicate}
+            disabled={!saveCapability.granted}
+            aria-describedby={saveDeniedBy}
+          >
             <Copy className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.duplicate")}
           </DropdownMenuItem>
         )}
         {show("project.saveAsTemplate") && onSaveAsTemplate && (
-          <DropdownMenuItem onSelect={onSaveAsTemplate} disabled={!saveCapability.granted}>
+          <DropdownMenuItem
+            onSelect={onSaveAsTemplate}
+            disabled={!saveCapability.granted}
+            aria-describedby={saveDeniedBy}
+          >
             <Bookmark className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.saveAsTemplateEllipsis")}
           </DropdownMenuItem>
         )}
+        {/* One line for the whole save group, after its last entry: all four
+            items are denied together and each points here. */}
+        {showSaveActions && <CapabilityNotice id={SAVE_DENIED_ID} capability={saveCapability} />}
         {show("project.share") && !shareHidden && (
           <>
             <DropdownMenuItem
               onSelect={onShare}
               disabled={shareBroken || !shareCapability.granted}
-              aria-describedby={shareBroken ? SHARE_UNAVAILABLE_ID : undefined}
+              aria-describedby={
+                [shareBroken ? SHARE_UNAVAILABLE_ID : undefined, shareDeniedBy]
+                  .filter(Boolean)
+                  .join(" ") || undefined
+              }
             >
               <Share2 className="me-2 h-3.5 w-3.5" />
               {t("toolbar.item.shareEllipsis")}
             </DropdownMenuItem>
             {shareBrokenNote(SHARE_UNAVAILABLE_ID)}
+            <CapabilityNotice id={SHARE_DENIED_ID} capability={shareCapability} />
           </>
         )}
         {show("project.exportHtml") && (
