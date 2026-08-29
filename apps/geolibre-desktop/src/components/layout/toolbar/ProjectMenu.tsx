@@ -114,6 +114,10 @@ export function ProjectMenu({
   const uiProfile = useDesktopSettingsStore((s) => s.desktopSettings.uiProfile);
   const saveCapability = useAppCapability("project:save");
   const shareCapability = useAppCapability("project:share");
+  // Collaboration puts the project on a server outside this machine, the same
+  // thing Share does, so it takes `project:share` too — and
+  // `deployment-gates.ts` classifies `project.collaborate` that way for the
+  // command palette, which has to agree with this.
   // Everything that gets something back out of the app, split the way the
   // privilege vocabulary splits it: Export HTML writes the project and its data
   // into a standalone file and the offline basemap downloads tiles, so both are
@@ -170,6 +174,10 @@ export function ProjectMenu({
   // The two `export:data` entries sit in different groups, so their shared note
   // renders at the menu's foot and needs to know whether either is on screen.
   const showExportDataActions = show("project.exportHtml") || show("project.offlineRegion");
+  // Same for the two `project:share` entries, which straddle Export HTML.
+  const showShareActions =
+    (!shareHidden && show("project.share")) ||
+    (collaborationEnabled && show("project.collaborate"));
   const showPrintGroup = show("project.printLayout") || show("project.offlineRegion");
 
   return (
@@ -370,7 +378,6 @@ export function ProjectMenu({
               {t("toolbar.item.shareEllipsis")}
             </DropdownMenuItem>
             {shareBrokenNote(SHARE_UNAVAILABLE_ID)}
-            <CapabilityNotice id={SHARE_DENIED_ID} capability={shareCapability} />
           </>
         )}
         {show("project.exportHtml") && (
@@ -384,11 +391,18 @@ export function ProjectMenu({
           </DropdownMenuItem>
         )}
         {collaborationEnabled && show("project.collaborate") && (
-          <DropdownMenuItem onSelect={onCollaborate}>
+          <DropdownMenuItem
+            onSelect={onCollaborate}
+            disabled={!shareCapability.granted}
+            aria-describedby={shareDeniedBy}
+          >
             <Users className="me-2 h-3.5 w-3.5" />
             {t("toolbar.item.collaborateEllipsis")}
           </DropdownMenuItem>
         )}
+        {/* After Collaborate rather than inside Share's fragment: both point at
+            this note, and Collaborate can be on screen with Share hidden. */}
+        {showShareActions && <CapabilityNotice id={SHARE_DENIED_ID} capability={shareCapability} />}
         {showPrintGroup && <DropdownMenuSeparator />}
         {show("project.printLayout") && (
           <DropdownMenuItem

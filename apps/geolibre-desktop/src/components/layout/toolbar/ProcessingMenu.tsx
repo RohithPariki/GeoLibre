@@ -32,6 +32,7 @@ import type { ToolbarChrome } from "./constants";
 const ASSISTANT_DENIED_ID = "processing-menu-assistant-denied";
 const PROCESSING_DENIED_ID = "processing-menu-processing-denied";
 const SIDECAR_DENIED_ID = "processing-menu-sidecar-denied";
+const ADD_REMOTE_DENIED_ID = "processing-menu-add-remote-denied";
 
 /** Convert a Whitebox subcategory label to its full i18n key. */
 function subcatKey(label: string): string {
@@ -84,6 +85,12 @@ export function ProcessingMenu({
   const processingCap = useAppCapability("processing:run");
   const sidecarCap = useAppCapability("processing:sidecar");
   const assistantCap = useAppCapability("assistant:use");
+  // Planetary Computer and Earth Engine sit under Processing but browse a remote
+  // catalog and add imagery from it, so they are data entry rather than tool
+  // runs. `deployment-gates.ts` classifies their commands the same way; the two
+  // disagreeing is what leaves an action greyed out in the menu but live in the
+  // command palette.
+  const addRemoteCap = useAppCapability("layers:add-remote");
   // Every entry that actually runs a tool is gated, not just the toolbox items
   // that open a dialog: the Whitebox category submenus reach `openWhiteboxTool`
   // without passing the top-level item, so a gate on that item alone gates
@@ -97,6 +104,7 @@ export function ProcessingMenu({
   const assistantDeniedBy = capabilityNoticeId(ASSISTANT_DENIED_ID, assistantCap);
   const processingDeniedBy = capabilityNoticeId(PROCESSING_DENIED_ID, processingCap);
   const sidecarDeniedBy = capabilityNoticeId(SIDECAR_DENIED_ID, sidecarDeniedCap);
+  const addRemoteDeniedBy = capabilityNoticeId(ADD_REMOTE_DENIED_ID, addRemoteCap);
   // A disabled submenu trigger keeps its pointer events on purpose, so it can
   // explain itself with a native tooltip instead of a rendered line. Same text
   // the rendered notes use, generic fallback included.
@@ -623,9 +631,10 @@ export function ProcessingMenu({
         {/* The workspaces run tools too — Model Builder composes them, and the
             SQL/Python/notebook consoles execute arbitrary analysis over the
             loaded data — so they carry the same `processing:run` gate as the
-            toolboxes. The dashboard, the processing history log, and the
-            Planetary Computer / Earth Engine catalogs below do not: they
-            visualize, record, and add data rather than run anything. */}
+            toolboxes. The dashboard and the processing history log below do
+            not — they visualize and record rather than run anything — and the
+            Planetary Computer / Earth Engine catalogs take `layers:add-remote`
+            instead, because they bring imagery in. */}
         {/* Model Builder sits at the top level rather than inside the GeoLibre
             Toolbox submenu: it is a canvas that composes tools from every
             toolbox (Whitebox raster and GeoLibre vector alike), so filing it
@@ -678,15 +687,26 @@ export function ProcessingMenu({
           </DropdownMenuItem>
         )}
         {show("processing.planetaryComputer") && (
-          <DropdownMenuItem onSelect={onOpenPlanetaryComputer}>
+          <DropdownMenuItem
+            onSelect={onOpenPlanetaryComputer}
+            disabled={!addRemoteCap.granted}
+            aria-describedby={addRemoteDeniedBy}
+          >
             {t("toolbar.command.planetaryComputer")}
           </DropdownMenuItem>
         )}
         {showEarthEngine && (
-          <DropdownMenuItem onSelect={earthEnginePanel.toggle}>
+          <DropdownMenuItem
+            onSelect={earthEnginePanel.toggle}
+            disabled={!addRemoteCap.granted}
+            aria-describedby={addRemoteDeniedBy}
+          >
             {t("toolbar.command.earthEngine")}
             {earthEnginePanel.visible ? " ✓" : ""}
           </DropdownMenuItem>
+        )}
+        {(show("processing.planetaryComputer") || showEarthEngine) && (
+          <CapabilityNotice id={ADD_REMOTE_DENIED_ID} capability={addRemoteCap} />
         )}
         {/* One reason line for the whole menu, at its foot: the entries
             `processing:run` disables are spread across the toolbox block and

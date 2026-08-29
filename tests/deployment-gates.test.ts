@@ -2,15 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { Command } from "../apps/geolibre-desktop/src/lib/commands";
 import {
+  commandAppPrivileges,
   commandCapability,
   editMenuItemCapability,
   filterCommandsByCapabilities,
+  filterCommandsByPrivileges,
   projectMenuItemCapability,
 } from "../apps/geolibre-desktop/src/lib/deployment-gates";
 import {
   ALL_DEPLOYMENT_CAPABILITIES,
   type DeploymentCapability,
 } from "../packages/core/src/deployment-capabilities";
+import { ROLE_PRIVILEGES } from "../packages/core/src/capabilities";
 
 function command(id: string): Command {
   return { id, title: id, group: "Group", run: () => {} };
@@ -157,5 +160,82 @@ describe("editMenuItemCapability", () => {
     ]) {
       assert.equal(editMenuItemCapability(id), undefined, id);
     }
+  });
+});
+
+describe("commandAppPrivileges", () => {
+  it("maps each command family to the privileges it needs", () => {
+    assert.deepEqual(commandAppPrivileges("proc.whitebox"), ["processing:run"]);
+    assert.deepEqual(commandAppPrivileges("proc.assistant"), ["assistant:use"]);
+    assert.deepEqual(commandAppPrivileges("proc.segmentation"), ["processing:sidecar"]);
+    assert.deepEqual(commandAppPrivileges("project.save"), ["project:save"]);
+    assert.deepEqual(commandAppPrivileges("project.save-as"), ["project:save"]);
+    assert.deepEqual(commandAppPrivileges("project.share"), ["project:share"]);
+    assert.deepEqual(commandAppPrivileges("project.print-layout"), ["export:image"]);
+    assert.deepEqual(commandAppPrivileges("settings.style-manager"), ["settings:manage"]);
+    assert.deepEqual(commandAppPrivileges("plugin.reverse-geocode"), ["plugins:install"]);
+    assert.deepEqual(commandAppPrivileges("settings.manage-plugins"), ["plugins:install"]);
+  });
+
+  it("admits an Add Data command on either add privilege", () => {
+    assert.deepEqual(commandAppPrivileges("add.vector"), ["layers:add-local", "layers:add-remote"]);
+    // A review comment annotates the project rather than bringing data in.
+    assert.deepEqual(commandAppPrivileges("add.comment"), ["layers:edit"]);
+  });
+
+  it("classifies the catalog browsers as remote data, matching the Processing menu", () => {
+    assert.deepEqual(commandAppPrivileges("proc.planetary-computer"), ["layers:add-remote"]);
+    assert.deepEqual(commandAppPrivileges("proc.earth-engine"), ["layers:add-remote"]);
+  });
+
+  it("treats collaboration as sharing, matching the Project menu", () => {
+    assert.deepEqual(commandAppPrivileges("project.collaborate"), ["project:share"]);
+  });
+
+  it("leaves navigation, help, and opening a project unprivileged", () => {
+    assert.equal(commandAppPrivileges("view.zoom-in"), undefined);
+    assert.equal(commandAppPrivileges("control.measure"), undefined);
+    assert.equal(commandAppPrivileges("help.about"), undefined);
+    assert.equal(commandAppPrivileges("project.open-url"), undefined);
+  });
+});
+
+describe("filterCommandsByPrivileges", () => {
+  const registry = [
+    "project.save",
+    "project.share",
+    "add.vector",
+    "proc.whitebox",
+    "proc.assistant",
+    "settings.style-manager",
+    "view.zoom-in",
+  ].map(command);
+
+  it("keeps every command for the administrator role", () => {
+    assert.deepEqual(
+      filterCommandsByPrivileges(registry, ROLE_PRIVILEGES.administrator).map((c) => c.id),
+      registry.map((c) => c.id),
+    );
+  });
+
+  it("leaves a viewer only the unprivileged commands", () => {
+    // The palette, cheat sheet, and shortcut layer call run() directly, so a
+    // viewer must not reach Ctrl+S or the Whitebox toolbox through them.
+    assert.deepEqual(
+      filterCommandsByPrivileges(registry, ROLE_PRIVILEGES.viewer).map((c) => c.id),
+      ["view.zoom-in"],
+    );
+  });
+
+  it("gives an editor authoring and processing but not sharing or the assistant", () => {
+    const ids = filterCommandsByPrivileges(registry, ROLE_PRIVILEGES.editor).map((c) => c.id);
+    assert.deepEqual(ids, ["project.save", "add.vector", "proc.whitebox", "view.zoom-in"]);
+  });
+
+  it("drops everything privileged when the role grants nothing", () => {
+    assert.deepEqual(
+      filterCommandsByPrivileges(registry, []).map((c) => c.id),
+      ["view.zoom-in"],
+    );
   });
 });
