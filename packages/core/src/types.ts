@@ -1145,7 +1145,11 @@ export type AppRole = "viewer" | "editor" | "publisher" | "administrator" | "cus
  * and optional restriction reason for the current session/deployment.
  */
 export interface AppCapabilities {
-  /** The assigned application role. */
+  /**
+   * The assigned application role. `custom` once an ad-hoc `grantAppPrivilege` /
+   * `revokeAppPrivilege` has moved the set away from the bundle a named role
+   * defines, so the role never claims a shape the privileges do not have.
+   */
   role: AppRole;
   /** List of granted privileges for the active role or custom configuration. */
   privileges: AppPrivilege[];

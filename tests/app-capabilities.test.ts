@@ -242,6 +242,26 @@ describe("application capability model", () => {
       assert.equal(appPrivilegeReason(revoked, "project:save"), "Kiosk deployment");
     });
 
+    it("marks the role custom once an ad-hoc grant or revoke leaves the bundle", () => {
+      useAppStore.getState().setAppRole("editor");
+      useAppStore.getState().revokeAppPrivilege("layers:edit", "Read-only mode");
+      assert.equal(useAppStore.getState().capabilities.role, "custom");
+
+      useAppStore.getState().setAppRole("viewer");
+      useAppStore.getState().grantAppPrivilege("layers:edit");
+      assert.equal(useAppStore.getState().capabilities.role, "custom");
+    });
+
+    it("re-revoking an already-withheld privilege updates its reason", () => {
+      useAppStore.getState().setAppRole("editor");
+      useAppStore.getState().revokeAppPrivilege("project:save", "Read-only mode");
+      useAppStore.getState().revokeAppPrivilege("project:save", "License limit");
+
+      const { capabilities } = useAppStore.getState();
+      assert.equal(appPrivilegeReason(capabilities, "project:save"), "License limit");
+      assert.equal(capabilities.privileges.includes("project:save"), false);
+    });
+
     it("granting a privilege back drops the reason it was revoked with", () => {
       useAppStore.getState().setAppRole("editor");
       useAppStore.getState().revokeAppPrivilege("layers:edit", "Read-only mode");

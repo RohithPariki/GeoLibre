@@ -2438,6 +2438,11 @@ export const useAppStore = create<AppState>()(
         });
       },
 
+      // An ad-hoc grant or revoke makes the set no longer the bundle its role
+      // names, so the role becomes "custom" — the same thing setAppPrivileges
+      // does for an explicit list. Leaving it as "editor" while the privileges
+      // are not the editor bundle would mislead anything that branches on the
+      // role rather than checking a privilege.
       grantAppPrivilege: (privilege) => {
         const current = get().capabilities;
         if (current.privileges.includes(privilege)) return;
@@ -2445,6 +2450,7 @@ export const useAppStore = create<AppState>()(
         set({
           capabilities: {
             ...current,
+            role: "custom",
             privileges: [...current.privileges, privilege],
             privilegeReasons,
           },
@@ -2454,13 +2460,21 @@ export const useAppStore = create<AppState>()(
       // The reason is filed against this privilege, not against the whole set:
       // revoking a second privilege for a different cause must not relabel the
       // first one's explanation. `reason` stays the fallback for the rest.
+      //
+      // Re-revoking an already-withheld privilege is not a no-op when it carries
+      // a new reason: restating why something is denied is a real operation, and
+      // an early return would silently keep the stale explanation on screen.
       revokeAppPrivilege: (privilege, reason) => {
         const current = get().capabilities;
-        if (!current.privileges.includes(privilege)) return;
+        const held = current.privileges.includes(privilege);
+        if (!held && !reason) return;
         set({
           capabilities: {
             ...current,
-            privileges: current.privileges.filter((p) => p !== privilege),
+            role: held ? "custom" : current.role,
+            privileges: held
+              ? current.privileges.filter((p) => p !== privilege)
+              : current.privileges,
             privilegeReasons: reason
               ? { ...current.privilegeReasons, [privilege]: reason }
               : current.privilegeReasons,
