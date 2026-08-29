@@ -209,7 +209,6 @@
   },
   "newProject": {
     "basemapDescription": "Choose an OpenFreeMap or Protomaps basemap, a blank background, or a MapLibre style URL.",
-    "basemapDescriptionNoProtomaps": "Choose an OpenFreeMap basemap, a blank background, or a MapLibre style URL.",
     "sectionOpenFreeMap": "OpenFreeMap",
     "sectionProtomaps": "Protomaps",
     "sectionOther": "Other",
@@ -227,7 +226,9 @@
     "create": "Create"
   },
   "basemapPicker": {
-    "title": "Change basemap",
+    "title": "Change background",
+    "description": "Choose an OpenFreeMap or Protomaps background, a blank background, or a MapLibre style URL.",
+    "descriptionNoProtomaps": "Choose an OpenFreeMap background, a blank background, or a MapLibre style URL.",
     "applyCustom": "Apply",
     "invalidUrl": "Enter a valid HTTP or HTTPS style URL.",
     "sectionMoon": "The Moon",
@@ -1051,6 +1052,7 @@
     "captureDescription": "Capture a location by GPS or on the map, then fill in the form to save it.",
     "captureReviewDescription": "Review the captured location, complete the form, and save it to the layer.",
     "reopen": "Open Field Collection",
+    "reopenLayer": "Open Field Collection ({{layer}})",
     "targetLayer": "Collection layer",
     "newLayer": "New collection layer…",
     "layerName": "Layer name",
@@ -1641,6 +1643,24 @@
   "map": {
     "boundsRestricted": "Bounds locked",
     "boundsRestrictedTooltip": "Map bounds are restricted. You can change this in Settings.",
+    "identifyAll": {
+      "title": "Identified results ({{count}})",
+      "resultCount_one": "{{count}} result",
+      "resultCount_other": "{{count}} results",
+      "featureFallback": "Feature {{index}}",
+      "pixel": "Pixel",
+      "expandAll": "Expand all",
+      "collapseAll": "Collapse all",
+      "loadingTitle": "Identify visible layers",
+      "loading": "Loading...",
+      "errorLabel": "Error",
+      "error": "Could not identify this layer.",
+      "band": "Band {{index}}",
+      "nodata": "no data",
+      "coordinates": "lon, lat",
+      "row": "row",
+      "column": "column"
+    },
     "directionsMode": {
       "title": "Directions mode active",
       "hint": "Click the map to add waypoints. Drag a waypoint to move it, or click it to remove it. Routes update automatically.",
@@ -2140,6 +2160,10 @@
       "osEnvNote": "The desktop app also reads matching API keys from your system environment variables. Those are used automatically and are never saved to the project file — leave a field blank to keep using the environment value.",
       "osEnvField": "Read from your system environment variable {{name}}.",
       "osEnvPlaceholder": "Set in your system environment",
+      "refreshModels": "Refresh model list",
+      "modelsFailedToLoad": "Could not load models: {{message}}",
+      "ollamaNetworkFailure": "Could not reach the Ollama server. Check that it is running at this address and that OLLAMA_ORIGINS allows this app's origin, plus any firewall or proxy rules.",
+      "ollamaTimedOut": "The request to the Ollama server timed out. The host may be slow, unreachable, or blocked by a firewall or proxy.",
       "newProfile": "New profile",
       "cancel": "Cancel",
       "addProfile": "Add profile",
@@ -2547,7 +2571,8 @@
       "getisOrd": "Getis-Ord Gi* hotspots",
       "averageNearestNeighbor": "Average nearest neighbor",
       "kernelDensity": "Kernel density (heatmap)",
-      "emergingHotSpot": "Emerging Hot Spot (space-time cube)"
+      "emergingHotSpot": "Emerging Hot Spot (space-time cube)",
+      "compositeScore": "Composite score (suitability index)"
     },
     "rasterTool": {
       "hillshade": "Hillshade",
@@ -2821,6 +2846,7 @@
       "embedVectorTitle": "Embed local vector data?",
       "embedVectorDesc": "This project has {{count}} local vector layer(s) loaded from your computer. The browser cannot re-read them when the project is reopened, so their data must be embedded in the project file to be restored. Embedding adds about {{size}} to the file.",
       "embedVectorDescDesktop": "This project has {{count}} local vector layer(s) loaded from your computer. Embed their data to make the project self-contained (adds about {{size}}), or save file references that reload from disk when the project is reopened. References keep the file small but break if a source file is later moved or deleted.",
+      "embedVectorDescMas": "This project has {{count}} local vector layer(s) loaded from your computer. The Mac App Store sandbox cannot retain access to those files after GeoLibre closes, so their data must be embedded in the project file to be restored. Embedding adds about {{size}} to the file.",
       "embedVectorLargeWarning": "Embedding about {{size}} makes a very large project file. Reopening it may be slow or fail outright, because every feature has to be parsed and held in memory at once. For data this size, convert the layers to PMTiles or FlatGeobuf and add them as remote layers instead of embedding them.",
       "embedVectorEmbedButton": "Embed data",
       "embedVectorReferenceButton": "Save file references",
@@ -2897,6 +2923,7 @@
       "maplibre-gl-geo-editor": "GeoEditor",
       "maplibre-gl-geoagent": "GeoAgent",
       "maplibre-gl-geolens": "GeoLens",
+      "maplibre-gl-vantor": "Vantor Open Data",
       "maplibre-gl-graticule": "Gridlines",
       "maplibre-gl-mapillary": "Mapillary",
       "maplibre-gl-nasa-earthdata": "NASA Earthdata",
@@ -3417,6 +3444,70 @@
     "coverageLines": "Mapillary Sequences",
     "coveragePoints": "Mapillary Images"
   },
+  "vantor": {
+    "title": "Vantor STAC Explorer",
+    "collapsePanel": "Collapse panel",
+    "openPanel": "Open Vantor STAC Explorer",
+    "ready": "Ready",
+    "searchSection": "Search",
+    "event": "Event",
+    "loadingEvents": "Loading events…",
+    "refreshCatalog": "Refresh catalog",
+    "phase": "Phase",
+    "phaseAll": "All",
+    "phasePre": "Pre-event",
+    "phasePost": "Post-event",
+    "renderingEngine": "Rendering engine",
+    "engineGpu": "GPU (faster)",
+    "engineWasm": "WASM (globe compatible)",
+    "engineTitiler": "TiTiler (server)",
+    "useMapExtent": "Use Map Extent",
+    "drawBbox": "Draw BBox",
+    "clear": "Clear",
+    "search": "Search",
+    "searching": "Searching…",
+    "results": "Results",
+    "itemsFound": "{{count}} item(s) found",
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "columnId": "ID",
+    "columnDate": "Date",
+    "columnPhase": "Phase",
+    "columnSensor": "Sensor",
+    "columnCloud": "Cloud%",
+    "columnGsd": "GSD",
+    "visualize": "Visualize",
+    "downloadAction": "Download",
+    "cancel": "Cancel",
+    "noEvents": "No events found",
+    "status": {
+      "fetchingCatalog": "Fetching catalog…",
+      "eventsFound": "Found {{count}} event(s). Select an event and click Search.",
+      "catalogFailed": "Failed to fetch catalog: {{message}}",
+      "selectEvent": "Please select an event first.",
+      "fetchingItems": "Fetching items…",
+      "itemsFound": "Found {{count}} item(s). Check items to visualize or download.",
+      "itemsFailed": "Failed to fetch items: {{message}}",
+      "drawingCancelled": "BBox drawing cancelled.",
+      "drawRectangle": "Draw a rectangle on the map…",
+      "bboxSet": "Bounding box set. Click Search to filter.",
+      "bboxCleared": "Bounding box cleared.",
+      "noSelection": "No items selected. Check items first.",
+      "addingLayers": "Adding {{count}} COG layer(s)…",
+      "addFailed": "Failed to add {{id}}: {{message}}",
+      "layersAdded": "Added {{count}} COG layer(s).",
+      "startingDownloads": "Starting {{count}} download(s)…",
+      "downloadsStarted": "Started {{started}} download(s). {{failed}} failed.",
+      "downloadCancelled": "Download cancelled or failed."
+    },
+    "downloadProgress": {
+      "cancelled": "Download cancelled. {{count}} download(s) started.",
+      "invalidUrl": "Skipped {{id}}: invalid HTTPS URL.",
+      "starting": "Starting {{filename}}…",
+      "started": "Started {{filename}} ({{started}}/{{total}})",
+      "failed": "Failed to start {{filename}}: {{message}}"
+    }
+  },
   "openAerialMap": {
     "hint": "Search OpenAerialMap imagery by map view, a drawn box, or coordinates.",
     "search": "Search this view",
@@ -3854,6 +3945,10 @@
     },
     "deleteLast": "Delete last annotation",
     "clearAll": "Clear all annotations",
+    "newLayer": "New annotation layer",
+    "edit": "Edit element",
+    "move": "Move element, then click its new position",
+    "moveToLayer": "Move to layer",
     "textPlaceholder": "Type label, Enter to place",
     "pinTitlePrompt": "Title",
     "pinDescPrompt": "Description",
@@ -4296,9 +4391,31 @@
     "parameterField": {
       "selectLayer": "Select a layer...",
       "selectField": "Select a field...",
+      "selectOption": "Select an option...",
       "selectLayerFirst": "Select a layer first",
       "layersSelected_one": "{{count}} layer selected",
       "layersSelected_other": "{{count}} layers selected"
+    },
+    "fieldWeights": {
+      "columnField": "Field",
+      "columnNormalization": "Normalize",
+      "columnWeight": "Weight",
+      "columnDirection": "Direction",
+      "addField": "Add field",
+      "removeAria": "Remove {{field}}",
+      "empty": "No fields yet. Add at least two to build a score.",
+      "shares": "Weights: {{shares}}",
+      "noWeight": "Give at least one field a weight above zero.",
+      "normalization": {
+        "minMax": "Min-max",
+        "zScore": "Z-score",
+        "rank": "Rank",
+        "quantile": "Quantile"
+      },
+      "direction": {
+        "higher": "Higher is better",
+        "lower": "Lower is better"
+      }
     },
     "whitebox": {
       "run": "Run",
@@ -5582,6 +5699,50 @@
               }
             }
           }
+        },
+        "composite-score": {
+          "name": "Composite score (suitability index)",
+          "description": "Normalize, weight, and combine several numeric fields into a single 0-100 index, then style the layer by it.",
+          "params": {
+            "layer": {
+              "label": "Layer"
+            },
+            "fields": {
+              "label": "Fields and weights",
+              "description": "Two or more numeric fields. Each gets a normalization, a relative weight, and the end of its range that scores well."
+            },
+            "aggregation": {
+              "label": "Aggregation",
+              "description": "The geometric mean lets a weak field pull the score down: a strong field cannot fully compensate for it.",
+              "options": {
+                "weighted-mean": "Weighted arithmetic mean",
+                "geometric-mean": "Weighted geometric mean"
+              }
+            },
+            "nullHandling": {
+              "label": "Features missing a value",
+              "description": "There is no safe default: dropping and renormalizing produce different maps, so choose which one this index means.",
+              "options": {
+                "drop": "Drop the feature from the result",
+                "renormalize": "Renormalize weights over the fields it has"
+              }
+            },
+            "scoreField": {
+              "label": "Score field name",
+              "description": "Name of the numeric column the score is written to."
+            },
+            "scoreRange": {
+              "label": "Score range",
+              "options": {
+                "0-100": "0 to 100",
+                "0-1": "0 to 1"
+              }
+            },
+            "keepComponents": {
+              "label": "Keep normalized components",
+              "description": "Write each field's normalized value as its own column, so the score can be audited instead of taken on trust."
+            }
+          }
         }
       },
       "raster": {
@@ -6752,6 +6913,60 @@
       "noFields": "The layer has no attribute fields to configure.",
       "minMaxInvalid": "Min must be less than or equal to Max."
     },
+    "popup": {
+      "heading": "Popup",
+      "showOnClick": "Show popup on click (Identify)",
+      "showOnHover": "Show tooltip on hover",
+      "hoverHint": "The tooltip shows the title and the fields you tick as “In hover tooltip”.",
+      "titleField": "Title field",
+      "titleFieldDefault": "Layer name",
+      "titleExpression": "Title expression",
+      "titleExpressionPlaceholder": "[\"get\", \"name\"]",
+      "bodyExpression": "Body expression",
+      "bodyExpressionPlaceholder": "[\"concat\", [\"get\", \"name\"], \" has \", [\"to-string\", [\"get\", \"pop_max\"]], \" residents\"]",
+      "bodyExpressionHint": "A body expression replaces the field rows with its own text.",
+      "bodyReplacesRows": "While a body expression is set it replaces the field rows and the id row.",
+      "invalidExpression": "Invalid expression",
+      "openBuilder": "Open expression builder",
+      "showFeatureId": "Show the feature id row",
+      "fields": "Fields",
+      "allFields": "No fields chosen, so every visible field is shown, in the data's own order.",
+      "addField": "Add a field…",
+      "noFieldsLeft": "Every field is already listed",
+      "chooseFields": "Choose fields",
+      "resetFields": "Show every field",
+      "removeField": "Remove field",
+      "moveUp": "Move field up",
+      "moveDown": "Move field down",
+      "dragToReorder": "Drag to reorder",
+      "dragNamedToReorder": "Drag {{name}} to reorder",
+      "label": "Label",
+      "kind": "Value type",
+      "kinds": {
+        "auto": "Automatic",
+        "text": "Text",
+        "number": "Number",
+        "date": "Date",
+        "link": "Link",
+        "image": "Image"
+      },
+      "decimals": "Decimals",
+      "thousands": "Group thousands",
+      "dateFormat": "Date format",
+      "dateFormats": {
+        "date": "Date",
+        "datetime": "Date and time",
+        "time": "Time",
+        "iso": "ISO 8601",
+        "year": "Year"
+      },
+      "linkLabel": "Link text",
+      "linkLabelPlaceholder": "The URL itself",
+      "prefix": "Prefix",
+      "suffix": "Suffix",
+      "inHover": "In hover tooltip",
+      "imageNotInHover": "Image fields stay in the click popup; a tooltip has no room for a picture."
+    },
     "editorTracking": {
       "heading": "Editor Tracking",
       "description": "Record who created each feature and who last changed it. The columns below are filled in automatically when features are drawn, edited, calculated, or captured.",
@@ -6767,6 +6982,51 @@
       "duplicateName": "Each tracking column needs a different name.",
       "columnTaken": "“{{name}}” is already an attribute column. Tracking would overwrite its values."
     }
+  },
+  "quickFilters": {
+    "heading": "Quick filters",
+    "empty": "No filters yet. Add one below to narrow this layer by any of its fields.",
+    "addFilter": "Add a filter…",
+    "allFieldsUsed": "Every field already has a filter",
+    "removeAll": "Remove all",
+    "clearAll": "Clear filters",
+    "clearOne": "Clear this filter",
+    "clearOneNamed": "Clear the filter on {{field}}",
+    "remove": "Remove filter",
+    "removeNamed": "Remove the filter on {{field}}",
+    "controlType": "Filter type",
+    "enabledTitle": "Apply this filter",
+    "kind": {
+      "categorical": "Values",
+      "range": "Range",
+      "date": "Dates",
+      "text": "Text"
+    },
+    "operator": {
+      "contains": "Contains",
+      "startsWith": "Starts with",
+      "equals": "Is exactly"
+    },
+    "searchValues": "Search values",
+    "noValues": "This field has no values to choose from.",
+    "noMatchingValues": "No values match your search.",
+    "selectAll": "Select all",
+    "selectNone": "Select none",
+    "allValues": "All values",
+    "selectedCount_one": "{{count}} selected",
+    "selectedCount_other": "{{count}} selected",
+    "rangeMin": "Minimum",
+    "rangeMax": "Maximum",
+    "rangeSeparator": "to",
+    "dateFrom": "From",
+    "dateTo": "To",
+    "textOperator": "Match",
+    "textValue": "Text to match",
+    "textPlaceholder": "Type to filter",
+    "noFields": "This layer has no attributes to filter on.",
+    "noTileFeatures": "No features are loaded yet. Pan or zoom to the data, then reopen this section.",
+    "viewportSampleHint": "Values come from the tiles currently loaded, so the list grows as you pan and zoom.",
+    "layerFilteredHint": "A quick filter is hiding some of this layer's features."
   },
   "vectorExport": {
     "invalidKmlCoordinatesByPosition": "KML export could not write feature {{position}} because it has invalid coordinates.",
@@ -6784,9 +7044,15 @@
     "moveDown": "Move down",
     "zoomToLayer": "Zoom to layer",
     "layerActions": "Layer actions",
+    "exportSketchesAsLayer": "Export Sketches as new layer",
+    "exportSketchesKeep": "Keep features in Sketches",
+    "exportSketchesClear": "Clear Sketches after export",
+    "exportedSketchesName": "Sketches export",
     "metadata": "Metadata",
     "removeLayer": "Remove layer",
     "identifyFeatures": "Identify features",
+    "identifyVisibleLayers": "Identify visible layers",
+    "identifyVisibleLayersHint": "Click the map to identify features and pixel values from all visible queryable layers.",
     "identifyDeactivate": "Deactivate identify",
     "identifyInspectPixels": "Inspect pixel values",
     "identifyStopInspectPixels": "Stop inspecting pixel values",
@@ -6864,23 +7130,31 @@
     "saveEditsPostgisNoConnection": "No PostgreSQL connection is available for this layer. Reconnect in Add Data > PostgreSQL, then try again.",
     "typeBasemap": "basemap",
     "searchPlaces": "Search places",
-    "searchPlacesPlaceholder": "Search places, lat, lon, or H3 cell...",
+    "searchPlacesPlaceholder": "Search layers, places, lat, lon, or H3 cell...",
     "searchPlacesSearching": "Searching...",
     "searchPlacesNoResults": "No places found",
     "searchPlacesError": "Search failed. Try again.",
     "searchPlacesClear": "Clear search",
     "searchPlacesGoToCoordinate": "Go to {{coordinate}}",
     "searchPlacesGoToH3Cell": "Go to H3 cell {{cell}} (res {{resolution}})",
+    "searchPlacesGroup": "Places",
+    "searchFeaturesPartial": "(partial)",
     "background": "Background",
+    "typeBackground": "background",
     "backgroundCannotReorder": "Background cannot be reordered",
     "hideBackground": "Hide background",
     "showBackground": "Show background",
+    "changeBackground": "Change background",
+    "backgroundAppearance": "Background appearance",
+    "blankBackground": "Blank Background",
+    "blankBackgroundDescription": "Choose the color and opacity of the blank background.",
+    "color": "Color",
     "opacity": "Opacity",
     "opacityExactHint": "Double-click to enter an exact value",
     "opacityFor": "Opacity for {{name}}",
     "opacityValueInputAria": "{{label}} value",
     "opacityValueEditAria": "Edit {{label}} value",
-    "basemapOpacity": "Basemap opacity",
+    "backgroundOpacity": "Background opacity",
     "newGroup": "New group",
     "basemaps": "Basemaps",
     "geoEditor": "GeoEditor",
@@ -6898,7 +7172,7 @@
     "groupOpacity": "Opacity",
     "groupOpacityAria": "{{name}} group opacity",
     "doubleClickToRename": "Double-click to rename",
-    "doubleClickToChangeBasemap": "Double-click to change the basemap",
+    "doubleClickToChangeBackground": "Double-click to change the background",
     "renameNamed": "Rename {{name}}",
     "newGroupFromLayer": "New group from layer",
     "newGroupFromSelectedLayers": "New group from selected layers",

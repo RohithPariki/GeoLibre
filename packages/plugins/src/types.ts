@@ -2,6 +2,7 @@ import type {
   ExternalNativePaintBridge,
   ExternalNativePaintMode,
   GeoLibreLayer,
+  GeoLibreProject,
   LayerStyle,
 } from "@geolibre/core";
 import type {
@@ -404,6 +405,12 @@ export interface GeoLibreAppAPI {
    */
   addCogLayer?: (name: string, url: string, options?: GeoLibreCogLayerOptions) => Promise<string>;
   /**
+   * Change the host's control-wide COG renderer and re-render existing COG
+   * layers. Typed optional for forward compatibility with hosts that expose
+   * {@link addCogLayer} but not runtime engine switching.
+   */
+  setCogRenderEngine?: (engine: GeoLibreCogRenderEngine) => Promise<void>;
+  /**
    * Add a Zarr layer rendered by the **host's own** `@carbonplan/zarr-layer`
    * instance, returning a promise for the new layer's id. The Zarr counterpart
    * of {@link addCogLayer}: it reads the store directly (Zarr v2/v3 over HTTP),
@@ -595,6 +602,12 @@ export interface GeoLibreAppAPI {
    * GeoJSON).
    */
   exportTextFile?: (filename: string, content: string, options?: GeoLibreFileDialogOptions) => void;
+  /**
+   * Return a redacted, serializable snapshot of the current GeoLibre project.
+   * Plugins can embed this snapshot in portable HTML viewers without copying
+   * the host's layer/style serialization logic.
+   */
+  getProjectSnapshot?: () => GeoLibreProject;
   /**
    * Prompt the user to pick a text file and return its contents (a native open
    * dialog under Tauri, a file input on the web). Resolves to null when the

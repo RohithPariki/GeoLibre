@@ -209,7 +209,6 @@
   },
   "newProject": {
     "basemapDescription": "Escolha um mapa base do OpenFreeMap ou Protomaps, um fundo em branco ou uma URL de estilo MapLibre.",
-    "basemapDescriptionNoProtomaps": "Escolha um mapa base do OpenFreeMap, um fundo em branco ou uma URL de estilo MapLibre.",
     "sectionOpenFreeMap": "OpenFreeMap",
     "sectionProtomaps": "Protomaps",
     "sectionOther": "Outro",
@@ -227,7 +226,9 @@
     "create": "Criar"
   },
   "basemapPicker": {
-    "title": "Alterar mapa base",
+    "title": "Alterar fundo",
+    "description": "Escolha um fundo do OpenFreeMap ou Protomaps, um fundo em branco ou uma URL de estilo MapLibre.",
+    "descriptionNoProtomaps": "Escolha um fundo do OpenFreeMap, um fundo em branco ou uma URL de estilo MapLibre.",
     "applyCustom": "Aplicar",
     "invalidUrl": "Digite uma URL de estilo HTTP ou HTTPS válida.",
     "sectionMoon": "A Lua",
@@ -1051,6 +1052,7 @@
     "captureDescription": "Capture uma localização por GPS ou no mapa e, em seguida, preencha o formulário para salvá-la.",
     "captureReviewDescription": "Revise a localização capturada, preencha o formulário e salve-a na camada.",
     "reopen": "Abrir coleta de campo",
+    "reopenLayer": "Abrir coleta de campo ({{layer}})",
     "targetLayer": "Camada de coleta",
     "newLayer": "Nova camada de coleta…",
     "layerName": "Nome da camada",
@@ -1987,6 +1989,13 @@
       "noProjectSelected": "Nenhum projeto selecionado",
       "globeByDefault": "Ativar o globo 3D por padrão",
       "globeByDefaultHint": "Usado para o espaço de trabalho sem título quando nenhum projeto de inicialização ou link de projeto é fornecido.",
+      "defaultView": "Vista padrão do mapa",
+      "defaultViewHint": "Defina o centro e o zoom do espaço de trabalho sem título.",
+      "longitude": "Longitude do centro",
+      "latitude": "Latitude do centro",
+      "zoom": "Nível de zoom",
+      "useCurrentView": "Usar a vista atual",
+      "viewUnavailable": "A vista atual do mapa não está disponível.",
       "selectError": "Não foi possível ler o projeto selecionado.",
       "restoring": "Abrindo o seu projeto de inicialização…",
       "loadWarning": "O projeto de inicialização não está disponível. O GeoLibre abriu o espaço de trabalho padrão."
@@ -2133,6 +2142,10 @@
       "osEnvNote": "O aplicativo desktop também lê chaves de API correspondentes das variáveis de ambiente do seu sistema. Elas são usadas automaticamente e nunca são salvas no arquivo do projeto — deixe um campo em branco para continuar usando o valor do ambiente.",
       "osEnvField": "Lido da variável de ambiente do sistema {{name}}.",
       "osEnvPlaceholder": "Definido no ambiente do seu sistema",
+      "refreshModels": "Atualizar a lista de modelos",
+      "modelsFailedToLoad": "Não foi possível carregar os modelos: {{message}}",
+      "ollamaNetworkFailure": "Não foi possível acessar o servidor Ollama. Verifique se ele está em execução neste endereço e se OLLAMA_ORIGINS permite a origem deste aplicativo, além de quaisquer regras de firewall ou proxy.",
+      "ollamaTimedOut": "A solicitação ao servidor Ollama expirou. O host pode estar lento, inacessível ou bloqueado por um firewall ou proxy.",
       "newProfile": "Novo perfil",
       "cancel": "Cancelar",
       "addProfile": "Adicionar perfil",
@@ -2540,7 +2553,8 @@
       "getisOrd": "Pontos quentes Getis-Ord Gi*",
       "averageNearestNeighbor": "Vizinho mais próximo médio",
       "kernelDensity": "Densidade de kernel (mapa de calor)",
-      "emergingHotSpot": "Pontos quentes emergentes (cubo espaço-tempo)"
+      "emergingHotSpot": "Pontos quentes emergentes (cubo espaço-tempo)",
+      "compositeScore": "Pontuação composta (índice de aptidão)"
     },
     "rasterTool": {
       "hillshade": "Sombreamento de relevo",
@@ -2814,6 +2828,7 @@
       "embedVectorTitle": "Incorporar dados vetoriais locais?",
       "embedVectorDesc": "Este projeto tem {{count}} camada(s) vetorial(is) local(is) carregada(s) do seu computador. O navegador não pode relê-las quando o projeto é reaberto, então seus dados precisam ser incorporados no arquivo do projeto para serem restaurados. A incorporação adiciona cerca de {{size}} ao arquivo.",
       "embedVectorDescDesktop": "Este projeto tem {{count}} camada(s) vetorial(is) local(is) carregada(s) do seu computador. Incorpore seus dados para tornar o projeto autocontido (adiciona cerca de {{size}}), ou salve referências de arquivo que recarregam do disco quando o projeto é reaberto. As referências mantêm o arquivo pequeno, mas quebram se um arquivo de origem for movido ou excluído posteriormente.",
+      "embedVectorDescMas": "Este projeto tem {{count}} camada(s) vetorial(is) local(is) carregada(s) do seu computador. A sandbox da Mac App Store não consegue manter o acesso a esses arquivos depois que o GeoLibre é fechado, portanto os dados precisam ser incorporados ao arquivo do projeto para serem restaurados. A incorporação adiciona cerca de {{size}} ao arquivo.",
       "embedVectorLargeWarning": "Incorporar cerca de {{size}} gera um arquivo de projeto muito grande. Reabri-lo pode ser lento ou falhar completamente, porque todas as feições precisam ser lidas e mantidas na memória de uma só vez. Para dados desse tamanho, converta as camadas para PMTiles ou FlatGeobuf e adicione-as como camadas remotas em vez de incorporá-las.",
       "embedVectorEmbedButton": "Incorporar dados",
       "embedVectorReferenceButton": "Salvar referências de arquivo",
@@ -3847,6 +3862,10 @@
     },
     "deleteLast": "Excluir última anotação",
     "clearAll": "Limpar todas as anotações",
+    "newLayer": "Nova camada de anotações",
+    "edit": "Editar elemento",
+    "move": "Mova o elemento e clique na nova posição",
+    "moveToLayer": "Mover para a camada",
     "textPlaceholder": "Digite o rótulo, Enter para posicionar",
     "pinTitlePrompt": "Título",
     "pinDescPrompt": "Descrição",
@@ -4289,9 +4308,31 @@
     "parameterField": {
       "selectLayer": "Selecionar uma camada...",
       "selectField": "Selecionar um campo...",
+      "selectOption": "Selecione uma opção...",
       "selectLayerFirst": "Selecione uma camada primeiro",
       "layersSelected_one": "{{count}} camada selecionada",
       "layersSelected_other": "{{count}} camadas selecionadas"
+    },
+    "fieldWeights": {
+      "columnField": "Campo",
+      "columnNormalization": "Normalizar",
+      "columnWeight": "Peso",
+      "columnDirection": "Direção",
+      "addField": "Adicionar campo",
+      "removeAria": "Remover {{field}}",
+      "empty": "Ainda não há campos. Adicione pelo menos dois para montar uma pontuação.",
+      "shares": "Pesos: {{shares}}",
+      "noWeight": "Dê a pelo menos um campo um peso acima de zero.",
+      "normalization": {
+        "minMax": "Mín-máx",
+        "zScore": "Escore Z",
+        "rank": "Posto",
+        "quantile": "Quantil"
+      },
+      "direction": {
+        "higher": "Quanto maior, melhor",
+        "lower": "Quanto menor, melhor"
+      }
     },
     "whitebox": {
       "run": "Executar",
@@ -5575,6 +5616,50 @@
               }
             }
           }
+        },
+        "composite-score": {
+          "name": "Pontuação composta (índice de aptidão)",
+          "description": "Normalize, pondere e combine vários campos numéricos em um único índice de 0 a 100 e, em seguida, estilize a camada por ele.",
+          "params": {
+            "layer": {
+              "label": "Camada"
+            },
+            "fields": {
+              "label": "Campos e pesos",
+              "description": "Dois ou mais campos numéricos. Cada um recebe uma normalização, um peso relativo e o extremo do seu intervalo que pontua bem."
+            },
+            "aggregation": {
+              "label": "Agregação",
+              "description": "A média geométrica deixa um campo fraco puxar a pontuação para baixo: um campo forte não consegue compensá-lo por completo.",
+              "options": {
+                "weighted-mean": "Média aritmética ponderada",
+                "geometric-mean": "Média geométrica ponderada"
+              }
+            },
+            "nullHandling": {
+              "label": "Feições sem valor",
+              "description": "Não há um padrão seguro: descartar e renormalizar produzem mapas diferentes, então escolha o que este índice significa.",
+              "options": {
+                "drop": "Descartar a feição do resultado",
+                "renormalize": "Renormalizar os pesos sobre os campos que ela tem"
+              }
+            },
+            "scoreField": {
+              "label": "Nome do campo de pontuação",
+              "description": "Nome da coluna numérica em que a pontuação é gravada."
+            },
+            "scoreRange": {
+              "label": "Intervalo da pontuação",
+              "options": {
+                "0-100": "0 a 100",
+                "0-1": "0 a 1"
+              }
+            },
+            "keepComponents": {
+              "label": "Manter os componentes normalizados",
+              "description": "Grava o valor normalizado de cada campo em uma coluna própria, para que a pontuação possa ser auditada em vez de aceita sem verificação."
+            }
+          }
         }
       },
       "raster": {
@@ -6745,6 +6830,60 @@
       "noFields": "A camada não tem campos de atributos para configurar.",
       "minMaxInvalid": "O mínimo deve ser menor ou igual ao máximo."
     },
+    "popup": {
+      "heading": "Popup",
+      "showOnClick": "Mostrar o popup ao clicar (Identificar)",
+      "showOnHover": "Mostrar a dica ao passar o cursor",
+      "hoverHint": "A dica mostra o título e os campos que você marcar como “Na dica”.",
+      "titleField": "Campo do título",
+      "titleFieldDefault": "Nome da camada",
+      "titleExpression": "Expressão do título",
+      "titleExpressionPlaceholder": "[\"get\", \"name\"]",
+      "bodyExpression": "Expressão do corpo",
+      "bodyExpressionPlaceholder": "[\"concat\", [\"get\", \"name\"], \" has \", [\"to-string\", [\"get\", \"pop_max\"]], \" residents\"]",
+      "bodyExpressionHint": "Uma expressão de corpo substitui as linhas de campos pelo seu próprio texto.",
+      "bodyReplacesRows": "Enquanto houver uma expressão de corpo, ela substitui as linhas de campos e a linha do id.",
+      "invalidExpression": "Expressão inválida",
+      "openBuilder": "Abrir o construtor de expressões",
+      "showFeatureId": "Mostrar a linha do id da feição",
+      "fields": "Campos",
+      "allFields": "Nenhum campo escolhido, então todos os campos visíveis são mostrados, na ordem dos próprios dados.",
+      "addField": "Adicionar um campo…",
+      "noFieldsLeft": "Todos os campos já estão listados",
+      "chooseFields": "Escolher campos",
+      "resetFields": "Mostrar todos os campos",
+      "removeField": "Remover campo",
+      "moveUp": "Mover o campo para cima",
+      "moveDown": "Mover o campo para baixo",
+      "dragToReorder": "Arraste para reordenar",
+      "dragNamedToReorder": "Arraste {{name}} para reordenar",
+      "label": "Rótulo",
+      "kind": "Tipo de valor",
+      "kinds": {
+        "auto": "Automático",
+        "text": "Texto",
+        "number": "Número",
+        "date": "Data",
+        "link": "Link",
+        "image": "Imagem"
+      },
+      "decimals": "Casas decimais",
+      "thousands": "Agrupar os milhares",
+      "dateFormat": "Formato de data",
+      "dateFormats": {
+        "date": "Data",
+        "datetime": "Data e hora",
+        "time": "Hora",
+        "iso": "ISO 8601",
+        "year": "Ano"
+      },
+      "linkLabel": "Texto do link",
+      "linkLabelPlaceholder": "A própria URL",
+      "prefix": "Prefixo",
+      "suffix": "Sufixo",
+      "inHover": "Na dica",
+      "imageNotInHover": "Campos de imagem ficam no popup de clique; uma dica não tem espaço para uma imagem."
+    },
     "editorTracking": {
       "heading": "Rastreamento de edição",
       "description": "Registre quem criou cada feição e quem a alterou por último. Os campos abaixo são preenchidos automaticamente quando feições são desenhadas, editadas, calculadas ou coletadas.",
@@ -6760,6 +6899,51 @@
       "duplicateName": "Cada campo de rastreamento precisa de um nome diferente.",
       "columnTaken": "“{{name}}” já é uma coluna de atributos. O rastreamento sobrescreveria seus valores."
     }
+  },
+  "quickFilters": {
+    "heading": "Filtros rápidos",
+    "empty": "Ainda não há filtros. Adicione um abaixo para restringir esta camada por qualquer um dos seus campos.",
+    "addFilter": "Adicionar um filtro…",
+    "allFieldsUsed": "Todos os campos já têm um filtro",
+    "removeAll": "Remover todos",
+    "clearAll": "Limpar filtros",
+    "clearOne": "Limpar este filtro",
+    "clearOneNamed": "Limpar o filtro de {{field}}",
+    "remove": "Remover filtro",
+    "removeNamed": "Remover o filtro de {{field}}",
+    "controlType": "Tipo de filtro",
+    "enabledTitle": "Aplicar este filtro",
+    "kind": {
+      "categorical": "Valores",
+      "range": "Intervalo",
+      "date": "Datas",
+      "text": "Texto"
+    },
+    "operator": {
+      "contains": "Contém",
+      "startsWith": "Começa com",
+      "equals": "É exatamente"
+    },
+    "searchValues": "Pesquisar valores",
+    "noValues": "Este campo não tem valores para escolher.",
+    "noMatchingValues": "Nenhum valor corresponde à sua busca.",
+    "selectAll": "Selecionar tudo",
+    "selectNone": "Selecionar nenhum",
+    "allValues": "Todos os valores",
+    "selectedCount_one": "{{count}} selecionado",
+    "selectedCount_other": "{{count}} selecionados",
+    "rangeMin": "Mínimo",
+    "rangeMax": "Máximo",
+    "rangeSeparator": "a",
+    "dateFrom": "De",
+    "dateTo": "Até",
+    "textOperator": "Correspondência",
+    "textValue": "Texto a procurar",
+    "textPlaceholder": "Digite para filtrar",
+    "noFields": "Esta camada não tem atributos para filtrar.",
+    "noTileFeatures": "Nenhuma feição foi carregada ainda. Desloque ou aproxime o mapa até os dados e reabra esta seção.",
+    "viewportSampleHint": "Os valores vêm dos tiles carregados no momento, então a lista cresce conforme você desloca e aproxima o mapa.",
+    "layerFilteredHint": "Um filtro rápido está ocultando parte das feições desta camada."
   },
   "vectorExport": {
     "invalidKmlCoordinatesByPosition": "A exportação KML não conseguiu gravar a feição {{position}} porque ela tem coordenadas inválidas.",
@@ -6777,6 +6961,10 @@
     "moveDown": "Mover para baixo",
     "zoomToLayer": "Ampliar para a camada",
     "layerActions": "Ações da camada",
+    "exportSketchesAsLayer": "Exportar esboços como nova camada",
+    "exportSketchesKeep": "Manter feições nos Esboços",
+    "exportSketchesClear": "Limpar Esboços após exportar",
+    "exportedSketchesName": "Exportação de esboços",
     "metadata": "Metadados",
     "removeLayer": "Remover camada",
     "identifyFeatures": "Identificar feições",
@@ -6864,16 +7052,24 @@
     "searchPlacesClear": "Limpar pesquisa",
     "searchPlacesGoToCoordinate": "Ir para {{coordinate}}",
     "searchPlacesGoToH3Cell": "Ir para a célula H3 {{cell}} (res. {{resolution}})",
+    "searchPlacesGroup": "Lugares",
+    "searchFeaturesPartial": "(parcial)",
     "background": "Fundo",
+    "typeBackground": "fundo",
     "backgroundCannotReorder": "O fundo não pode ser reordenado",
     "hideBackground": "Ocultar fundo",
     "showBackground": "Mostrar fundo",
+    "changeBackground": "Alterar fundo",
+    "backgroundAppearance": "Aparência do fundo",
+    "blankBackground": "Fundo em branco",
+    "blankBackgroundDescription": "Escolha a cor e a opacidade do fundo em branco.",
+    "color": "Cor",
     "opacity": "Opacidade",
     "opacityExactHint": "Clique duas vezes para digitar um valor exato",
     "opacityFor": "Opacidade de {{name}}",
     "opacityValueInputAria": "Valor de {{label}}",
     "opacityValueEditAria": "Editar valor de {{label}}",
-    "basemapOpacity": "Opacidade do mapa base",
+    "backgroundOpacity": "Opacidade do fundo",
     "newGroup": "Novo grupo",
     "basemaps": "Mapas base",
     "geoEditor": "GeoEditor",
@@ -6891,7 +7087,7 @@
     "groupOpacity": "Opacidade",
     "groupOpacityAria": "Opacidade do grupo {{name}}",
     "doubleClickToRename": "Clique duas vezes para renomear",
-    "doubleClickToChangeBasemap": "Clique duas vezes para alterar o mapa base",
+    "doubleClickToChangeBackground": "Clique duas vezes para alterar o fundo",
     "renameNamed": "Renomear {{name}}",
     "newGroupFromLayer": "Novo grupo a partir da camada",
     "newGroupFromSelectedLayers": "Novo grupo a partir das camadas selecionadas",

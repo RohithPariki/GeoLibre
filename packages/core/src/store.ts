@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 import { create } from "zustand";
 import { shallow } from "zustand/shallow";
 import { temporal } from "zundo";
+import { ALL_DEPLOYMENT_CAPABILITIES, type DeploymentCapability } from "./deployment-capabilities";
 import {
   getHistoryCoalesceMs,
   getMaxHistoryFeatureCount,
@@ -15,6 +16,7 @@ import {
   createDefaultMapView,
   createEmptyProject,
   DEFAULT_PROJECT_NAME,
+  normalizeBlankBackgroundColor,
 } from "./project";
 import { initialLayerStyle } from "./layer-defaults";
 import {
@@ -61,9 +63,11 @@ import {
   type LayerGroup,
   type LayerLibraryEntry,
   type AttributeFormConfig,
+  type LayerPopupConfig,
   type EditorTrackingConfig,
   type LayerJoin,
   type LayerVirtualField,
+  type LayerQuickFilter,
   type LayerStyle,
   type LegendConfig,
   type MapGridLayout,
@@ -170,7 +174,8 @@ export type StatisticsToolKind =
   | "getis-ord-gi"
   | "average-nearest-neighbor"
   | "kernel-density"
-  | "emerging-hot-spot";
+  | "emerging-hot-spot"
+  | "composite-score";
 
 /**
  * Identifiers of the raster processing tools. Kept in sync by hand with the
@@ -223,6 +228,7 @@ export interface AppState {
   basemapStyleUrl: string;
   basemapVisible: boolean;
   basemapOpacity: number;
+  blankBackgroundColor: string | null;
   layers: GeoLibreLayer[];
   layerGroups: LayerGroup[];
   preferences: ProjectPreferences;
@@ -284,6 +290,11 @@ export interface AppState {
    * `null` when the set is empty). A single click leaves exactly one id here.
    */
   selectedFeatureIds: string[];
+  /**
+   * Store-layer id targeted by Identify, or {@link IDENTIFY_ALL_LAYERS_ID} for
+   * the map-level mode that queries every visible queryable layer — vector,
+   * DuckDB query, WMS, COG, NetCDF image and time-slider raster alike.
+   */
   identifyLayerId: string | null;
   pointerCoords: [number, number] | null;
   /**
@@ -309,6 +320,16 @@ export interface AppState {
   metadata: Record<string, unknown>;
   recentProjects: RecentProjectEntry[];
   attributeFilter: string;
+  /**
+   * What this *deployment* is allowed to do (issue #1673). Set once at startup
+   * from the deployment configuration; never from a project file, a URL
+   * parameter, or anything else the visitor controls, and never edited from the
+   * UI. Defaults to the full set so an unconfigured build behaves as before.
+   *
+   * Excluded from the project file and from undo history: it describes the
+   * server that served the app, not the document being edited.
+   */
+  deploymentCapabilities: ReadonlySet<DeploymentCapability>;
   // Ephemeral live-collaboration session state (issue #307). Deliberately
   // excluded from the project file (project.ts never reads it) and from undo
   // history (partialize never lists it).
@@ -444,6 +465,7 @@ export interface AppState {
   restoreEarthBasemap: (styleUrl: string) => void;
   setBasemapVisible: (visible: boolean) => void;
   setBasemapOpacity: (opacity: number) => void;
+  setBlankBackgroundColor: (color: string | null) => void;
   setPreferences: (preferences: ProjectPreferences) => void;
   setLegend: (legend: LegendConfig) => void;
   /**
@@ -586,6 +608,11 @@ export interface AppState {
   ) => void;
   setProjectPath: (path: string | null) => void;
   setProjectName: (name: string) => void;
+  /**
+   * Narrow what this deployment may do. Intended for the startup path only —
+   * calling it later would leave already-rendered surfaces stale.
+   */
+  setDeploymentCapabilities: (capabilities: Iterable<DeploymentCapability>) => void;
   setRecentProjects: (projects: RecentProjectEntry[]) => void;
   rememberRecentProject: (entry: RecentProjectEntry) => void;
   forgetRecentProject: (path: string) => void;
@@ -657,6 +684,12 @@ export interface AppState {
    */
   setLayerAttributeForm: (id: string, attributeForm: AttributeFormConfig | undefined) => void;
   /**
+   * Replace the layer's popup/tooltip design (which fields the Identify popup
+   * shows, in what order and under what labels, plus the hover tooltip). Pass
+   * `undefined` to restore the default full-property dump.
+   */
+  setLayerPopup: (id: string, popup: LayerPopupConfig | undefined) => void;
+  /**
    * Replace the layer's editor tracking configuration (whether creation/edit
    * author and timestamp columns are maintained, and under which names). Pass
    * `undefined` to drop the configuration entirely.
@@ -668,6 +701,13 @@ export interface AppState {
    * Pass an empty array to detach every virtual field.
    */
   setLayerVirtualFields: (id: string, fields: LayerVirtualField[]) => void;
+  /**
+   * Replace a layer's quick filters (issue #2114). The controls persist with
+   * the project and are compiled to a MapLibre filter at sync time, so this
+   * only stores state — nothing re-derives the layer's data. Pass an empty
+   * array to remove every control.
+   */
+  setLayerQuickFilters: (id: string, filters: LayerQuickFilter[]) => void;
   reorderLayer: (id: string, direction: "up" | "down") => void;
   moveLayer: (id: string, targetIndex: number) => void;
   moveLayersRelative: (
@@ -750,6 +790,9 @@ export interface AppState {
   deleteComment: (commentId: string) => void;
   setComments: (comments: ProjectComment[]) => void;
 }
+
+/** Reserved Identify target for querying every visible queryable layer at once. */
+export const IDENTIFY_ALL_LAYERS_ID = "__geolibre_identify_all_layers__";
 
 const MAX_RECENT_PROJECTS = 10;
 
@@ -1047,6 +1090,7 @@ export const useAppStore = create<AppState>()(
       basemapStyleUrl: DEFAULT_BASEMAP,
       basemapVisible: true,
       basemapOpacity: 1,
+      blankBackgroundColor: null,
       layers: [],
       layerGroups: [],
       preferences: DEFAULT_PROJECT_PREFERENCES,
@@ -1078,6 +1122,7 @@ export const useAppStore = create<AppState>()(
       metadata: {},
       recentProjects: [],
       attributeFilter: "",
+      deploymentCapabilities: ALL_DEPLOYMENT_CAPABILITIES,
       collaboration: DEFAULT_COLLABORATION_STATE,
       capabilities: createDefaultAppCapabilities(),
       ui: {
@@ -1345,6 +1390,8 @@ export const useAppStore = create<AppState>()(
         })),
       setBasemapVisible: (visible) => set({ basemapVisible: visible, isDirty: true }),
       setBasemapOpacity: (opacity) => set({ basemapOpacity: opacity, isDirty: true }),
+      setBlankBackgroundColor: (color) =>
+        set({ blankBackgroundColor: normalizeBlankBackgroundColor(color), isDirty: true }),
       setPreferences: (preferences) => set({ preferences, isDirty: true }),
       setLegend: (legend) => set({ legend, isDirty: true }),
 
@@ -1698,6 +1745,8 @@ export const useAppStore = create<AppState>()(
 
       setProjectPath: (path) => set({ projectPath: path }),
       setProjectName: (name) => set({ projectName: name, isDirty: true }),
+      setDeploymentCapabilities: (capabilities) =>
+        set({ deploymentCapabilities: new Set(capabilities) }),
       setRecentProjects: (projects) => set({ recentProjects: normalizeRecentProjects(projects) }),
       rememberRecentProject: (entry) =>
         set((s) => ({
@@ -1814,6 +1863,7 @@ export const useAppStore = create<AppState>()(
         }),
 
       setLayerAttributeForm: (id, attributeForm) => get().updateLayer(id, { attributeForm }),
+      setLayerPopup: (id, popup) => get().updateLayer(id, { popup }),
 
       setLayerEditorTracking: (id, editorTracking) => get().updateLayer(id, { editorTracking }),
 
@@ -1828,6 +1878,9 @@ export const useAppStore = create<AppState>()(
           layers = cascadeLayerJoinRefresh(layers, id);
           return { layers, isDirty: true };
         }),
+
+      setLayerQuickFilters: (id, filters) =>
+        get().updateLayer(id, { quickFilters: filters.length > 0 ? filters : undefined }),
 
       setLayerVisibility: (id, visible) => get().updateLayer(id, { visible }),
 
@@ -2422,6 +2475,7 @@ export const useAppStore = create<AppState>()(
         basemapStyleUrl: s.basemapStyleUrl,
         basemapVisible: s.basemapVisible,
         basemapOpacity: s.basemapOpacity,
+        blankBackgroundColor: s.blankBackgroundColor,
         storymap: s.storymap,
         comments: s.comments,
       }),
@@ -2439,6 +2493,7 @@ export const useAppStore = create<AppState>()(
         a.basemapStyleUrl === b.basemapStyleUrl &&
         a.basemapVisible === b.basemapVisible &&
         a.basemapOpacity === b.basemapOpacity &&
+        a.blankBackgroundColor === b.blankBackgroundColor &&
         a.storymap === b.storymap &&
         shallow(a.layers, b.layers) &&
         shallow(a.comments, b.comments) &&

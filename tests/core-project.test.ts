@@ -21,6 +21,21 @@ import {
 import { geojsonLayer } from "./helpers/layer-fixtures";
 
 describe("project parsing", () => {
+  it("round-trips a custom blank background color and defaults legacy projects", () => {
+    const base = createEmptyProject("Blank background");
+    const customized = parseProject(serializeProject({ ...base, blankBackgroundColor: "#1f2937" }));
+    assert.equal(customized.blankBackgroundColor, "#1f2937");
+
+    const legacy = { ...base };
+    delete legacy.blankBackgroundColor;
+    assert.equal(parseProject(serializeProject(legacy)).blankBackgroundColor, null);
+    assert.equal(
+      parseProject(serializeProject({ ...base, blankBackgroundColor: "not-a-color" }))
+        .blankBackgroundColor,
+      null,
+    );
+  });
+
   it("preserves a valid selected layer and drops a dangling selection", () => {
     const base = createEmptyProject("Selection");
     const layer = geojsonLayer({ id: "chosen" });
@@ -260,6 +275,35 @@ describe("project parsing", () => {
 
     const reparsed = parseProject(serializeProject(project)).layers[0] as Record<string, unknown>;
     assert.ok(!("embedFilter" in reparsed));
+  });
+
+  it("keeps quick filters, which are project state rather than session state", () => {
+    // The contrast with the test above is the point: `timeFilter`/`embedFilter`
+    // are set at runtime by the Time Slider and the host page, but a quick
+    // filter is something the author chose and expects to find again — and it
+    // persists as control state, not as a compiled expression, so it can be
+    // reopened and changed.
+    const quickFilters = [
+      { id: "qf-1", field: "state", kind: "categorical", values: ["OR", "WA"] },
+      { id: "qf-2", field: "pop", kind: "range", min: 1000, max: null },
+    ];
+    const layer = {
+      ...geojsonLayer({ id: "cities" }),
+      quickFilters,
+    } as unknown as Parameters<typeof projectFromStore>[0]["layers"][number];
+    const project = projectFromStore({
+      projectName: "Filters",
+      mapView: { center: [0, 0], zoom: 2, bearing: 0, pitch: 0 },
+      basemapStyleUrl: DEFAULT_BASEMAP,
+      basemapVisible: true,
+      basemapOpacity: 1,
+      layers: [layer],
+      preferences: createEmptyProject().preferences,
+      metadata: {},
+    });
+
+    const reparsed = parseProject(serializeProject(project)).layers[0] as Record<string, unknown>;
+    assert.deepEqual(reparsed.quickFilters, quickFilters);
   });
 
   it("round-trips a legend config through projectFromStore", () => {
@@ -869,6 +913,13 @@ describe("multi-map grid persistence", () => {
 });
 
 describe("app store", () => {
+  it("normalizes Blank background colors written through the store", () => {
+    useAppStore.getState().setBlankBackgroundColor("#123abc");
+    assert.equal(useAppStore.getState().blankBackgroundColor, "#123abc");
+    useAppStore.getState().setBlankBackgroundColor("invalid");
+    assert.equal(useAppStore.getState().blankBackgroundColor, null);
+  });
+
   beforeEach(() => {
     useAppStore.getState().newProject({ name: "Test Project" });
     useAppStore.getState().clearRecentProjects();

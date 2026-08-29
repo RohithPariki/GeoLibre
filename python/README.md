@@ -73,6 +73,30 @@ m.to_project()["mapView"]["center"]
 
 ## API
 
+### Dash
+
+Install the optional Dash integration with `pip install "geolibre[dash]"`.
+`DashMap` is a Dash component and exposes map interactions as callback
+properties while retaining GeoLibre's existing map implementation:
+
+```python
+from dash import Dash, Input, Output, html
+from geolibre import DashMap
+
+app = Dash(__name__)
+m = DashMap(center=(-119.0, 39.8), zoom=12, basemap="dark", height="800px")
+app.layout = html.Div([m, html.Div(id="click-output")])
+
+@app.callback(Output("click-output", "children"), Input(m, "clickData"))
+def show_click(click_data):
+    return "Click the map" if click_data is None else str(click_data)
+```
+
+The click payload has the form `{"lngLat": {"lng": ..., "lat": ...},
+"features": [...]}`. `selectionData` is also available for Dash callbacks;
+`viewData` is reserved for future camera-event support. The existing
+`Map.on_click()` API is unchanged.
+
 | Method | Description |
 | --- | --- |
 | `Map(center, zoom, basemap=, height=, layout=, theme=)` | Create a map. `layout` is `"embed"`, `"full"`, or `"maponly"`. |
@@ -90,7 +114,7 @@ m.to_project()["mapView"]["center"]
 | `add_wmts(url, name=, tile_size=, **style)` | Add a WMTS tile URL template. |
 | `add_wfs(endpoint, type_name, name=, version=, output_format=, srs_name=, max_features=, **style)` | Add a WFS layer (GeoJSON, fetched and inlined). |
 | `add_cog(url, name=, bands=, colormap=, rescale=)` | Add a Cloud Optimized GeoTIFF. |
-| `add_raster(url, name=, bands=, colormap=, rescale=)` | Add a raster (alias of `add_cog`). |
+| `add_raster(source, name=, bands=, colormap=, rescale=, array_args=)` | Add a COG/GeoTIFF or an xarray DataArray/Dataset (xarray needs `geolibre[raster]`). |
 | `add_3d_tiles(url, name=, altitude_offset=, request_headers=, **style)` | Add a 3D Tiles `tileset.json`. |
 | `add_video(urls, coordinates, name=, **style)` | Add a georeferenced video (four `[lng, lat]` corners). |
 | `add_basemap(basemap)` | Set the background basemap. |
@@ -203,8 +227,12 @@ anywhere untrusted, or use `Map.save_project`, which redacts by default.
 - Optional extras: `pip install "geolibre[all]"` adds GeoPandas/Shapely support
   for `add_geojson(geodataframe)` and for reading **local** vector files
   (`add_vector`/`add_geoparquet`/`add_flatgeobuf`/`add_shp`/`add_kml`/`add_gpkg`),
-  which the kernel reads and inlines as GeoJSON. Remote URLs for the same formats stream through
-  the in-browser vector control and need no extras.
+  plus xarray/rioxarray/rasterio/rio-tiler support for in-memory rasters.
+  Colab uses rio-tiler to serve these as PNG XYZ tiles because its proxy does
+  not preserve browser COG byte ranges. `[vector]` and
+  `[raster]` install just one half each -- `[all]` pulls in rasterio (and GDAL).
+  The kernel reads local vectors and inlines them as GeoJSON; remote URLs for
+  those formats stream through the in-browser vector control and need no extras.
 - `add_geojson` inlines file/URL data into the project (up to 50 MB), so a large
   dataset is held in memory and re-synced on every project update. For very large
   layers, prefer a tile or COG source (`add_tile_layer`/`add_cog`) the app fetches

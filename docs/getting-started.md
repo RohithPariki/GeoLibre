@@ -92,7 +92,12 @@ See [iOS](ios.md) for what runs on mobile and for build details.
 
 - [GeoLibre 1.0: A Free, Open-Source Cloud-Native GIS That Runs Anywhere (Browser, Desktop & Jupyter)](https://youtu.be/87Cm0QagtxI)
 - [Geoprocessing in the Browser: 700+ Free GIS Tools in GeoLibre, Zero Install](https://youtu.be/W32bIQO_nG8)
+- [Access Free High-Resolution Disaster Satellite Imagery in Your Browser](https://youtu.be/QQ9i5CTNh84)
+- [Regularize Building Footprints in the Browser with GeoLibre](https://youtu.be/xjfPYxgEEEc)
 - [GeoLibre + GeoLens: A Modern GIS Stack for Self-Hosting Geospatial Data](https://youtu.be/kQqgrxXGd4o)
+- [Create Reusable GIS Workflows with GeoLibre Model Builder and AI Assistant](https://youtu.be/dzjNKM6slgs)
+
+All of them, with chapters and summaries, are on [Video Tutorials](tutorials/videos.md).
 
 ## Run from source
 
@@ -430,6 +435,24 @@ docker build --build-arg VITE_WELCOME_DISABLED=1 -t geolibre .
 
 Individual links can also opt out at runtime with `?welcome=0`. See
 [Embedding & Sharing](user-guide/embedding.md#url-parameters).
+
+#### Limiting what the deployment can do
+
+For a kiosk, an exhibit terminal, or a classroom instance, name the
+capabilities the interface may offer. Unset (the default) grants everything, so
+existing deployments are unchanged:
+
+```bash
+docker build \
+  --build-arg VITE_GEOLIBRE_CAPABILITIES="project:edit,data:add,processing:run,export:data" \
+  -t geolibre-classroom .
+```
+
+That example drops plugin installs and Settings. `none` grants nothing at all.
+This removes the affordances — menus, command palette entries, shortcuts,
+drag-and-drop, embed commands — but does **not** restrict the server, so keep
+the protections above in place too. See
+[Deployment Capabilities](deployment-capabilities.md).
 
 #### Driving an embedded map from a host page
 

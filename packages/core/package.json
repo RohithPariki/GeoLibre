@@ -1,6 +1,6 @@
 {
   "name": "@geolibre/core",
-  "version": "2.7.0",
+  "version": "2.8.0",
   "description": "GeoLibre domain types, project schema, and Zustand store",
   "keywords": [
     "geolibre",
@@ -44,7 +44,7 @@
   },
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "^26.2.1",
-    "uuid": "^14.0.1",
+    "uuid": "^14.0.2",
     "zundo": "^2.3.0",
     "zustand": "^5.0.15"
   },

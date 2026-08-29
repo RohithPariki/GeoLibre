@@ -102,7 +102,12 @@ Switch bodies from the planet switcher in the Layers panel. See [Demos](https://
 
 - [GeoLibre 1.0: A Free, Open-Source Cloud-Native GIS That Runs Anywhere (Browser, Desktop & Jupyter)](https://youtu.be/87Cm0QagtxI)
 - [Geoprocessing in the Browser: 700+ Free GIS Tools in GeoLibre, Zero Install](https://youtu.be/W32bIQO_nG8)
+- [Access Free High-Resolution Disaster Satellite Imagery in Your Browser](https://youtu.be/QQ9i5CTNh84)
+- [Regularize Building Footprints in the Browser with GeoLibre](https://youtu.be/xjfPYxgEEEc)
 - [GeoLibre + GeoLens: A Modern GIS Stack for Self-Hosting Geospatial Data](https://youtu.be/kQqgrxXGd4o)
+- [Create Reusable GIS Workflows with GeoLibre Model Builder and AI Assistant](https://youtu.be/dzjNKM6slgs)
+
+All of them, with chapters and summaries, are on the [Video Tutorials](https://geolibre.app/tutorials/videos/) page.
 
 ## Geoprocessing: 1,000+ tools, zero install
 
@@ -155,7 +160,7 @@ Full documentation, including the User Guide and Tutorials, is published at
   - [Plugin API](docs/plugin-api.md)
   - [UI Profiles](docs/ui-profiles.md)
   - [Internationalization](docs/i18n.md)
-  - [Python package (Jupyter)](docs/python.md)
+  - [Python package (Jupyter)](docs/python.md) — also supports `from geolibre import DashMap` for Dash (install `geolibre[dash]`)
   - [R package (RStudio, Quarto, and Shiny)](docs/r.md)
   - [Notebook Panel](docs/notebook.md)
   - [Roadmap](docs/roadmap.md)

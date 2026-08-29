@@ -209,7 +209,6 @@
   },
   "newProject": {
     "basemapDescription": "یک نقشهٔ پایهٔ OpenFreeMap یا Protomaps، یک پس‌زمینهٔ خالی، یا یک نشانی شیوهٔ نمایش MapLibre را انتخاب کنید.",
-    "basemapDescriptionNoProtomaps": "یک نقشهٔ پایهٔ OpenFreeMap، یک پس‌زمینهٔ خالی، یا یک نشانی شیوهٔ نمایش MapLibre را انتخاب کنید.",
     "sectionOpenFreeMap": "OpenFreeMap",
     "sectionProtomaps": "Protomaps",
     "sectionOther": "سایر",
@@ -227,7 +226,9 @@
     "create": "ساختن"
   },
   "basemapPicker": {
-    "title": "تغییر نقشهٔ پایه",
+    "title": "تغییر پس‌زمینه",
+    "description": "یک پس‌زمینه OpenFreeMap یا Protomaps، پس‌زمینه خالی یا نشانی سبک MapLibre انتخاب کنید.",
+    "descriptionNoProtomaps": "یک پس‌زمینه OpenFreeMap، پس‌زمینه خالی یا نشانی سبک MapLibre انتخاب کنید.",
     "applyCustom": "اعمال",
     "invalidUrl": "یک نشانی شیوهٔ نمایش معتبر HTTP یا HTTPS وارد کنید.",
     "sectionMoon": "ماه",
@@ -1051,6 +1052,7 @@
     "captureDescription": "موقعیتی را با GPS یا روی نقشه ثبت کنید، سپس فرم را پر کنید تا ذخیره شود.",
     "captureReviewDescription": "موقعیت ثبت‌شده را مرور کنید، فرم را کامل کنید و آن را در لایه ذخیره کنید.",
     "reopen": "باز کردن برداشت میدانی",
+    "reopenLayer": "باز کردن برداشت میدانی ({{layer}})",
     "targetLayer": "لایهٔ برداشت",
     "newLayer": "لایهٔ برداشت جدید…",
     "layerName": "نام لایه",
@@ -1987,6 +1989,13 @@
       "noProjectSelected": "هیچ پروژه‌ای انتخاب نشده است",
       "globeByDefault": "فعال‌سازی کرهٔ سه‌بعدی به‌صورت پیش‌فرض",
       "globeByDefaultHint": "برای فضای کاری بی‌نام استفاده می‌شود، هنگامی که پروژهٔ آغازین یا پیوند پروژه‌ای داده نشده باشد.",
+      "defaultView": "نمای پیش‌فرض نقشه",
+      "defaultViewHint": "مرکز و بزرگ‌نمایی فضای کاری بدون عنوان را تعیین کنید.",
+      "longitude": "طول جغرافیایی مرکز",
+      "latitude": "عرض جغرافیایی مرکز",
+      "zoom": "سطح بزرگ‌نمایی",
+      "useCurrentView": "استفاده از نمای کنونی",
+      "viewUnavailable": "نمای کنونی نقشه در دسترس نیست.",
       "selectError": "پروژهٔ برگزیده خوانده نشد.",
       "restoring": "در حال گشودن پروژهٔ آغازین شما…",
       "loadWarning": "پروژهٔ آغازین در دسترس نیست. GeoLibre به‌جای آن فضای کاری پیش‌فرض را گشود."
@@ -2133,6 +2142,10 @@
       "osEnvNote": "برنامهٔ دسکتاپ کلیدهای API متناظر را از متغیرهای محیطی سیستم شما هم می‌خواند. آن‌ها خودکار به کار می‌روند و هرگز در فایل پروژه ذخیره نمی‌شوند — برای ادامهٔ استفاده از مقدار محیطی، فیلد را خالی بگذارید.",
       "osEnvField": "از متغیر محیطی سیستم شما، {{name}}، خوانده می‌شود.",
       "osEnvPlaceholder": "در محیط سیستم شما تعیین شده است",
+      "refreshModels": "تازه‌سازی فهرست مدل‌ها",
+      "modelsFailedToLoad": "بارگذاری مدل‌ها ممکن نشد: {{message}}",
+      "ollamaNetworkFailure": "دسترسی به سرور Ollama ممکن نشد. بررسی کنید که روی این نشانی در حال اجرا باشد و OLLAMA_ORIGINS خاستگاه این برنامه را مجاز بداند، و قواعد دیوارهٔ آتش یا پیشکار را هم بررسی کنید.",
+      "ollamaTimedOut": "زمان درخواست به سرور Ollama به پایان رسید. ممکن است میزبان کند یا خارج از دسترس باشد، یا دیوارهٔ آتش یا پیشکار آن را مسدود کرده باشد.",
       "newProfile": "نمایهٔ جدید",
       "cancel": "لغو",
       "addProfile": "افزودن نمایه",
@@ -2540,7 +2553,8 @@
       "getisOrd": "نقاط داغ Getis-Ord Gi*",
       "averageNearestNeighbor": "میانگین نزدیک‌ترین همسایه",
       "kernelDensity": "چگالی کرنل (نقشهٔ حرارتی)",
-      "emergingHotSpot": "نقاط داغ نوپدید (مکعب فضا-زمان)"
+      "emergingHotSpot": "نقاط داغ نوپدید (مکعب فضا-زمان)",
+      "compositeScore": "امتیاز ترکیبی (شاخص تناسب)"
     },
     "rasterTool": {
       "hillshade": "سایه‌روشن زمین",
@@ -2814,6 +2828,7 @@
       "embedVectorTitle": "دادهٔ برداری محلی جاسازی شود؟",
       "embedVectorDesc": "این پروژه {{count}} لایهٔ برداری محلی دارد که از رایانهٔ شما بارگیری شده است. مرورگر هنگام باز شدن دوبارهٔ پروژه نمی‌تواند آن‌ها را دوباره بخواند، پس برای بازیابی باید داده‌شان در فایل پروژه جاسازی شود. جاسازی حدود {{size}} به فایل می‌افزاید.",
       "embedVectorDescDesktop": "این پروژه {{count}} لایهٔ برداری محلی دارد که از رایانهٔ شما بارگیری شده است. داده‌شان را جاسازی کنید تا پروژه خودبسنده شود (حدود {{size}} می‌افزاید)، یا ارجاع‌های فایل را ذخیره کنید تا هنگام باز شدن دوبارهٔ پروژه از دیسک بارگیری شوند. ارجاع‌ها فایل را کوچک نگه می‌دارند اما اگر فایل مبدأ بعداً جابه‌جا یا حذف شود می‌شکنند.",
+      "embedVectorDescMas": "این پروژه {{count}} لایهٔ برداری محلی دارد که از رایانهٔ شما بارگیری شده است. محیط ایزولهٔ Mac App Store پس از بسته شدن GeoLibre نمی‌تواند دسترسی به این فایل‌ها را حفظ کند، بنابراین برای بازیابی باید داده‌هایشان در فایل پروژه جاسازی شود. جاسازی حدود {{size}} به فایل می‌افزاید.",
       "embedVectorLargeWarning": "جاسازی حدود {{size}} یک فایل پروژهٔ بسیار بزرگ می‌سازد. بازکردن دوبارهٔ آن ممکن است کند باشد یا کاملاً شکست بخورد، چون همهٔ عارضه‌ها باید یکجا تجزیه و در حافظه نگهداری شوند. برای داده‌ای در این اندازه، لایه‌ها را به PMTiles یا FlatGeobuf تبدیل کنید و به‌جای جاسازی، آن‌ها را به‌صورت لایهٔ راه دور اضافه کنید.",
       "embedVectorEmbedButton": "جاسازی داده",
       "embedVectorReferenceButton": "ذخیرهٔ ارجاع‌های فایل",
@@ -3847,6 +3862,10 @@
     },
     "deleteLast": "حذف آخرین حاشیه‌نویسی",
     "clearAll": "پاک کردن همهٔ حاشیه‌نویسی‌ها",
+    "newLayer": "لایه حاشیه‌نویسی جدید",
+    "edit": "ویرایش عنصر",
+    "move": "عنصر را جابه‌جا کنید، سپس روی موقعیت جدید آن کلیک کنید",
+    "moveToLayer": "انتقال به لایه",
     "textPlaceholder": "برچسب را بنویسید، برای جای‌گذاری Enter بزنید",
     "pinTitlePrompt": "عنوان",
     "pinDescPrompt": "توضیح",
@@ -4289,9 +4308,31 @@
     "parameterField": {
       "selectLayer": "یک لایه برگزینید...",
       "selectField": "یک فیلد برگزینید...",
+      "selectOption": "یک گزینه انتخاب کنید...",
       "selectLayerFirst": "نخست یک لایه برگزینید",
       "layersSelected_one": "{{count}} لایه انتخاب شد",
       "layersSelected_other": "{{count}} لایه انتخاب شد"
+    },
+    "fieldWeights": {
+      "columnField": "فیلد",
+      "columnNormalization": "نرمال‌سازی",
+      "columnWeight": "وزن",
+      "columnDirection": "جهت",
+      "addField": "افزودن فیلد",
+      "removeAria": "حذف {{field}}",
+      "empty": "هنوز فیلدی وجود ندارد. برای ساختن یک امتیاز دست‌کم دو فیلد اضافه کنید.",
+      "shares": "وزن‌ها: {{shares}}",
+      "noWeight": "دست‌کم به یک فیلد وزنی بیشتر از صفر بدهید.",
+      "normalization": {
+        "minMax": "کمینه-بیشینه",
+        "zScore": "امتیاز Z",
+        "rank": "رتبه",
+        "quantile": "چندک"
+      },
+      "direction": {
+        "higher": "هرچه بیشتر، بهتر",
+        "lower": "هرچه کمتر، بهتر"
+      }
     },
     "whitebox": {
       "run": "اجرا",
@@ -5575,6 +5616,50 @@
               }
             }
           }
+        },
+        "composite-score": {
+          "name": "امتیاز ترکیبی (شاخص تناسب)",
+          "description": "چند فیلد عددی را نرمال و وزن‌دهی کنید و در یک شاخص واحد از 0 تا 100 ترکیب کنید، سپس لایه را بر پایهٔ آن سبک‌دهی کنید.",
+          "params": {
+            "layer": {
+              "label": "لایه"
+            },
+            "fields": {
+              "label": "فیلدها و وزن‌ها",
+              "description": "دو فیلد عددی یا بیشتر. هر فیلد یک روش نرمال‌سازی، یک وزن نسبی و آن سر بازه‌اش را می‌گیرد که امتیاز خوبی می‌آورد."
+            },
+            "aggregation": {
+              "label": "تجمیع",
+              "description": "در میانگین هندسی یک فیلد ضعیف امتیاز را پایین می‌کشد: فیلدی قوی نمی‌تواند آن را به‌طور کامل جبران کند.",
+              "options": {
+                "weighted-mean": "میانگین حسابی وزنی",
+                "geometric-mean": "میانگین هندسی وزنی"
+              }
+            },
+            "nullHandling": {
+              "label": "عوارض بدون مقدار",
+              "description": "پیش‌فرض امنی وجود ندارد: حذف کردن و نرمال‌سازی دوباره نقشه‌های متفاوتی می‌سازند، پس انتخاب کنید این شاخص کدام را می‌رساند.",
+              "options": {
+                "drop": "حذف عارضه از نتیجه",
+                "renormalize": "نرمال‌سازی دوبارهٔ وزن‌ها روی فیلدهایی که دارد"
+              }
+            },
+            "scoreField": {
+              "label": "نام فیلد امتیاز",
+              "description": "نام ستون عددی که امتیاز در آن نوشته می‌شود."
+            },
+            "scoreRange": {
+              "label": "بازهٔ امتیاز",
+              "options": {
+                "0-100": "0 تا 100",
+                "0-1": "0 تا 1"
+              }
+            },
+            "keepComponents": {
+              "label": "نگه‌داشتن مؤلفه‌های نرمال‌شده",
+              "description": "مقدار نرمال‌شدهٔ هر فیلد را در ستونی جداگانه می‌نویسد تا امتیاز به‌جای پذیرش بی‌چون‌وچرا قابل بررسی باشد."
+            }
+          }
         }
       },
       "raster": {
@@ -6745,6 +6830,60 @@
       "noFields": "این لایه هیچ فیلد صفتی برای پیکربندی ندارد.",
       "minMaxInvalid": "کمینه باید کوچک‌تر یا برابر بیشینه باشد."
     },
+    "popup": {
+      "heading": "پنجرهٔ بازشو",
+      "showOnClick": "نمایش پنجرهٔ بازشو با کلیک (شناسایی)",
+      "showOnHover": "نمایش راهنمای ابزار با نگه داشتن اشاره‌گر",
+      "hoverHint": "راهنمای ابزار عنوان و فیلدهایی را نشان می‌دهد که «در راهنمای ابزار» علامت زده‌اید.",
+      "titleField": "فیلد عنوان",
+      "titleFieldDefault": "نام لایه",
+      "titleExpression": "عبارت عنوان",
+      "titleExpressionPlaceholder": "[\"get\", \"name\"]",
+      "bodyExpression": "عبارت متن اصلی",
+      "bodyExpressionPlaceholder": "[\"concat\", [\"get\", \"name\"], \" has \", [\"to-string\", [\"get\", \"pop_max\"]], \" residents\"]",
+      "bodyExpressionHint": "عبارت متن اصلی به‌جای ردیف‌های فیلد، متن خودش را نشان می‌دهد.",
+      "bodyReplacesRows": "تا زمانی که عبارت متن اصلی تنظیم شده باشد، جای ردیف‌های فیلد و ردیف شناسه را می‌گیرد.",
+      "invalidExpression": "عبارت نامعتبر",
+      "openBuilder": "باز کردن سازندهٔ عبارت",
+      "showFeatureId": "نمایش ردیف شناسهٔ عارضه",
+      "fields": "فیلدها",
+      "allFields": "هیچ فیلدی انتخاب نشده است، پس همهٔ فیلدهای قابل نمایش به ترتیب خودِ داده‌ها نشان داده می‌شوند.",
+      "addField": "افزودن فیلد…",
+      "noFieldsLeft": "همهٔ فیلدها از پیش در فهرست هستند",
+      "chooseFields": "انتخاب فیلدها",
+      "resetFields": "نمایش همهٔ فیلدها",
+      "removeField": "حذف فیلد",
+      "moveUp": "بردن فیلد به بالا",
+      "moveDown": "بردن فیلد به پایین",
+      "dragToReorder": "برای تغییر ترتیب بکشید",
+      "dragNamedToReorder": "برای تغییر ترتیب {{name}} را بکشید",
+      "label": "برچسب",
+      "kind": "نوع مقدار",
+      "kinds": {
+        "auto": "خودکار",
+        "text": "متن",
+        "number": "عدد",
+        "date": "تاریخ",
+        "link": "پیوند",
+        "image": "تصویر"
+      },
+      "decimals": "رقم اعشار",
+      "thousands": "گروه‌بندی هزارگان",
+      "dateFormat": "قالب تاریخ",
+      "dateFormats": {
+        "date": "تاریخ",
+        "datetime": "تاریخ و زمان",
+        "time": "زمان",
+        "iso": "ISO 8601",
+        "year": "سال"
+      },
+      "linkLabel": "متن پیوند",
+      "linkLabelPlaceholder": "خودِ نشانی اینترنتی",
+      "prefix": "پیشوند",
+      "suffix": "پسوند",
+      "inHover": "در راهنمای ابزار",
+      "imageNotInHover": "فیلدهای تصویری در پنجرهٔ بازشوی کلیک می‌مانند؛ راهنمای ابزار جایی برای تصویر ندارد."
+    },
     "editorTracking": {
       "heading": "ردیابی ویرایش",
       "description": "ثبت کنید هر عارضه را چه کسی ساخته و آخرین بار چه کسی تغییر داده است. فیلدهای زیر هنگام ترسیم، ویرایش، محاسبه یا برداشت عارضه‌ها به‌طور خودکار پر می‌شوند.",
@@ -6760,6 +6899,51 @@
       "duplicateName": "هر فیلد ردیابی به نامی متفاوت نیاز دارد.",
       "columnTaken": "«{{name}}» از پیش یک فیلد صفت است. ردیابی مقادیر آن را بازنویسی می‌کند."
     }
+  },
+  "quickFilters": {
+    "heading": "فیلترهای سریع",
+    "empty": "هنوز فیلتری وجود ندارد. برای محدود کردن این لایه بر پایهٔ هر یک از فیلدهایش، در پایین یکی اضافه کنید.",
+    "addFilter": "افزودن فیلتر…",
+    "allFieldsUsed": "هر فیلد از پیش یک فیلتر دارد",
+    "removeAll": "حذف همه",
+    "clearAll": "پاک کردن فیلترها",
+    "clearOne": "پاک کردن این فیلتر",
+    "clearOneNamed": "پاک کردن فیلتر روی {{field}}",
+    "remove": "حذف فیلتر",
+    "removeNamed": "حذف فیلتر روی {{field}}",
+    "controlType": "نوع فیلتر",
+    "enabledTitle": "اعمال این فیلتر",
+    "kind": {
+      "categorical": "مقادیر",
+      "range": "بازه",
+      "date": "تاریخ‌ها",
+      "text": "متن"
+    },
+    "operator": {
+      "contains": "آن را در بر دارد",
+      "startsWith": "آغاز می‌شود با",
+      "equals": "دقیقاً برابر است با"
+    },
+    "searchValues": "جستجوی مقادیر",
+    "noValues": "این فیلد هیچ مقداری برای انتخاب ندارد.",
+    "noMatchingValues": "هیچ مقداری با جستجوی شما مطابقت ندارد.",
+    "selectAll": "انتخاب همه",
+    "selectNone": "انتخاب هیچ‌کدام",
+    "allValues": "همهٔ مقادیر",
+    "selectedCount_one": "{{count}} مورد انتخاب شد",
+    "selectedCount_other": "{{count}} مورد انتخاب شد",
+    "rangeMin": "کمینه",
+    "rangeMax": "بیشینه",
+    "rangeSeparator": "تا",
+    "dateFrom": "از",
+    "dateTo": "تا",
+    "textOperator": "تطابق",
+    "textValue": "متنی که باید مطابقت یابد",
+    "textPlaceholder": "برای فیلتر کردن بنویسید",
+    "noFields": "این لایه هیچ صفتی برای فیلتر کردن ندارد.",
+    "noTileFeatures": "هنوز هیچ عارضه‌ای بارگذاری نشده است. نقشه را جابه‌جا یا روی داده‌ها بزرگ‌نمایی کنید، سپس این بخش را دوباره باز کنید.",
+    "viewportSampleHint": "مقادیر از کاشی‌هایی می‌آیند که هم‌اکنون بارگذاری شده‌اند، بنابراین با جابه‌جایی و بزرگ‌نمایی نقشه فهرست بزرگ‌تر می‌شود.",
+    "layerFilteredHint": "یک فیلتر سریع بخشی از عوارض این لایه را پنهان کرده است."
   },
   "vectorExport": {
     "invalidKmlCoordinatesByPosition": "خروجی KML نتوانست عارضهٔ {{position}} را ایجاد کند، چون مختصات نامعتبر دارد.",
@@ -6777,6 +6961,10 @@
     "moveDown": "بردن به پایین",
     "zoomToLayer": "بزرگ‌نمایی روی لایه",
     "layerActions": "کنش‌های لایه",
+    "exportSketchesAsLayer": "خروجی طرح‌ها به‌عنوان لایه جدید",
+    "exportSketchesKeep": "حفظ عوارض در طرح‌ها",
+    "exportSketchesClear": "پاک‌کردن طرح‌ها پس از خروجی",
+    "exportedSketchesName": "خروجی طرح‌ها",
     "metadata": "فراداده",
     "removeLayer": "حذف لایه",
     "identifyFeatures": "شناسایی عوارض",
@@ -6864,16 +7052,24 @@
     "searchPlacesClear": "پاک کردن جستجو",
     "searchPlacesGoToCoordinate": "رفتن به {{coordinate}}",
     "searchPlacesGoToH3Cell": "رفتن به سلول H3 با شناسهٔ {{cell}} (تفکیک‌پذیری {{resolution}})",
+    "searchPlacesGroup": "مکان‌ها",
+    "searchFeaturesPartial": "(ناقص)",
     "background": "پس‌زمینه",
+    "typeBackground": "پس‌زمینه",
     "backgroundCannotReorder": "ترتیب پس‌زمینه تغییرپذیر نیست",
     "hideBackground": "پنهان کردن پس‌زمینه",
     "showBackground": "نمایش پس‌زمینه",
+    "changeBackground": "تغییر پس‌زمینه",
+    "backgroundAppearance": "ظاهر پس‌زمینه",
+    "blankBackground": "پس‌زمینه خالی",
+    "blankBackgroundDescription": "رنگ و شفافیت پس‌زمینه خالی را انتخاب کنید.",
+    "color": "رنگ",
     "opacity": "کدری",
     "opacityExactHint": "برای وارد کردن مقدار دقیق، دوبار کلیک کنید",
     "opacityFor": "کدری {{name}}",
     "opacityValueInputAria": "مقدار {{label}}",
     "opacityValueEditAria": "ویرایش مقدار {{label}}",
-    "basemapOpacity": "کدری نقشهٔ پایه",
+    "backgroundOpacity": "شفافیت پس‌زمینه",
     "newGroup": "گروه جدید",
     "basemaps": "نقشه‌های پایه",
     "geoEditor": "GeoEditor",
@@ -6891,7 +7087,7 @@
     "groupOpacity": "کدری",
     "groupOpacityAria": "کدری گروه {{name}}",
     "doubleClickToRename": "برای تغییر نام دوبار کلیک کنید",
-    "doubleClickToChangeBasemap": "برای تغییر نقشهٔ پایه دوبار کلیک کنید",
+    "doubleClickToChangeBackground": "برای تغییر پس‌زمینه دوبار کلیک کنید",
     "renameNamed": "تغییر نام {{name}}",
     "newGroupFromLayer": "گروه جدید از لایه",
     "newGroupFromSelectedLayers": "گروه جدید از لایه‌های انتخاب‌شده",

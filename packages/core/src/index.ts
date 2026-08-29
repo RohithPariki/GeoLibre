@@ -14,9 +14,12 @@ export * from "./vector-color";
 export * from "./expressions";
 export * from "./external-native-paint";
 export * from "./attribute-form";
+export * from "./popup";
 export * from "./joins";
 export * from "./virtual-fields";
+export * from "./quick-filters";
 export * from "./capabilities";
+export * from "./deployment-capabilities";
 export * from "./selection";
 export * from "./selection-actions";
 export * from "./scale-units";
@@ -28,6 +31,7 @@ export * from "./layer-library";
 export * from "./layer-defaults";
 export * from "./layer-style-clipboard";
 export * from "./layer-groups";
+export * from "./pixel-format";
 export * from "./print-layout-config";
 export { createSampleStoryMap } from "./storymap-sample";
 export {
@@ -46,6 +50,7 @@ export {
   canRedoProjectRestore,
   canUndoProjectRestore,
   DEFAULT_COLLABORATION_STATE,
+  IDENTIFY_ALL_LAYERS_ID,
   projectPathLabel,
   registerProjectRestoreHistory,
   subscribeProjectRestoreHistory,
@@ -115,6 +120,7 @@ export {
   type ReverseGeocodeDisplay,
 } from "./geocoding";
 export {
+  getBuildEnvironment,
   getCesiumIonToken,
   getGoogleMapsApiKey,
   getMapboxAccessToken,

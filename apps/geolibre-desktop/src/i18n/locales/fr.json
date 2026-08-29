@@ -209,7 +209,6 @@
   },
   "newProject": {
     "basemapDescription": "Choisissez un fond de carte OpenFreeMap ou Protomaps, un arrière-plan vierge, ou une URL de style MapLibre.",
-    "basemapDescriptionNoProtomaps": "Choisissez un fond de carte OpenFreeMap, un arrière-plan vierge, ou une URL de style MapLibre.",
     "sectionOpenFreeMap": "OpenFreeMap",
     "sectionProtomaps": "Protomaps",
     "sectionOther": "Autre",
@@ -227,7 +226,9 @@
     "create": "Créer"
   },
   "basemapPicker": {
-    "title": "Changer de fond de carte",
+    "title": "Changer l’arrière-plan",
+    "description": "Choisissez un arrière-plan OpenFreeMap ou Protomaps, un arrière-plan vide ou une URL de style MapLibre.",
+    "descriptionNoProtomaps": "Choisissez un arrière-plan OpenFreeMap, un arrière-plan vide ou une URL de style MapLibre.",
     "applyCustom": "Appliquer",
     "invalidUrl": "Entrez une URL de style HTTP ou HTTPS valide.",
     "sectionMoon": "La Lune",
@@ -1051,6 +1052,7 @@
     "captureDescription": "Capturez un emplacement par GPS ou sur la carte, puis remplissez le formulaire pour l'enregistrer.",
     "captureReviewDescription": "Vérifiez l'emplacement capturé, complétez le formulaire et enregistrez-le dans la couche.",
     "reopen": "Ouvrir la collecte de terrain",
+    "reopenLayer": "Ouvrir la collecte de terrain ({{layer}})",
     "targetLayer": "Couche de collecte",
     "newLayer": "Nouvelle couche de collecte…",
     "layerName": "Nom de la couche",
@@ -1987,6 +1989,13 @@
       "noProjectSelected": "Aucun projet sélectionné",
       "globeByDefault": "Activer le globe 3D par défaut",
       "globeByDefaultHint": "Utilisé pour l'espace de travail sans titre lorsqu'aucun projet de démarrage ni lien de projet n'est fourni.",
+      "defaultView": "Vue de carte par défaut",
+      "defaultViewHint": "Définissez le centre et le zoom de l'espace de travail sans titre.",
+      "longitude": "Longitude du centre",
+      "latitude": "Latitude du centre",
+      "zoom": "Niveau de zoom",
+      "useCurrentView": "Utiliser la vue actuelle",
+      "viewUnavailable": "La vue actuelle de la carte n'est pas disponible.",
       "selectError": "Impossible de lire le projet sélectionné.",
       "restoring": "Ouverture de votre projet de démarrage…",
       "loadWarning": "Le projet de démarrage est indisponible. GeoLibre a ouvert l'espace de travail par défaut à la place."
@@ -2133,6 +2142,10 @@
       "osEnvNote": "L'application de bureau lit aussi les clés API correspondantes depuis vos variables d'environnement système. Elles sont utilisées automatiquement et ne sont jamais enregistrées dans le fichier de projet — laissez un champ vide pour continuer à utiliser la valeur de l'environnement.",
       "osEnvField": "Lue depuis votre variable d'environnement système {{name}}.",
       "osEnvPlaceholder": "Définie dans votre environnement système",
+      "refreshModels": "Actualiser la liste des modèles",
+      "modelsFailedToLoad": "Impossible de charger les modèles : {{message}}",
+      "ollamaNetworkFailure": "Impossible de joindre le serveur Ollama. Vérifiez qu'il fonctionne à cette adresse, qu'OLLAMA_ORIGINS autorise l'origine de cette application, et que les règles de pare-feu ou de proxy n'y font pas obstacle.",
+      "ollamaTimedOut": "La requête au serveur Ollama a expiré. L'hôte est peut-être lent, inaccessible ou bloqué par un pare-feu ou un proxy.",
       "newProfile": "Nouveau profil",
       "cancel": "Annuler",
       "addProfile": "Ajouter un profil",
@@ -2540,7 +2553,8 @@
       "getisOrd": "Points chauds Getis-Ord Gi*",
       "averageNearestNeighbor": "Plus proche voisin moyen",
       "kernelDensity": "Densité de noyau (carte de chaleur)",
-      "emergingHotSpot": "Points chauds émergents (cube espace-temps)"
+      "emergingHotSpot": "Points chauds émergents (cube espace-temps)",
+      "compositeScore": "Score composite (indice d'aptitude)"
     },
     "rasterTool": {
       "hillshade": "Ombrage du relief",
@@ -2814,6 +2828,7 @@
       "embedVectorTitle": "Intégrer les données vectorielles locales ?",
       "embedVectorDesc": "Ce projet contient {{count}} couche(s) vectorielle(s) locale(s) chargée(s) depuis votre ordinateur. Le navigateur ne peut pas les relire lorsque le projet est rouvert, leurs données doivent donc être intégrées dans le fichier de projet pour être restaurées. L'intégration ajoute environ {{size}} au fichier.",
       "embedVectorDescDesktop": "Ce projet contient {{count}} couche(s) vectorielle(s) locale(s) chargée(s) depuis votre ordinateur. Intégrez leurs données pour rendre le projet autonome (ajoute environ {{size}}), ou enregistrez des références de fichiers qui se rechargent depuis le disque lorsque le projet est rouvert. Les références gardent le fichier léger mais se rompent si un fichier source est ensuite déplacé ou supprimé.",
+      "embedVectorDescMas": "Ce projet contient {{count}} couche(s) vectorielle(s) locale(s) chargée(s) depuis votre ordinateur. Le bac à sable du Mac App Store ne peut pas conserver l’accès à ces fichiers après la fermeture de GeoLibre. Leurs données doivent donc être intégrées au fichier du projet pour être restaurées. L’intégration ajoute environ {{size}} au fichier.",
       "embedVectorLargeWarning": "Incorporer environ {{size}} produit un fichier de projet très volumineux. Sa réouverture peut être lente, voire échouer, car chaque entité doit être analysée et conservée en mémoire en une seule fois. Pour des données de cette taille, convertissez les couches en PMTiles ou FlatGeobuf et ajoutez-les comme couches distantes plutôt que de les incorporer.",
       "embedVectorEmbedButton": "Intégrer les données",
       "embedVectorReferenceButton": "Enregistrer les références de fichiers",
@@ -3847,6 +3862,10 @@
     },
     "deleteLast": "Supprimer la dernière annotation",
     "clearAll": "Effacer toutes les annotations",
+    "newLayer": "Nouveau calque d’annotations",
+    "edit": "Modifier l’élément",
+    "move": "Déplacez l’élément, puis cliquez sur sa nouvelle position",
+    "moveToLayer": "Déplacer vers le calque",
     "textPlaceholder": "Saisissez l'étiquette, Entrée pour placer",
     "pinTitlePrompt": "Titre",
     "pinDescPrompt": "Description",
@@ -4289,9 +4308,31 @@
     "parameterField": {
       "selectLayer": "Sélectionner une couche...",
       "selectField": "Sélectionner un champ...",
+      "selectOption": "Sélectionnez une option...",
       "selectLayerFirst": "Sélectionnez d'abord une couche",
       "layersSelected_one": "{{count}} couche sélectionnée",
       "layersSelected_other": "{{count}} couches sélectionnées"
+    },
+    "fieldWeights": {
+      "columnField": "Champ",
+      "columnNormalization": "Normaliser",
+      "columnWeight": "Poids",
+      "columnDirection": "Sens",
+      "addField": "Ajouter un champ",
+      "removeAria": "Supprimer {{field}}",
+      "empty": "Aucun champ pour l'instant. Ajoutez-en au moins deux pour construire un score.",
+      "shares": "Poids : {{shares}}",
+      "noWeight": "Donnez à au moins un champ un poids supérieur à zéro.",
+      "normalization": {
+        "minMax": "Min-max",
+        "zScore": "Score Z",
+        "rank": "Rang",
+        "quantile": "Quantile"
+      },
+      "direction": {
+        "higher": "Plus la valeur est élevée, mieux c'est",
+        "lower": "Plus la valeur est faible, mieux c'est"
+      }
     },
     "whitebox": {
       "run": "Exécuter",
@@ -5575,6 +5616,50 @@
               }
             }
           }
+        },
+        "composite-score": {
+          "name": "Score composite (indice d'aptitude)",
+          "description": "Normalisez, pondérez et combinez plusieurs champs numériques en un seul indice de 0 à 100, puis stylisez la couche d'après cet indice.",
+          "params": {
+            "layer": {
+              "label": "Couche"
+            },
+            "fields": {
+              "label": "Champs et poids",
+              "description": "Deux champs numériques ou plus. Chacun reçoit une normalisation, un poids relatif et l'extrémité de sa plage qui obtient un bon score."
+            },
+            "aggregation": {
+              "label": "Agrégation",
+              "description": "La moyenne géométrique laisse un champ faible tirer le score vers le bas : un champ fort ne peut pas totalement le compenser.",
+              "options": {
+                "weighted-mean": "Moyenne arithmétique pondérée",
+                "geometric-mean": "Moyenne géométrique pondérée"
+              }
+            },
+            "nullHandling": {
+              "label": "Entités sans valeur",
+              "description": "Il n'existe pas de valeur par défaut sûre : abandonner ou renormaliser produit des cartes différentes, choisissez donc ce que signifie cet indice.",
+              "options": {
+                "drop": "Retirer l'entité du résultat",
+                "renormalize": "Renormaliser les poids sur les champs dont elle dispose"
+              }
+            },
+            "scoreField": {
+              "label": "Nom du champ de score",
+              "description": "Nom de la colonne numérique dans laquelle le score est écrit."
+            },
+            "scoreRange": {
+              "label": "Plage du score",
+              "options": {
+                "0-100": "0 à 100",
+                "0-1": "0 à 1"
+              }
+            },
+            "keepComponents": {
+              "label": "Conserver les composantes normalisées",
+              "description": "Écrit la valeur normalisée de chaque champ dans sa propre colonne, afin que le score puisse être vérifié plutôt qu'accepté sur parole."
+            }
+          }
         }
       },
       "raster": {
@@ -6745,6 +6830,60 @@
       "noFields": "La couche n'a aucun champ d'attribut à configurer.",
       "minMaxInvalid": "Le minimum doit être inférieur ou égal au maximum."
     },
+    "popup": {
+      "heading": "Fenêtre contextuelle",
+      "showOnClick": "Afficher la fenêtre contextuelle au clic (Identifier)",
+      "showOnHover": "Afficher l'infobulle au survol",
+      "hoverHint": "L'infobulle affiche le titre et les champs que vous cochez comme « Dans l'infobulle ».",
+      "titleField": "Champ du titre",
+      "titleFieldDefault": "Nom de la couche",
+      "titleExpression": "Expression du titre",
+      "titleExpressionPlaceholder": "[\"get\", \"name\"]",
+      "bodyExpression": "Expression du corps",
+      "bodyExpressionPlaceholder": "[\"concat\", [\"get\", \"name\"], \" has \", [\"to-string\", [\"get\", \"pop_max\"]], \" residents\"]",
+      "bodyExpressionHint": "Une expression de corps remplace les lignes de champs par son propre texte.",
+      "bodyReplacesRows": "Tant qu'une expression de corps est définie, elle remplace les lignes de champs et la ligne d'identifiant.",
+      "invalidExpression": "Expression non valide",
+      "openBuilder": "Ouvrir le générateur d'expressions",
+      "showFeatureId": "Afficher la ligne de l'identifiant de l'entité",
+      "fields": "Champs",
+      "allFields": "Aucun champ choisi : tous les champs visibles sont affichés, dans l'ordre propre aux données.",
+      "addField": "Ajouter un champ…",
+      "noFieldsLeft": "Tous les champs sont déjà listés",
+      "chooseFields": "Choisir les champs",
+      "resetFields": "Afficher tous les champs",
+      "removeField": "Supprimer le champ",
+      "moveUp": "Monter le champ",
+      "moveDown": "Descendre le champ",
+      "dragToReorder": "Faites glisser pour réorganiser",
+      "dragNamedToReorder": "Faites glisser {{name}} pour réorganiser",
+      "label": "Étiquette",
+      "kind": "Type de valeur",
+      "kinds": {
+        "auto": "Automatique",
+        "text": "Texte",
+        "number": "Nombre",
+        "date": "Date",
+        "link": "Lien",
+        "image": "Image"
+      },
+      "decimals": "Décimales",
+      "thousands": "Grouper les milliers",
+      "dateFormat": "Format de date",
+      "dateFormats": {
+        "date": "Date",
+        "datetime": "Date et heure",
+        "time": "Heure",
+        "iso": "ISO 8601",
+        "year": "Année"
+      },
+      "linkLabel": "Texte du lien",
+      "linkLabelPlaceholder": "L'URL elle-même",
+      "prefix": "Préfixe",
+      "suffix": "Suffixe",
+      "inHover": "Dans l'infobulle",
+      "imageNotInHover": "Les champs image restent dans la fenêtre contextuelle au clic ; une infobulle n'a pas la place d'afficher une image."
+    },
     "editorTracking": {
       "heading": "Suivi des modifications",
       "description": "Enregistrez qui a créé chaque entité et qui l'a modifiée en dernier. Les champs ci-dessous sont renseignés automatiquement lorsque des entités sont dessinées, modifiées, calculées ou saisies.",
@@ -6760,6 +6899,51 @@
       "duplicateName": "Chaque champ de suivi doit avoir un nom différent.",
       "columnTaken": "« {{name}} » est déjà une colonne d'attributs. Le suivi écraserait ses valeurs."
     }
+  },
+  "quickFilters": {
+    "heading": "Filtres rapides",
+    "empty": "Aucun filtre pour l'instant. Ajoutez-en un ci-dessous pour restreindre cette couche selon n'importe lequel de ses champs.",
+    "addFilter": "Ajouter un filtre…",
+    "allFieldsUsed": "Chaque champ a déjà un filtre",
+    "removeAll": "Tout supprimer",
+    "clearAll": "Effacer les filtres",
+    "clearOne": "Effacer ce filtre",
+    "clearOneNamed": "Effacer le filtre sur {{field}}",
+    "remove": "Supprimer le filtre",
+    "removeNamed": "Supprimer le filtre sur {{field}}",
+    "controlType": "Type de filtre",
+    "enabledTitle": "Appliquer ce filtre",
+    "kind": {
+      "categorical": "Valeurs",
+      "range": "Plage",
+      "date": "Dates",
+      "text": "Texte"
+    },
+    "operator": {
+      "contains": "Contient",
+      "startsWith": "Commence par",
+      "equals": "Est exactement"
+    },
+    "searchValues": "Rechercher des valeurs",
+    "noValues": "Ce champ n'a aucune valeur à proposer.",
+    "noMatchingValues": "Aucune valeur ne correspond à votre recherche.",
+    "selectAll": "Tout sélectionner",
+    "selectNone": "Ne rien sélectionner",
+    "allValues": "Toutes les valeurs",
+    "selectedCount_one": "{{count}} sélectionné",
+    "selectedCount_other": "{{count}} sélectionnés",
+    "rangeMin": "Minimum",
+    "rangeMax": "Maximum",
+    "rangeSeparator": "à",
+    "dateFrom": "Du",
+    "dateTo": "Au",
+    "textOperator": "Correspondance",
+    "textValue": "Texte à rechercher",
+    "textPlaceholder": "Saisissez pour filtrer",
+    "noFields": "Cette couche n'a aucun attribut sur lequel filtrer.",
+    "noTileFeatures": "Aucune entité n'est encore chargée. Déplacez la carte ou zoomez sur les données, puis rouvrez cette section.",
+    "viewportSampleHint": "Les valeurs proviennent des tuiles actuellement chargées : la liste s'étoffe donc à mesure que vous déplacez la carte et zoomez.",
+    "layerFilteredHint": "Un filtre rapide masque une partie des entités de cette couche."
   },
   "vectorExport": {
     "invalidKmlCoordinatesByPosition": "L'export KML n'a pas pu écrire l'entité {{position}} car ses coordonnées sont invalides.",
@@ -6777,6 +6961,10 @@
     "moveDown": "Descendre",
     "zoomToLayer": "Zoomer sur la couche",
     "layerActions": "Actions de la couche",
+    "exportSketchesAsLayer": "Exporter les croquis comme nouveau calque",
+    "exportSketchesKeep": "Conserver les entités dans Croquis",
+    "exportSketchesClear": "Effacer les croquis après l’export",
+    "exportedSketchesName": "Export des croquis",
     "metadata": "Métadonnées",
     "removeLayer": "Supprimer la couche",
     "identifyFeatures": "Identifier les entités",
@@ -6864,16 +7052,24 @@
     "searchPlacesClear": "Effacer la recherche",
     "searchPlacesGoToCoordinate": "Aller à {{coordinate}}",
     "searchPlacesGoToH3Cell": "Aller à la cellule H3 {{cell}} (rés. {{resolution}})",
+    "searchPlacesGroup": "Lieux",
+    "searchFeaturesPartial": "(partiel)",
     "background": "Arrière-plan",
+    "typeBackground": "arrière-plan",
     "backgroundCannotReorder": "L'arrière-plan ne peut pas être réorganisé",
     "hideBackground": "Masquer l'arrière-plan",
     "showBackground": "Afficher l'arrière-plan",
+    "changeBackground": "Changer l’arrière-plan",
+    "backgroundAppearance": "Apparence de l’arrière-plan",
+    "blankBackground": "Arrière-plan vide",
+    "blankBackgroundDescription": "Choisissez la couleur et l’opacité de l’arrière-plan vide.",
+    "color": "Couleur",
     "opacity": "Opacité",
     "opacityExactHint": "Double-cliquez pour saisir une valeur exacte",
     "opacityFor": "Opacité de {{name}}",
     "opacityValueInputAria": "Valeur de {{label}}",
     "opacityValueEditAria": "Modifier la valeur de {{label}}",
-    "basemapOpacity": "Opacité du fond de carte",
+    "backgroundOpacity": "Opacité de l’arrière-plan",
     "newGroup": "Nouveau groupe",
     "basemaps": "Fonds de carte",
     "geoEditor": "GeoEditor",
@@ -6891,7 +7087,7 @@
     "groupOpacity": "Opacité",
     "groupOpacityAria": "Opacité du groupe {{name}}",
     "doubleClickToRename": "Double-cliquez pour renommer",
-    "doubleClickToChangeBasemap": "Double-cliquez pour changer le fond de carte",
+    "doubleClickToChangeBackground": "Double-cliquez pour changer l’arrière-plan",
     "renameNamed": "Renommer {{name}}",
     "newGroupFromLayer": "Nouveau groupe depuis la couche",
     "newGroupFromSelectedLayers": "Nouveau groupe depuis les couches sélectionnées",
