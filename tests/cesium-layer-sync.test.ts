@@ -21,6 +21,9 @@ function makeFakes() {
     primitivesRemoved: [] as unknown[],
     urlProviders: [] as Record<string, unknown>[],
     wmsProviders: [] as Record<string, unknown>[],
+    arcgisProviders: [] as { url: unknown; options?: Record<string, unknown> }[],
+    wmtsProviders: [] as Record<string, unknown>[],
+    singleTileProviders: [] as { url: unknown; options?: Record<string, unknown> }[],
     geojsonLoads: [] as { data: unknown; options: Record<string, unknown> }[],
     tilesetUrls: [] as unknown[],
   };
@@ -80,6 +83,37 @@ function makeFakes() {
         this.url = opts.url as string | undefined;
         calls.wmsProviders.push(opts);
       }
+    },
+    WebMapTileServiceImageryProvider: class {
+      url?: string;
+      constructor(opts: Record<string, unknown>) {
+        this.url = opts.url as string | undefined;
+        calls.wmtsProviders.push(opts);
+      }
+    },
+    ArcGisMapServerImageryProvider: {
+      fromUrl: (url: unknown, options?: Record<string, unknown>) => {
+        calls.arcgisProviders.push({ url, options });
+        const providerUrl =
+          typeof url === "string" ? url : (url as { opts?: { url?: string } })?.opts?.url;
+        return Promise.resolve({ url: providerUrl });
+      },
+    },
+    SingleTileImageryProvider: {
+      fromUrl: (url: unknown, options?: Record<string, unknown>) => {
+        calls.singleTileProviders.push({ url, options });
+        const providerUrl =
+          typeof url === "string" ? url : (url as { opts?: { url?: string } })?.opts?.url;
+        return Promise.resolve({ url: providerUrl });
+      },
+    },
+    Rectangle: {
+      fromDegrees: (west: number, south: number, east: number, north: number) => ({
+        west,
+        south,
+        east,
+        north,
+      }),
     },
     GeoJsonDataSource: {
       load: (data: unknown, options: Record<string, unknown>) => {
@@ -407,8 +441,248 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.imageryRemoved.length, 1);
   });
 
+  it("renders an arcgis MapServer layer via ArcGisMapServerImageryProvider.fromUrl", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "arc",
+        type: "arcgis",
+        source: {
+          url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+          layers: "show:0,1",
+          token: "secret-token",
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 1);
+    assert.equal(
+      f.calls.arcgisProviders[0].url,
+      "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+    );
+    assert.equal(f.calls.arcgisProviders[0].options?.layers, "0,1");
+    assert.equal(f.calls.arcgisProviders[0].options?.token, "secret-token");
+    assert.equal(f.calls.imageryAdded.length, 1);
+  });
+
+  it("forwards requestHeaders on an arcgis layer via Cesium.Resource", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "arc",
+        type: "arcgis",
+        source: {
+          url: "https://secure.arcgis/MapServer",
+          requestHeaders: { Authorization: "Bearer token123" },
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 1);
+    const res = f.calls.arcgisProviders[0].url as {
+      opts: { url: string; headers: Record<string, string> };
+    };
+    assert.equal(res.opts.url, "https://secure.arcgis/MapServer");
+    assert.equal(res.opts.headers["Authorization"], "Bearer token123");
+  });
+
+  it("skips an arcgis feature layer in imagery sync", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "feat",
+        type: "arcgis",
+        source: {
+          url: "https://server/arcgis/rest/services/USA/FeatureServer/0",
+          layerType: "feature",
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 0);
+    assert.equal(f.calls.imageryAdded.length, 0);
+  });
+
+  it("rebuilds an arcgis layer when url or sublayers change", async () => {
+    const sync = newSync(f);
+    const base = mkLayer({
+      id: "arc",
+      type: "arcgis",
+      source: {
+        url: "https://server/MapServer",
+        sublayers: "1,2",
+      },
+    });
+    sync.sync([base]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 1);
+
+    sync.sync([{ ...base, source: { ...base.source, sublayers: "1,2,3" } }]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 2);
+    assert.equal(f.calls.imageryRemoved.length, 1);
+    assert.equal(f.calls.arcgisProviders[1].options?.layers, "1,2,3");
+  });
+
+  it("renders a capabilities-driven wmts layer via WebMapTileServiceImageryProvider", () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "wmts",
+        type: "wmts",
+        source: {
+          url: "https://wmts.service/endpoint",
+          layer: "ortho",
+          style: "default",
+          format: "image/png",
+          tileMatrixSetID: "EPSG:3857",
+          minzoom: 1,
+          maxzoom: 19,
+        },
+      }),
+    ]);
+    assert.equal(f.calls.wmtsProviders.length, 1);
+    assert.equal(f.calls.wmtsProviders[0].url, "https://wmts.service/endpoint");
+    assert.equal(f.calls.wmtsProviders[0].layer, "ortho");
+    assert.equal(f.calls.wmtsProviders[0].style, "default");
+    assert.equal(f.calls.wmtsProviders[0].format, "image/png");
+    assert.equal(f.calls.wmtsProviders[0].tileMatrixSetID, "EPSG:3857");
+    assert.equal(f.calls.wmtsProviders[0].minimumLevel, 1);
+    assert.equal(f.calls.wmtsProviders[0].maximumLevel, 19);
+    assert.equal(f.calls.imageryAdded.length, 1);
+  });
+
+  it("rebuilds a wmts layer when tileMatrixSetID or layer changes", () => {
+    const sync = newSync(f);
+    const base = mkLayer({
+      id: "wmts",
+      type: "wmts",
+      source: {
+        url: "https://wmts.service/endpoint",
+        layer: "l1",
+        tileMatrixSetID: "setA",
+      },
+    });
+    sync.sync([base]);
+    assert.equal(f.calls.wmtsProviders.length, 1);
+    sync.sync([{ ...base, source: { ...base.source, tileMatrixSetID: "setB" } }]);
+    assert.equal(f.calls.wmtsProviders.length, 2);
+    assert.equal(f.calls.imageryRemoved.length, 1);
+    assert.equal(f.calls.wmtsProviders[1].tileMatrixSetID, "setB");
+  });
+
+  it("renders an image layer via SingleTileImageryProvider from bounds or coordinates", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "img1",
+        type: "image",
+        source: {
+          url: "https://images.org/photo.png",
+          bounds: [-122.5, 37.5, -122.0, 38.0],
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 1);
+    assert.equal(f.calls.singleTileProviders[0].url, "https://images.org/photo.png");
+    assert.deepEqual(f.calls.singleTileProviders[0].options?.rectangle, {
+      west: -122.5,
+      south: 37.5,
+      east: -122.0,
+      north: 38.0,
+    });
+    assert.equal(f.calls.imageryAdded.length, 1);
+
+    // Test with 4 corner coordinates (top-left, top-right, bottom-right, bottom-left)
+    const sync2 = newSync(f);
+    sync2.sync([
+      mkLayer({
+        id: "img2",
+        type: "image",
+        source: {
+          url: "data:image/png;base64,AAA",
+          coordinates: [
+            [-10, 20],
+            [5, 20],
+            [5, 10],
+            [-10, 10],
+          ],
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 2);
+    assert.deepEqual(f.calls.singleTileProviders[1].options?.rectangle, {
+      west: -10,
+      south: 10,
+      east: 5,
+      north: 20,
+    });
+  });
+
+  it("rebuilds an image layer when url or bounds change", async () => {
+    const sync = newSync(f);
+    const base = mkLayer({
+      id: "img",
+      type: "image",
+      source: {
+        url: "https://images.org/a.png",
+        bounds: [0, 0, 10, 10],
+      },
+    });
+    sync.sync([base]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 1);
+
+    sync.sync([{ ...base, source: { ...base.source, bounds: [0, 0, 15, 15] } }]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 2);
+    assert.equal(f.calls.imageryRemoved.length, 1);
+  });
+
+  it("skips an image layer missing bounds or coordinates", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "img",
+        type: "image",
+        source: { url: "https://images.org/a.png" },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 0);
+    assert.equal(f.calls.imageryAdded.length, 0);
+  });
+
+  it("re-asserts imagery stacking after an async provider resolves", async () => {
+    const sync = newSync(f);
+    const A = mkLayer({ id: "a", type: "xyz", source: { tiles: ["a/{z}/{x}/{y}"] } });
+    const B = mkLayer({
+      id: "b",
+      type: "arcgis",
+      source: { url: "https://server/MapServer" },
+    });
+    const C = mkLayer({ id: "c", type: "xyz", source: { tiles: ["c/{z}/{x}/{y}"] } });
+    sync.sync([A, B, C]);
+    await f.flush();
+    assert.deepEqual(
+      f.calls.imageryStack.map((l) => l.url),
+      ["a/{z}/{x}/{y}", "https://server/MapServer", "c/{z}/{x}/{y}"],
+    );
+  });
+
   it("classifies supported vs 2D-only layer kinds", () => {
-    for (const type of ["geojson", "xyz", "raster", "wms", "wmts", "3d-tiles"] as const) {
+    for (const type of [
+      "geojson",
+      "xyz",
+      "raster",
+      "wms",
+      "wmts",
+      "arcgis",
+      "image",
+      "3d-tiles",
+    ] as const) {
       assert.equal(isCesiumSupportedLayerType(mkLayer({ type })), true, type);
     }
     for (const type of [

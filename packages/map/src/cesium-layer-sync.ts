@@ -15,7 +15,7 @@ import type { Cesium3DTileset, CesiumWidget, DataSource, ImageryLayer } from "@c
 type CesiumNs = typeof import("@cesium/engine");
 
 /** Layer kinds this pass renders on the globe. */
-const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts"]);
+const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "arcgis", "image"]);
 
 type EntryKind = "imagery" | "geojson" | "3dtiles";
 
@@ -45,6 +45,40 @@ function tilesetUrl(layer: GeoLibreLayer): string | undefined {
 }
 
 /**
+ * Extracts the 2D bounding box [west, south, east, north] in degrees from
+ * an image layer's source bounds or its four corner coordinates.
+ */
+function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | undefined {
+  const b = layer.source.bounds;
+  if (
+    Array.isArray(b) &&
+    b.length === 4 &&
+    b.every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
+    return [b[0], b[1], b[2], b[3]];
+  }
+  const c = layer.source.coordinates;
+  if (
+    Array.isArray(c) &&
+    c.length === 4 &&
+    c.every(
+      (pt) =>
+        Array.isArray(pt) &&
+        pt.length >= 2 &&
+        typeof pt[0] === "number" &&
+        Number.isFinite(pt[0]) &&
+        typeof pt[1] === "number" &&
+        Number.isFinite(pt[1]),
+    )
+  ) {
+    const lngs = c.map((pt) => pt[0]);
+    const lats = c.map((pt) => pt[1]);
+    return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+  }
+  return undefined;
+}
+
+/**
  * Whether the globe can render this layer *kind* at all (regardless of whether
  * its data has loaded yet). Exported so the UI can flag "2D only" layers on a
  * globe pane. See the module header for the supported kinds.
@@ -58,9 +92,17 @@ function isSupported(layer: GeoLibreLayer): boolean {
   if (!isCesiumSupportedLayerType(layer)) return false;
   if (layer.type === "geojson") return Boolean(layer.geojson?.features?.length);
   if (layer.type === "3d-tiles") return Boolean(tilesetUrl(layer));
-  // Mirror createImagery's real capability: WMS builds from source.url, but
-  // xyz/raster/wmts need a tile template — a url alone would render nothing.
-  return layer.type === "wms" ? Boolean(str(layer.source.url)) : Boolean(firstTile(layer));
+  if (layer.type === "arcgis") {
+    // FeatureServer is handled as GeoJSON; MapServer needs a service URL.
+    return layer.source.layerType !== "feature" && Boolean(str(layer.source.url));
+  }
+  if (layer.type === "image") {
+    return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
+  }
+  if (layer.type === "wms" || layer.type === "wmts") {
+    return Boolean(str(layer.source.url)) || Boolean(firstTile(layer));
+  }
+  return Boolean(firstTile(layer));
 }
 
 function entryKind(layer: GeoLibreLayer): EntryKind {
@@ -100,12 +142,20 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         prev.source.minzoom !== next.source.minzoom ||
         str(prev.source.url) !== str(next.source.url) ||
         str(prev.source.layers) !== str(next.source.layers) ||
-        // WMS GetMap params baked into the provider at creation; a change must
-        // rebuild it so the globe doesn't keep the stale WebMapServiceImageryProvider.
+        str(prev.source.sublayers) !== str(next.source.sublayers) ||
+        str(prev.source.layer) !== str(next.source.layer) ||
+        str(prev.source.style) !== str(next.source.style) ||
         str(prev.source.styles) !== str(next.source.styles) ||
+        str(prev.source.tileMatrixSetID) !== str(next.source.tileMatrixSetID) ||
+        str(prev.source.tileMatrixSet) !== str(next.source.tileMatrixSet) ||
+        // WMS/WMTS params baked into the provider at creation; a change must
+        // rebuild it so the globe doesn't keep the stale provider.
         str(prev.source.format) !== str(next.source.format) ||
         str(prev.source.version) !== str(next.source.version) ||
-        prev.source.transparent !== next.source.transparent
+        prev.source.transparent !== next.source.transparent ||
+        JSON.stringify(imageBounds(prev)) !== JSON.stringify(imageBounds(next)) ||
+        JSON.stringify(prev.source.requestHeaders ?? null) !==
+          JSON.stringify(next.source.requestHeaders ?? null)
       );
     case "3dtiles":
       return (
@@ -121,6 +171,8 @@ export class CesiumLayerSync {
   private readonly entries = new Map<string, LayerEntry>();
   /** Imagery id order last asserted on the globe, to skip redundant reorders. */
   private lastImageryOrder = "";
+  /** Active layer list from the current/latest sync pass. */
+  private currentLayers: GeoLibreLayer[] = [];
 
   constructor(
     private readonly Cesium: CesiumNs,
@@ -129,6 +181,7 @@ export class CesiumLayerSync {
 
   /** Reconcile the globe to `layers` (order preserved for imagery stacking). */
   sync(layers: GeoLibreLayer[]): void {
+    this.currentLayers = layers;
     const nextIds = new Set(layers.map((l) => l.id));
     for (const [id, entry] of this.entries) {
       if (!nextIds.has(id)) {
@@ -181,12 +234,7 @@ export class CesiumLayerSync {
       .map((l) => l.id)
       .join("\n");
     if (imageryRebuilt || imageryOrder !== this.lastImageryOrder) {
-      for (const layer of layers) {
-        const entry = this.entries.get(layer.id);
-        if (entry?.kind === "imagery" && entry.handle) {
-          this.viewer.imageryLayers.raiseToTop(entry.handle as ImageryLayer);
-        }
-      }
+      this.reorderImagery();
       this.lastImageryOrder = imageryOrder;
     }
   }
@@ -196,26 +244,75 @@ export class CesiumLayerSync {
     this.entries.clear();
   }
 
+  private reorderImagery(): void {
+    for (const layer of this.currentLayers) {
+      const entry = this.entries.get(layer.id);
+      if (entry?.kind === "imagery" && entry.handle) {
+        this.viewer.imageryLayers.raiseToTop(entry.handle as ImageryLayer);
+      }
+    }
+  }
+
   private createEntry(layer: GeoLibreLayer): void {
     const kind = entryKind(layer);
     const entry: LayerEntry = { kind, layer, handle: null, cancelled: false };
     this.entries.set(layer.id, entry);
-    if (kind === "imagery") this.createImagery(entry);
+    if (kind === "imagery") void this.createImagery(entry);
     else if (kind === "geojson") void this.createGeoJson(entry);
     else void this.createTileset(entry);
   }
 
-  private createImagery(entry: LayerEntry): void {
+  private async createImagery(entry: LayerEntry): Promise<void> {
     const { Cesium, viewer } = this;
     const layer = entry.layer;
     try {
-      let provider;
-      if (layer.type === "wms" && str(layer.source.url)) {
-        // Pass through the same GetMap params the 2D path records on the layer
-        // (WmsSource.tsx), so a non-default style/format/version or an opaque
-        // (transparent:false) overlay renders the same on the globe as on the map.
+      let provider: import("@cesium/engine").ImageryProvider | undefined;
+      let isAsync = false;
+      const headers = layer.source.requestHeaders as Record<string, string> | undefined;
+      const makeResource = (url: string) =>
+        headers && Object.keys(headers).length ? new Cesium.Resource({ url, headers }) : url;
+
+      if (layer.type === "arcgis" && str(layer.source.url)) {
+        isAsync = true;
+        const url = String(layer.source.url);
+        const resource = makeResource(url);
+        const sublayers =
+          str(layer.source.layers) ??
+          str(layer.source.sublayers) ??
+          str(layer.metadata?.arcgisSublayers);
+        const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
+        const options: Record<string, unknown> = {};
+        if (cleanLayers) options.layers = cleanLayers;
+        if (str(layer.source.token)) options.token = String(layer.source.token);
+
+        if (typeof Cesium.ArcGisMapServerImageryProvider?.fromUrl === "function") {
+          provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(resource, options);
+        } else {
+          provider = new (Cesium.ArcGisMapServerImageryProvider as unknown as new (
+            opts: Record<string, unknown>,
+          ) => import("@cesium/engine").ImageryProvider)({ url: resource, ...options });
+        }
+      } else if (layer.type === "image" && str(layer.source.url)) {
+        isAsync = true;
+        const url = String(layer.source.url);
+        const bounds = imageBounds(layer);
+        if (!bounds) return;
+        const resource = makeResource(url);
+        const rectangle = Cesium.Rectangle.fromDegrees(bounds[0], bounds[1], bounds[2], bounds[3]);
+        const options = { rectangle };
+
+        if (typeof Cesium.SingleTileImageryProvider?.fromUrl === "function") {
+          provider = await Cesium.SingleTileImageryProvider.fromUrl(resource, options);
+        } else {
+          provider = new (Cesium.SingleTileImageryProvider as unknown as new (
+            opts: Record<string, unknown>,
+          ) => import("@cesium/engine").ImageryProvider)({ url: resource, ...options });
+        }
+      } else if (layer.type === "wms" && str(layer.source.url)) {
+        const url = String(layer.source.url);
+        const resource = makeResource(url);
         provider = new Cesium.WebMapServiceImageryProvider({
-          url: String(layer.source.url),
+          url: resource as string,
           layers: String(layer.source.layers ?? ""),
           parameters: {
             transparent: layer.source.transparent !== false,
@@ -224,27 +321,58 @@ export class CesiumLayerSync {
             version: str(layer.source.version) ?? "1.1.1",
           },
         });
+      } else if (
+        layer.type === "wmts" &&
+        str(layer.source.url) &&
+        (str(layer.source.layer) ||
+          str(layer.source.layers) ||
+          str(layer.source.tileMatrixSetID) ||
+          str(layer.source.tileMatrixSet) ||
+          !firstTile(layer))
+      ) {
+        const url = String(layer.source.url);
+        const resource = makeResource(url);
+        const maxLevel = Number(layer.source.maxzoom);
+        const minLevel = Number(layer.source.minzoom);
+        provider = new Cesium.WebMapTileServiceImageryProvider({
+          url: resource as string,
+          layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
+          style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
+          format: str(layer.source.format) ?? "image/jpeg",
+          tileMatrixSetID:
+            str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
+          maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
+          minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
+        });
       } else {
         const url = firstTile(layer);
         if (!url) return;
+        const resource = makeResource(url);
         const maxLevel = Number(layer.source.maxzoom);
         const minLevel = Number(layer.source.minzoom);
         provider = new Cesium.UrlTemplateImageryProvider({
-          url,
+          url: resource as string,
           maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
-          // Honour the service's min-zoom floor so the globe doesn't request
-          // (and 404 on) tiles below the levels the service actually serves.
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
         });
       }
+
+      if (!provider || entry.cancelled) return;
       // addImageryProvider appends above the base imagery (and earlier store
       // layers), so store order maps to Cesium's bottom-to-top stacking.
       const imageryLayer = viewer.imageryLayers.addImageryProvider(provider);
+      if (entry.cancelled) {
+        viewer.imageryLayers.remove(imageryLayer, true);
+        return;
+      }
       entry.handle = imageryLayer;
       this.applyAppearance(entry);
+      if (isAsync) {
+        this.reorderImagery();
+      }
     } catch {
-      // A provider that throws synchronously (e.g. malformed WMS params) should
-      // not abort the sync pass; mirror createGeoJson/createTileset's best-effort.
+      // A provider that throws synchronously (e.g. malformed params) or rejects
+      // should not abort the sync pass; mirror createGeoJson/createTileset's best-effort.
     }
   }
 
