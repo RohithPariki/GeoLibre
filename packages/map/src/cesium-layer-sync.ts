@@ -298,7 +298,10 @@ export class CesiumLayerSync {
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
         const token = str(layer.source.token);
-        if (token) options.token = token;
+        if (token) {
+          if (!url.startsWith("https://")) return;
+          options.token = token;
+        }
 
         if (typeof Cesium.ArcGisMapServerImageryProvider?.fromUrl === "function") {
           provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(resource, options);
@@ -336,7 +339,12 @@ export class CesiumLayerSync {
             version: str(layer.source.version) ?? "1.1.1",
           },
         });
-      } else if (layer.type === "wmts" && str(layer.source.url) && !firstTile(layer)) {
+      } else if (
+        layer.type === "wmts" &&
+        str(layer.source.url) &&
+        !firstTile(layer) &&
+        (str(layer.source.layer) || str(layer.source.layers))
+      ) {
         const url = String(layer.source.url);
         const resource = makeResource(url);
         const maxLevel = Number(layer.source.maxzoom);
