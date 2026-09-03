@@ -149,8 +149,15 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         prev.source.maxzoom !== next.source.maxzoom ||
         prev.source.minzoom !== next.source.minzoom ||
         str(prev.source.url) !== str(next.source.url) ||
+        str(prev.sourcePath) !== str(next.sourcePath) ||
+        str(prev.metadata?.arcgisSublayers) !== str(next.metadata?.arcgisSublayers) ||
+        str(prev.source.token) !== str(next.source.token) ||
         str(prev.source.layers) !== str(next.source.layers) ||
+        str(prev.source.layer) !== str(next.source.layer) ||
         str(prev.source.styles) !== str(next.source.styles) ||
+        str(prev.source.style) !== str(next.source.style) ||
+        str(prev.source.tileMatrixSetID) !== str(next.source.tileMatrixSetID) ||
+        str(prev.source.tileMatrixSet) !== str(next.source.tileMatrixSet) ||
         // WMS/WMTS params baked into the provider at creation; a change must
         // rebuild it so the globe doesn't keep the stale provider.
         str(prev.source.format) !== str(next.source.format) ||
@@ -273,7 +280,7 @@ export class CesiumLayerSync {
       let isAsync = false;
       const headers = layer.source.requestHeaders as Record<string, string> | undefined;
       const makeResource = (url: string) =>
-        headers && Object.keys(headers).length ? new Cesium.Resource({ url, headers }) : url;
+        headers && Object.keys(headers).length && url.startsWith("https://") ? new Cesium.Resource({ url, headers }) : url;
 
       if (
         layer.type === "raster" &&
@@ -288,12 +295,8 @@ export class CesiumLayerSync {
         const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
-        const token =
-          str(layer.source.token) ?? (layer.metadata?.hasAccessToken ? undefined : undefined); // MapLibre stores it via arcgis url, Cesium needs it in options if available
-        // Wait, MapServer token is already embedded in the /export tile URLs but for Cesium's provider we need to pass token directly
-        // However, we don't store token in layer state directly. Let's just use what's available.
-        // But the previous PR added str(layer.source.token).
-        if (str(layer.source.token)) options.token = String(layer.source.token);
+        const token = str(layer.source.token);
+        if (token) options.token = token;
 
         if (typeof Cesium.ArcGisMapServerImageryProvider?.fromUrl === "function") {
           provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(resource, options);
@@ -330,6 +333,20 @@ export class CesiumLayerSync {
             styles: str(layer.source.styles) ?? "",
             version: str(layer.source.version) ?? "1.1.1",
           },
+        });
+      } else if (layer.type === "wmts" && str(layer.source.url) && !firstTile(layer)) {
+        const url = String(layer.source.url);
+        const resource = makeResource(url);
+        const maxLevel = Number(layer.source.maxzoom);
+        const minLevel = Number(layer.source.minzoom);
+        provider = new Cesium.WebMapTileServiceImageryProvider({
+          url: resource as string,
+          layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
+          style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
+          format: str(layer.source.format) ?? "image/jpeg",
+          tileMatrixSetID: str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
+          maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
+          minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
         });
       } else {
         const url = firstTile(layer);
