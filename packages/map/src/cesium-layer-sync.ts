@@ -77,7 +77,13 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
     // approximation for now.
     const lngs = c.map((pt) => pt[0]);
     const lats = c.map((pt) => pt[1]);
-    return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+    let minLng = Math.min(...lngs);
+    let maxLng = Math.max(...lngs);
+    if (maxLng - minLng > 180) {
+      minLng = Math.min(...lngs.filter((lng) => lng > 0));
+      maxLng = Math.max(...lngs.filter((lng) => lng < 0));
+    }
+    return [minLng, Math.min(...lats), maxLng, Math.max(...lats)];
   }
   return undefined;
 }
@@ -108,7 +114,11 @@ function isSupported(layer: GeoLibreLayer): boolean {
     return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
   }
   if (layer.type === "wms" || layer.type === "wmts") {
-    return Boolean(str(layer.source.url)) || Boolean(firstTile(layer));
+    return (
+      (Boolean(str(layer.source.url)) &&
+        (Boolean(str(layer.source.layers)) || Boolean(str(layer.source.layer)))) ||
+      Boolean(firstTile(layer))
+    );
   }
   return Boolean(firstTile(layer));
 }
@@ -149,6 +159,7 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         prev.source.maxzoom !== next.source.maxzoom ||
         prev.source.minzoom !== next.source.minzoom ||
         str(prev.source.url) !== str(next.source.url) ||
+        str(prev.metadata?.sourceKind) !== str(next.metadata?.sourceKind) ||
         str(prev.sourcePath) !== str(next.sourcePath) ||
         str(prev.metadata?.arcgisSublayers) !== str(next.metadata?.arcgisSublayers) ||
         str(prev.source.token) !== str(next.source.token) ||
@@ -349,6 +360,16 @@ export class CesiumLayerSync {
         const resource = makeResource(url);
         const maxLevel = Number(layer.source.maxzoom);
         const minLevel = Number(layer.source.minzoom);
+        const schemeId = str(layer.source.tilingScheme);
+        let tilingScheme: import("@cesium/engine").TilingScheme | undefined;
+        if (schemeId) {
+          if (schemeId === "GeographicTilingScheme") tilingScheme = new Cesium.GeographicTilingScheme();
+          else if (schemeId === "WebMercatorTilingScheme") tilingScheme = new Cesium.WebMercatorTilingScheme();
+          else return; // Reject unsupported tiling schemes
+        }
+        const labels = layer.source.tileMatrixLabels;
+        const tileMatrixLabels = Array.isArray(labels) ? labels.map(String) : undefined;
+
         provider = new Cesium.WebMapTileServiceImageryProvider({
           url: resource as string,
           layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
@@ -358,6 +379,8 @@ export class CesiumLayerSync {
             str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
           maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
+          tilingScheme,
+          tileMatrixLabels,
         });
       } else {
         const url = firstTile(layer);
@@ -388,6 +411,10 @@ export class CesiumLayerSync {
     } catch {
       // A provider that throws synchronously (e.g. malformed params) or rejects
       // should not abort the sync pass; mirror createGeoJson/createTileset's best-effort.
+      if (this.entries.get(entry.layer.id) === entry) {
+        this.destroyEntry(entry);
+        this.entries.delete(entry.layer.id);
+      }
     }
   }
 

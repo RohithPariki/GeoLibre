@@ -452,6 +452,7 @@ describe("CesiumLayerSync", () => {
           tiles: [
             "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/export?token=secret-token",
           ],
+          token: "secret-token",
         },
         metadata: {
           sourceKind: "arcgis-map-service",
@@ -631,6 +632,32 @@ describe("CesiumLayerSync", () => {
       east: 5,
       north: 20,
     });
+
+    // Test antimeridian crossing (e.g. 179 to -179)
+    const sync3 = newSync(f);
+    sync3.sync([
+      mkLayer({
+        id: "img3",
+        type: "image",
+        source: {
+          url: "data:image/png;base64,AAA",
+          coordinates: [
+            [179, 20],
+            [-179, 20],
+            [-179, 10],
+            [179, 10],
+          ],
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 3);
+    assert.deepEqual(f.calls.singleTileProviders[2].options?.rectangle, {
+      west: 179,
+      south: 10,
+      east: -179,
+      north: 20,
+    });
   });
 
   it("rebuilds an image layer when url or bounds change", async () => {
@@ -672,8 +699,10 @@ describe("CesiumLayerSync", () => {
     const A = mkLayer({ id: "a", type: "xyz", source: { tiles: ["a/{z}/{x}/{y}"] } });
     const B = mkLayer({
       id: "b",
-      type: "arcgis",
-      source: { url: "https://server/MapServer" },
+      type: "raster",
+      sourcePath: "https://server/MapServer",
+      metadata: { sourceKind: "arcgis-map-service" },
+      source: { tiles: ["https://server/MapServer/export"] },
     });
     const C = mkLayer({ id: "c", type: "xyz", source: { tiles: ["c/{z}/{x}/{y}"] } });
     sync.sync([A, B, C]);
@@ -691,7 +720,6 @@ describe("CesiumLayerSync", () => {
       "raster",
       "wms",
       "wmts",
-      "arcgis",
       "image",
       "3d-tiles",
     ] as const) {
