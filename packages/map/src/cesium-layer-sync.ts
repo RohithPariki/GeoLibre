@@ -169,6 +169,9 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         str(prev.source.style) !== str(next.source.style) ||
         str(prev.source.tileMatrixSetID) !== str(next.source.tileMatrixSetID) ||
         str(prev.source.tileMatrixSet) !== str(next.source.tileMatrixSet) ||
+        str(prev.source.tilingScheme) !== str(next.source.tilingScheme) ||
+        JSON.stringify(prev.source.tileMatrixLabels ?? null) !==
+          JSON.stringify(next.source.tileMatrixLabels ?? null) ||
         // WMS/WMTS params baked into the provider at creation; a change must
         // rebuild it so the globe doesn't keep the stale provider.
         str(prev.source.format) !== str(next.source.format) ||

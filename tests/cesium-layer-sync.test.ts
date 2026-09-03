@@ -70,6 +70,8 @@ function makeFakes() {
   };
 
   const Cesium = {
+    GeographicTilingScheme: class {},
+    WebMercatorTilingScheme: class {},
     UrlTemplateImageryProvider: class {
       url?: string;
       constructor(opts: Record<string, unknown>) {
@@ -580,6 +582,16 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.wmtsProviders.length, 2);
     assert.equal(f.calls.imageryRemoved.length, 1);
     assert.equal(f.calls.wmtsProviders[1].tileMatrixSetID, "setB");
+
+    // test tilingScheme change
+    sync.sync([{ ...base, source: { ...base.source, tilingScheme: "GeographicTilingScheme" } }]);
+    assert.equal(f.calls.wmtsProviders.length, 3);
+    assert.equal(f.calls.imageryRemoved.length, 2);
+
+    // test tileMatrixLabels change
+    sync.sync([{ ...base, source: { ...base.source, tileMatrixLabels: ["0", "1", "2"] } }]);
+    assert.equal(f.calls.wmtsProviders.length, 4);
+    assert.equal(f.calls.imageryRemoved.length, 3);
   });
 
   it("renders an image layer via SingleTileImageryProvider from bounds or coordinates", async () => {
