@@ -15,7 +15,7 @@ import type { Cesium3DTileset, CesiumWidget, DataSource, ImageryLayer } from "@c
 type CesiumNs = typeof import("@cesium/engine");
 
 /** Layer kinds this pass renders on the globe. */
-const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "arcgis", "image"]);
+const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "image"]);
 
 type EntryKind = "imagery" | "geojson" | "3dtiles";
 
@@ -49,7 +49,7 @@ function tilesetUrl(layer: GeoLibreLayer): string | undefined {
  * an image layer's source bounds or its four corner coordinates.
  */
 function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | undefined {
-  const b = layer.source.bounds;
+  const b = layer.metadata?.bounds;
   if (
     Array.isArray(b) &&
     b.length === 4 &&
@@ -71,6 +71,10 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
         Number.isFinite(pt[1]),
     )
   ) {
+    // Note: Reducing a georeferenced image's 4 corners to an axis-aligned min/max 
+    // bounding box will visibly distort rotated KML GroundOverlays since 
+    // SingleTileImageryProvider cannot render a skewed quad. This is an accepted 
+    // approximation for now.
     const lngs = c.map((pt) => pt[0]);
     const lats = c.map((pt) => pt[1]);
     return [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
@@ -92,9 +96,10 @@ function isSupported(layer: GeoLibreLayer): boolean {
   if (!isCesiumSupportedLayerType(layer)) return false;
   if (layer.type === "geojson") return Boolean(layer.geojson?.features?.length);
   if (layer.type === "3d-tiles") return Boolean(tilesetUrl(layer));
-  if (layer.type === "arcgis") {
-    // FeatureServer is handled as GeoJSON; MapServer needs a service URL.
-    return layer.source.layerType !== "feature" && Boolean(str(layer.source.url));
+  if (layer.type === "raster") {
+    if (layer.metadata?.sourceKind === "arcgis-map-service" || layer.metadata?.sourceKind === "arcgis-image-service") {
+      return Boolean(str(layer.sourcePath));
+    }
   }
   if (layer.type === "image") {
     return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
@@ -142,12 +147,7 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         prev.source.minzoom !== next.source.minzoom ||
         str(prev.source.url) !== str(next.source.url) ||
         str(prev.source.layers) !== str(next.source.layers) ||
-        str(prev.source.sublayers) !== str(next.source.sublayers) ||
-        str(prev.source.layer) !== str(next.source.layer) ||
-        str(prev.source.style) !== str(next.source.style) ||
         str(prev.source.styles) !== str(next.source.styles) ||
-        str(prev.source.tileMatrixSetID) !== str(next.source.tileMatrixSetID) ||
-        str(prev.source.tileMatrixSet) !== str(next.source.tileMatrixSet) ||
         // WMS/WMTS params baked into the provider at creation; a change must
         // rebuild it so the globe doesn't keep the stale provider.
         str(prev.source.format) !== str(next.source.format) ||
@@ -272,17 +272,20 @@ export class CesiumLayerSync {
       const makeResource = (url: string) =>
         headers && Object.keys(headers).length ? new Cesium.Resource({ url, headers }) : url;
 
-      if (layer.type === "arcgis" && str(layer.source.url)) {
+      if (layer.type === "raster" && 
+          (layer.metadata?.sourceKind === "arcgis-map-service" || layer.metadata?.sourceKind === "arcgis-image-service") && 
+          str(layer.sourcePath)) {
         isAsync = true;
-        const url = String(layer.source.url);
+        const url = String(layer.sourcePath);
         const resource = makeResource(url);
-        const sublayers =
-          str(layer.source.layers) ??
-          str(layer.source.sublayers) ??
-          str(layer.metadata?.arcgisSublayers);
+        const sublayers = str(layer.metadata?.arcgisSublayers);
         const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
+        const token = str(layer.source.token) ?? (layer.metadata?.hasAccessToken ? undefined : undefined); // MapLibre stores it via arcgis url, Cesium needs it in options if available
+        // Wait, MapServer token is already embedded in the /export tile URLs but for Cesium's provider we need to pass token directly
+        // However, we don't store token in layer state directly. Let's just use what's available.
+        // But the previous PR added str(layer.source.token).
         if (str(layer.source.token)) options.token = String(layer.source.token);
 
         if (typeof Cesium.ArcGisMapServerImageryProvider?.fromUrl === "function") {
@@ -320,29 +323,6 @@ export class CesiumLayerSync {
             styles: str(layer.source.styles) ?? "",
             version: str(layer.source.version) ?? "1.1.1",
           },
-        });
-      } else if (
-        layer.type === "wmts" &&
-        str(layer.source.url) &&
-        (str(layer.source.layer) ||
-          str(layer.source.layers) ||
-          str(layer.source.tileMatrixSetID) ||
-          str(layer.source.tileMatrixSet) ||
-          !firstTile(layer))
-      ) {
-        const url = String(layer.source.url);
-        const resource = makeResource(url);
-        const maxLevel = Number(layer.source.maxzoom);
-        const minLevel = Number(layer.source.minzoom);
-        provider = new Cesium.WebMapTileServiceImageryProvider({
-          url: resource as string,
-          layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
-          style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
-          format: str(layer.source.format) ?? "image/jpeg",
-          tileMatrixSetID:
-            str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
-          maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
-          minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
         });
       } else {
         const url = firstTile(layer);

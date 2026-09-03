@@ -446,11 +446,13 @@ describe("CesiumLayerSync", () => {
     sync.sync([
       mkLayer({
         id: "arc",
-        type: "arcgis",
-        source: {
-          url: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
-          layers: "show:0,1",
-          token: "secret-token",
+        type: "raster",
+        sourcePath: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
+        source: { tiles: ["https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/export?token=secret-token"] },
+        metadata: {
+          sourceKind: "arcgis-map-service",
+          arcgisSublayers: "0,1",
+          hasAccessToken: true,
         },
       }),
     ]);
@@ -470,10 +472,14 @@ describe("CesiumLayerSync", () => {
     sync.sync([
       mkLayer({
         id: "arc",
-        type: "arcgis",
-        source: {
-          url: "https://secure.arcgis/MapServer",
-          requestHeaders: { Authorization: "Bearer token123" },
+        type: "raster",
+        sourcePath: "https://secure.arcgis/MapServer",
+        source: { 
+          tiles: ["https://secure.arcgis/MapServer/export"],
+          requestHeaders: { Authorization: "Bearer token123" }
+        },
+        metadata: {
+          sourceKind: "arcgis-map-service",
         },
       }),
     ]);
@@ -496,6 +502,7 @@ describe("CesiumLayerSync", () => {
           url: "https://server/arcgis/rest/services/USA/FeatureServer/0",
           layerType: "feature",
         },
+        metadata: { sourceKind: "arcgis-feature-query" },
       }),
     ]);
     await f.flush();
@@ -507,17 +514,16 @@ describe("CesiumLayerSync", () => {
     const sync = newSync(f);
     const base = mkLayer({
       id: "arc",
-      type: "arcgis",
-      source: {
-        url: "https://server/MapServer",
-        sublayers: "1,2",
-      },
+      type: "raster",
+      sourcePath: "https://server/MapServer",
+      source: { tiles: ["https://server/MapServer/export"] },
+      metadata: { sourceKind: "arcgis-map-service", arcgisSublayers: "1,2" },
     });
     sync.sync([base]);
     await f.flush();
     assert.equal(f.calls.arcgisProviders.length, 1);
 
-    sync.sync([{ ...base, source: { ...base.source, sublayers: "1,2,3" } }]);
+    sync.sync([{ ...base, metadata: { ...base.metadata, arcgisSublayers: "1,2,3" } }]);
     await f.flush();
     assert.equal(f.calls.arcgisProviders.length, 2);
     assert.equal(f.calls.imageryRemoved.length, 1);
@@ -579,8 +585,10 @@ describe("CesiumLayerSync", () => {
         type: "image",
         source: {
           url: "https://images.org/photo.png",
-          bounds: [-122.5, 37.5, -122.0, 38.0],
         },
+        metadata: {
+          bounds: [-122.5, 37.5, -122.0, 38.0],
+        }
       }),
     ]);
     await f.flush();
@@ -628,14 +636,14 @@ describe("CesiumLayerSync", () => {
       type: "image",
       source: {
         url: "https://images.org/a.png",
-        bounds: [0, 0, 10, 10],
       },
+      metadata: { bounds: [0, 0, 10, 10] },
     });
     sync.sync([base]);
     await f.flush();
     assert.equal(f.calls.singleTileProviders.length, 1);
 
-    sync.sync([{ ...base, source: { ...base.source, bounds: [0, 0, 15, 15] } }]);
+    sync.sync([{ ...base, metadata: { ...base.metadata, bounds: [0, 0, 15, 15] } }]);
     await f.flush();
     assert.equal(f.calls.singleTileProviders.length, 2);
     assert.equal(f.calls.imageryRemoved.length, 1);
