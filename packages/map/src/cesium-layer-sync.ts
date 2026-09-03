@@ -280,7 +280,9 @@ export class CesiumLayerSync {
       let isAsync = false;
       const headers = layer.source.requestHeaders as Record<string, string> | undefined;
       const makeResource = (url: string) =>
-        headers && Object.keys(headers).length && url.startsWith("https://") ? new Cesium.Resource({ url, headers }) : url;
+        headers && Object.keys(headers).length && url.startsWith("https://")
+          ? new Cesium.Resource({ url, headers })
+          : url;
 
       if (
         layer.type === "raster" &&
@@ -344,7 +346,8 @@ export class CesiumLayerSync {
           layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
           style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
           format: str(layer.source.format) ?? "image/jpeg",
-          tileMatrixSetID: str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
+          tileMatrixSetID:
+            str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
           maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
         });
