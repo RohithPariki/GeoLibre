@@ -448,7 +448,11 @@ describe("CesiumLayerSync", () => {
         id: "arc",
         type: "raster",
         sourcePath: "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer",
-        source: { tiles: ["https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/export?token=secret-token"] },
+        source: {
+          tiles: [
+            "https://sampleserver6.arcgisonline.com/arcgis/rest/services/USA/MapServer/export?token=secret-token",
+          ],
+        },
         metadata: {
           sourceKind: "arcgis-map-service",
           arcgisSublayers: "0,1",
@@ -474,9 +478,9 @@ describe("CesiumLayerSync", () => {
         id: "arc",
         type: "raster",
         sourcePath: "https://secure.arcgis/MapServer",
-        source: { 
+        source: {
           tiles: ["https://secure.arcgis/MapServer/export"],
-          requestHeaders: { Authorization: "Bearer token123" }
+          requestHeaders: { Authorization: "Bearer token123" },
         },
         metadata: {
           sourceKind: "arcgis-map-service",
@@ -588,7 +592,7 @@ describe("CesiumLayerSync", () => {
         },
         metadata: {
           bounds: [-122.5, 37.5, -122.0, 38.0],
-        }
+        },
       }),
     ]);
     await f.flush();

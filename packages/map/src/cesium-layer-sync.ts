@@ -71,9 +71,9 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
         Number.isFinite(pt[1]),
     )
   ) {
-    // Note: Reducing a georeferenced image's 4 corners to an axis-aligned min/max 
-    // bounding box will visibly distort rotated KML GroundOverlays since 
-    // SingleTileImageryProvider cannot render a skewed quad. This is an accepted 
+    // Note: Reducing a georeferenced image's 4 corners to an axis-aligned min/max
+    // bounding box will visibly distort rotated KML GroundOverlays since
+    // SingleTileImageryProvider cannot render a skewed quad. This is an accepted
     // approximation for now.
     const lngs = c.map((pt) => pt[0]);
     const lats = c.map((pt) => pt[1]);
@@ -97,7 +97,10 @@ function isSupported(layer: GeoLibreLayer): boolean {
   if (layer.type === "geojson") return Boolean(layer.geojson?.features?.length);
   if (layer.type === "3d-tiles") return Boolean(tilesetUrl(layer));
   if (layer.type === "raster") {
-    if (layer.metadata?.sourceKind === "arcgis-map-service" || layer.metadata?.sourceKind === "arcgis-image-service") {
+    if (
+      layer.metadata?.sourceKind === "arcgis-map-service" ||
+      layer.metadata?.sourceKind === "arcgis-image-service"
+    ) {
       return Boolean(str(layer.sourcePath));
     }
   }
@@ -272,9 +275,12 @@ export class CesiumLayerSync {
       const makeResource = (url: string) =>
         headers && Object.keys(headers).length ? new Cesium.Resource({ url, headers }) : url;
 
-      if (layer.type === "raster" && 
-          (layer.metadata?.sourceKind === "arcgis-map-service" || layer.metadata?.sourceKind === "arcgis-image-service") && 
-          str(layer.sourcePath)) {
+      if (
+        layer.type === "raster" &&
+        (layer.metadata?.sourceKind === "arcgis-map-service" ||
+          layer.metadata?.sourceKind === "arcgis-image-service") &&
+        str(layer.sourcePath)
+      ) {
         isAsync = true;
         const url = String(layer.sourcePath);
         const resource = makeResource(url);
@@ -282,7 +288,8 @@ export class CesiumLayerSync {
         const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
-        const token = str(layer.source.token) ?? (layer.metadata?.hasAccessToken ? undefined : undefined); // MapLibre stores it via arcgis url, Cesium needs it in options if available
+        const token =
+          str(layer.source.token) ?? (layer.metadata?.hasAccessToken ? undefined : undefined); // MapLibre stores it via arcgis url, Cesium needs it in options if available
         // Wait, MapServer token is already embedded in the /export tile URLs but for Cesium's provider we need to pass token directly
         // However, we don't store token in layer state directly. Let's just use what's available.
         // But the previous PR added str(layer.source.token).
