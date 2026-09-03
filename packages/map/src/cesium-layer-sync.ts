@@ -363,8 +363,10 @@ export class CesiumLayerSync {
         const schemeId = str(layer.source.tilingScheme);
         let tilingScheme: import("@cesium/engine").TilingScheme | undefined;
         if (schemeId) {
-          if (schemeId === "GeographicTilingScheme") tilingScheme = new Cesium.GeographicTilingScheme();
-          else if (schemeId === "WebMercatorTilingScheme") tilingScheme = new Cesium.WebMercatorTilingScheme();
+          if (schemeId === "GeographicTilingScheme")
+            tilingScheme = new Cesium.GeographicTilingScheme();
+          else if (schemeId === "WebMercatorTilingScheme")
+            tilingScheme = new Cesium.WebMercatorTilingScheme();
           else return; // Reject unsupported tiling schemes
         }
         const labels = layer.source.tileMatrixLabels;

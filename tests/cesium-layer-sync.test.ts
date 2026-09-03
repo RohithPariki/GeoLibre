@@ -714,15 +714,7 @@ describe("CesiumLayerSync", () => {
   });
 
   it("classifies supported vs 2D-only layer kinds", () => {
-    for (const type of [
-      "geojson",
-      "xyz",
-      "raster",
-      "wms",
-      "wmts",
-      "image",
-      "3d-tiles",
-    ] as const) {
+    for (const type of ["geojson", "xyz", "raster", "wms", "wmts", "image", "3d-tiles"] as const) {
       assert.equal(isCesiumSupportedLayerType(mkLayer({ type })), true, type);
     }
     for (const type of [
