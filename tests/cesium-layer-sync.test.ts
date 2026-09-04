@@ -642,6 +642,27 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.geojsonLoads.length, 1);
   });
 
+  it("renders an arcgis-tagged raster with no sourcePath via its tile template", async () => {
+    // createImagery's ArcGIS branch needs a sourcePath for the service URL and
+    // otherwise falls through to the generic tile-template branch; isSupported
+    // must agree, or a hand-authored/MCP project that tags a plain raster
+    // arcgis-map-service silently loses the globe rendering it had.
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "arc-tiles",
+      type: "raster",
+      source: { tiles: ["https://server/MapServer/tile/{z}/{y}/{x}"] },
+      metadata: { sourceKind: "arcgis-map-service" },
+    });
+    assert.equal(isCesiumSupportedLayerType(layer), true);
+    sync.sync([layer]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 0);
+    assert.equal(f.calls.urlProviders.length, 1);
+    assert.equal(f.calls.urlProviders[0].url, "https://server/MapServer/tile/{z}/{y}/{x}");
+    assert.equal(f.calls.imageryAdded.length, 1);
+  });
+
   it("rebuilds an arcgis layer when url or sublayers change", async () => {
     const sync = newSync(f);
     const base = mkLayer({

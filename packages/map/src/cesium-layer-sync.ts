@@ -1,5 +1,13 @@
 import { resolveThreeDTilesRequestHeaders, type GeoLibreLayer } from "@geolibre/core";
-import type { Cesium3DTileset, CesiumWidget, DataSource, ImageryLayer } from "@cesium/engine";
+import type {
+  Cesium3DTileset,
+  CesiumWidget,
+  DataSource,
+  ImageryLayer,
+  ImageryProvider,
+  Resource,
+  TilingScheme,
+} from "@cesium/engine";
 
 // Reconciles the store's `GeoLibreLayer[]` onto a Cesium globe, mirroring what
 // MapController.syncLayers does for MapLibre. M3 covers the layer kinds where
@@ -200,8 +208,12 @@ function isSupported(layer: GeoLibreLayer): boolean {
   // does not expose (it answers `/exportImage` and takes a renderingRule instead
   // of layers). Image services keep falling through to their pre-built tile
   // template like any other raster.
+  // Without a sourcePath there is no service URL for the provider, but
+  // createImagery then falls through to the generic tile-template branch — so
+  // stay in step with it rather than reporting the layer unsupported and
+  // dropping globe rendering a plain raster would have had.
   if (layer.type === "raster" && layer.metadata?.sourceKind === ARCGIS_MAP_SERVICE_KIND) {
-    return Boolean(str(layer.sourcePath));
+    return Boolean(str(layer.sourcePath)) || Boolean(firstTile(layer));
   }
   if (layer.type === "image") {
     return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
@@ -390,7 +402,7 @@ export class CesiumLayerSync {
     const { Cesium, viewer } = this;
     const layer = entry.layer;
     try {
-      let provider: import("@cesium/engine").ImageryProvider | undefined;
+      let provider: ImageryProvider | undefined;
       let isAsync = false;
       const headers = layer.source.requestHeaders as Record<string, string> | undefined;
       const hasHeaders = Boolean(headers && Object.keys(headers).length);
@@ -419,7 +431,7 @@ export class CesiumLayerSync {
       };
       // Every provider's `url` option is typed `Resource | string`, so the
       // union is passed through as-is rather than cast.
-      const makeResource = (url: string): string | import("@cesium/engine").Resource => {
+      const makeResource = (url: string): string | Resource => {
         if (!hasHeaders) return url;
         requireSecure(url, "request headers");
         return new Cesium.Resource({ url, headers });
@@ -481,7 +493,7 @@ export class CesiumLayerSync {
         // free-form record), which is how non-default WMTS matrix sets are
         // expressed. Left in so those projects render on the globe.
         const schemeId = str(layer.source.tilingScheme);
-        let tilingScheme: import("@cesium/engine").TilingScheme | undefined;
+        let tilingScheme: TilingScheme | undefined;
         if (schemeId) {
           if (schemeId === "GeographicTilingScheme")
             tilingScheme = new Cesium.GeographicTilingScheme();
