@@ -17,6 +17,9 @@ type CesiumNs = typeof import("@cesium/engine");
 /** Layer kinds this pass renders on the globe. */
 const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "image"]);
 
+/** `metadata.sourceKind` of the ArcGIS layers Cesium has a native provider for. */
+const ARCGIS_MAP_SERVICE_KIND = "arcgis-map-service";
+
 type EntryKind = "imagery" | "geojson" | "3dtiles";
 
 interface LayerEntry {
@@ -35,6 +38,17 @@ function str(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
+/** Whether credential-bearing request headers may be sent to this URL. */
+function allowsCredentials(url: string): boolean {
+  if (url.startsWith("https://")) return true;
+  try {
+    const { hostname } = new URL(url, "https://invalid.localhost");
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
 function firstTile(layer: GeoLibreLayer): string | undefined {
   const tiles = layer.source.tiles;
   return Array.isArray(tiles) ? str(tiles[0]) : undefined;
@@ -42,6 +56,24 @@ function firstTile(layer: GeoLibreLayer): string | undefined {
 
 function tilesetUrl(layer: GeoLibreLayer): string | undefined {
   return str(layer.source.url) ?? str(layer.sourcePath);
+}
+
+/**
+ * Resolves the ArcGIS access token for a layer.
+ *
+ * The Add ArcGIS Layer flow bakes the token into the pre-built export/cache tile
+ * URL rather than storing it on the layer (`arcgis-layer.ts`), and `sourcePath`
+ * — the service URL Cesium's provider needs — is the bare, token-less one. So a
+ * token-protected service renders in 2D but would authenticate nowhere on the
+ * globe unless it is read back off the tile template.
+ */
+function arcgisToken(layer: GeoLibreLayer): string | undefined {
+  const explicit = str(layer.source.token);
+  if (explicit) return explicit;
+  const tile = firstTile(layer);
+  if (!tile) return undefined;
+  const query = tile.slice(tile.indexOf("?") + 1);
+  return str(new URLSearchParams(query).get("token") ?? undefined);
 }
 
 /**
@@ -102,13 +134,13 @@ function isSupported(layer: GeoLibreLayer): boolean {
   if (!isCesiumSupportedLayerType(layer)) return false;
   if (layer.type === "geojson") return Boolean(layer.geojson?.features?.length);
   if (layer.type === "3d-tiles") return Boolean(tilesetUrl(layer));
-  if (layer.type === "raster") {
-    if (
-      layer.metadata?.sourceKind === "arcgis-map-service" ||
-      layer.metadata?.sourceKind === "arcgis-image-service"
-    ) {
-      return Boolean(str(layer.sourcePath));
-    }
+  // MapServer only: ArcGisMapServerImageryProvider speaks the MapServer REST
+  // surface (a `?f=json` capabilities document, `/export`), which an ImageServer
+  // does not expose (it answers `/exportImage` and takes a renderingRule instead
+  // of layers). Image services keep falling through to their pre-built tile
+  // template like any other raster.
+  if (layer.type === "raster" && layer.metadata?.sourceKind === ARCGIS_MAP_SERVICE_KIND) {
+    return Boolean(str(layer.sourcePath));
   }
   if (layer.type === "image") {
     return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
@@ -162,7 +194,7 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         str(prev.metadata?.sourceKind) !== str(next.metadata?.sourceKind) ||
         str(prev.sourcePath) !== str(next.sourcePath) ||
         str(prev.metadata?.arcgisSublayers) !== str(next.metadata?.arcgisSublayers) ||
-        str(prev.source.token) !== str(next.source.token) ||
+        arcgisToken(prev) !== arcgisToken(next) ||
         str(prev.source.layers) !== str(next.source.layers) ||
         str(prev.source.layer) !== str(next.source.layer) ||
         str(prev.source.styles) !== str(next.source.styles) ||
@@ -293,15 +325,29 @@ export class CesiumLayerSync {
       let provider: import("@cesium/engine").ImageryProvider | undefined;
       let isAsync = false;
       const headers = layer.source.requestHeaders as Record<string, string> | undefined;
-      const makeResource = (url: string) =>
-        headers && Object.keys(headers).length && url.startsWith("https://")
-          ? new Cesium.Resource({ url, headers })
-          : url;
+      const hasHeaders = Boolean(headers && Object.keys(headers).length);
+      // Credentials (request headers, an ArcGIS token) never go out over
+      // plaintext — loopback excepted, so a local dev tile server still works.
+      // Refusing the whole layer beats quietly stripping them: an
+      // unauthenticated request would look like a working layer that renders
+      // nothing. The outer catch turns this into the same best-effort skip a
+      // failing provider already gets.
+      const requireSecure = (url: string, what: string) => {
+        if (allowsCredentials(url)) return;
+        console.warn(
+          `[GeoLibre] skipping "${layer.name}" on the globe: ${what} cannot be sent over ${url}`,
+        );
+        throw new Error("credentials require https");
+      };
+      const makeResource = (url: string) => {
+        if (!hasHeaders) return url;
+        requireSecure(url, "request headers");
+        return new Cesium.Resource({ url, headers });
+      };
 
       if (
         layer.type === "raster" &&
-        (layer.metadata?.sourceKind === "arcgis-map-service" ||
-          layer.metadata?.sourceKind === "arcgis-image-service") &&
+        layer.metadata?.sourceKind === ARCGIS_MAP_SERVICE_KIND &&
         str(layer.sourcePath)
       ) {
         isAsync = true;
@@ -311,9 +357,9 @@ export class CesiumLayerSync {
         const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
-        const token = str(layer.source.token);
+        const token = arcgisToken(layer);
         if (token) {
-          if (!url.startsWith("https://")) return;
+          requireSecure(url, "an access token");
           options.token = token;
         }
 

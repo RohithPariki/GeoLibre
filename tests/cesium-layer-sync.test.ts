@@ -499,6 +499,60 @@ describe("CesiumLayerSync", () => {
     assert.equal(res.opts.headers["Authorization"], "Bearer token123");
   });
 
+  it("reads the arcgis token off the pre-built export tile url", async () => {
+    // The Add ArcGIS Layer flow only ever bakes the token into the tile
+    // template; `source.token` is never populated.
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "arc",
+        type: "raster",
+        sourcePath: "https://server/MapServer",
+        source: { tiles: ["https://server/MapServer/export?bbox=1&token=secret-token&f=image"] },
+        metadata: { sourceKind: "arcgis-map-service", hasAccessToken: true },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 1);
+    assert.equal(f.calls.arcgisProviders[0].options?.token, "secret-token");
+  });
+
+  it("routes an arcgis image service through the tile template, not the MapServer provider", async () => {
+    // ArcGisMapServerImageryProvider speaks `/export` + a MapServer capabilities
+    // document; an ImageServer answers neither.
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "img",
+        type: "raster",
+        sourcePath: "https://server/ImageServer",
+        source: { tiles: ["https://server/ImageServer/exportImage?f=image"] },
+        metadata: { sourceKind: "arcgis-image-service" },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.arcgisProviders.length, 0);
+    assert.equal(f.calls.urlProviders.length, 1);
+    assert.equal(f.calls.urlProviders[0].url, "https://server/ImageServer/exportImage?f=image");
+  });
+
+  it("skips a layer whose request headers would go out over plaintext", async () => {
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "insecure",
+        type: "xyz",
+        source: {
+          tiles: ["http://tiles.example/{z}/{x}/{y}.png"],
+          requestHeaders: { Authorization: "Bearer token123" },
+        },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.urlProviders.length, 0);
+    assert.equal(f.calls.imageryAdded.length, 0);
+  });
+
   it("skips an arcgis feature layer in imagery sync", async () => {
     const sync = newSync(f);
     sync.sync([
