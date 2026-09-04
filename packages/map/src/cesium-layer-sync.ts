@@ -82,18 +82,20 @@ function arcgisToken(layer: GeoLibreLayer): string | undefined {
 }
 
 /**
- * Extracts the 2D bounding box [west, south, east, north] in degrees from
- * an image layer's source bounds or its four corner coordinates.
+ * Extracts the 2D bounding box [west, south, east, north] in degrees from an
+ * image layer's four corner coordinates, falling back to `metadata.bounds`.
+ *
+ * `source.coordinates` is preferred over the cached `metadata.bounds` because
+ * it is what the 2D `ImageSource` renders from, it is antimeridian-aware (see
+ * below), and it keeps `needsRebuild` honest for a future edit-GCPs flow that
+ * would move the corners without rewriting `metadata.bounds`. Both current
+ * producers (`cornersToBounds` in the Georeferencer, and the KML ground-overlay
+ * importer) derive `metadata.bounds` from these same corners with a plain
+ * min/max, which inverts across the antimeridian — so the fallback only matters
+ * for a hand-authored project that omits the corners, and there the array's own
+ * west/east order is taken as authoritative.
  */
 function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | undefined {
-  const b = layer.metadata?.bounds;
-  if (
-    Array.isArray(b) &&
-    b.length === 4 &&
-    b.every((v) => typeof v === "number" && Number.isFinite(v))
-  ) {
-    return [b[0], b[1], b[2], b[3]];
-  }
   const c = layer.source.coordinates;
   if (
     Array.isArray(c) &&
@@ -121,6 +123,14 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
       maxLng = Math.max(...lngs.filter((lng) => lng < 0));
     }
     return [minLng, Math.min(...lats), maxLng, Math.max(...lats)];
+  }
+  const b = layer.metadata?.bounds;
+  if (
+    Array.isArray(b) &&
+    b.length === 4 &&
+    b.every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
+    return [b[0], b[1], b[2], b[3]];
   }
   return undefined;
 }
@@ -344,6 +354,12 @@ export class CesiumLayerSync {
       const hasHeaders = Boolean(headers && Object.keys(headers).length);
       // Credentials (request headers, an ArcGIS token) never go out over
       // plaintext — loopback excepted, so a local dev tile server still works.
+      // Residual exposure: Cesium.Resource issues these through XHR/fetch, which
+      // give no redirect control, so a service that 3xx-redirects cross-origin
+      // still sees non-Authorization headers replayed (the browser strips only
+      // Authorization). CORS preflight means the redirect target must opt into
+      // the header by name, and the endpoint is user-configured, so this is
+      // accepted rather than proxied.
       // Refusing the whole layer beats quietly stripping them: an
       // unauthenticated request would look like a working layer that renders
       // nothing. The outer catch turns this into the same best-effort skip a
@@ -413,6 +429,10 @@ export class CesiumLayerSync {
         const resource = makeResource(url);
         const maxLevel = Number(layer.source.maxzoom);
         const minLevel = Number(layer.source.minzoom);
+        // No UI writes `tilingScheme`/`tileMatrixLabels` today; they come from a
+        // hand-authored or MCP-generated `.geolibre.json` (`source` is a
+        // free-form record), which is how non-default WMTS matrix sets are
+        // expressed. Left in so those projects render on the globe.
         const schemeId = str(layer.source.tilingScheme);
         let tilingScheme: import("@cesium/engine").TilingScheme | undefined;
         if (schemeId) {
@@ -437,6 +457,10 @@ export class CesiumLayerSync {
           url: resource as string,
           layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
           style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
+          // Cesium's own WebMapTileServiceImageryProvider default. The WMS
+          // branch above defaults to image/png instead because WMS overlays are
+          // usually drawn transparent over the globe, while WMTS sets are
+          // typically opaque base imagery — the asymmetry is deliberate.
           format: str(layer.source.format) ?? "image/jpeg",
           tileMatrixSetID:
             str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",

@@ -777,6 +777,61 @@ describe("CesiumLayerSync", () => {
     });
   });
 
+  it("prefers corner coordinates over a plain min/max metadata.bounds", async () => {
+    // cornersToBounds() (Georeferencer) and the KML ground-overlay importer both
+    // cache metadata.bounds as a plain min/max, which inverts to a near-global
+    // rectangle across the antimeridian. The corners are authoritative.
+    const sync = newSync(f);
+    const base = mkLayer({
+      id: "img",
+      type: "image",
+      source: {
+        url: "data:image/png;base64,AAA",
+        coordinates: [
+          [179, 20],
+          [-179, 20],
+          [-179, 10],
+          [179, 10],
+        ],
+      },
+      metadata: { bounds: [-179, 10, 179, 20] },
+    });
+    sync.sync([base]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 1);
+    assert.deepEqual(f.calls.singleTileProviders[0].options?.rectangle, {
+      west: 179,
+      south: 10,
+      east: -179,
+      north: 20,
+    });
+
+    // A corner-only edit (a future edit-GCPs flow) rebuilds even though the
+    // cached metadata.bounds is untouched.
+    sync.sync([
+      {
+        ...base,
+        source: {
+          ...base.source,
+          coordinates: [
+            [178, 20],
+            [-179, 20],
+            [-179, 10],
+            [178, 10],
+          ],
+        },
+      },
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 2);
+    assert.deepEqual(f.calls.singleTileProviders[1].options?.rectangle, {
+      west: 178,
+      south: 10,
+      east: -179,
+      north: 20,
+    });
+  });
+
   it("rebuilds an image layer when url or bounds change", async () => {
     const sync = newSync(f);
     const base = mkLayer({
