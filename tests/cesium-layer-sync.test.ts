@@ -553,6 +553,28 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.imageryAdded.length, 0);
   });
 
+  it("does not retry a failed provider on every unrelated sync pass", async () => {
+    const sync = newSync(f);
+    const bad = mkLayer({
+      id: "insecure",
+      type: "xyz",
+      source: {
+        tiles: ["http://tiles.example/{z}/{x}/{y}.png"],
+        requestHeaders: { Authorization: "Bearer token123" },
+      },
+    });
+    const other = mkLayer({ id: "ok", type: "xyz", source: { tiles: ["a/{z}/{x}/{y}"] } });
+    sync.sync([bad, other]);
+    await f.flush();
+    assert.equal(f.calls.urlProviders.length, 1);
+
+    // An unrelated change (opacity) re-runs sync for the whole pane; the failed
+    // layer must not re-attempt its provider.
+    sync.sync([bad, { ...other, opacity: 0.5 }]);
+    await f.flush();
+    assert.equal(f.calls.urlProviders.length, 1);
+  });
+
   it("skips an arcgis feature layer in imagery sync", async () => {
     const sync = newSync(f);
     sync.sync([

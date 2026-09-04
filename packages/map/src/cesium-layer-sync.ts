@@ -416,7 +416,15 @@ export class CesiumLayerSync {
             tilingScheme = new Cesium.GeographicTilingScheme();
           else if (schemeId === "WebMercatorTilingScheme")
             tilingScheme = new Cesium.WebMercatorTilingScheme();
-          else return; // Reject unsupported tiling schemes
+          else {
+            // Warn rather than bail silently: the layer still reads as
+            // globe-supported in the layer menu, so a mute skip looks like a
+            // broken renderer.
+            console.warn(
+              `[GeoLibre] skipping "${layer.name}" on the globe: unsupported WMTS tiling scheme "${schemeId}"`,
+            );
+            return;
+          }
         }
         const labels = layer.source.tileMatrixLabels;
         const tileMatrixLabels = Array.isArray(labels) ? labels.map(String) : undefined;
@@ -462,9 +470,17 @@ export class CesiumLayerSync {
     } catch {
       // A provider that throws synchronously (e.g. malformed params) or rejects
       // should not abort the sync pass; mirror createGeoJson/createTileset's best-effort.
+      // The entry stays registered with a null handle rather than being deleted:
+      // sync() re-runs on every unrelated store change (an opacity drag, a
+      // reorder), so a deleted entry would be recreated — re-issuing the failing
+      // request and re-warning — on every pass. Retrying is left to needsRebuild,
+      // i.e. an actual change to this layer's source.
       if (this.entries.get(entry.layer.id) === entry) {
-        this.destroyEntry(entry);
-        this.entries.delete(entry.layer.id);
+        entry.cancelled = true;
+        if (entry.handle) {
+          viewer.imageryLayers.remove(entry.handle as ImageryLayer, true);
+          entry.handle = null;
+        }
       }
     }
   }
