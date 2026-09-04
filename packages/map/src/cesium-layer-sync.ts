@@ -43,12 +43,24 @@ function str(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
-/** Whether credential-bearing request headers may be sent to this URL. */
+/**
+ * Whether credential-bearing request headers may be sent to this URL.
+ *
+ * The scheme is read off a parsed URL rather than matched as a prefix, so an
+ * unusually-cased `HTTPS://` from a hand-authored or MCP-generated project is
+ * normalized instead of being misread as plaintext. A relative or unparseable
+ * URL throws and is refused, matching `isAllowedPluginManifestUrl` in
+ * `@geolibre/core`.
+ */
 function allowsCredentials(url: string): boolean {
-  if (url.startsWith("https://")) return true;
   try {
-    const { hostname } = new URL(url, "https://invalid.localhost");
-    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+    const { protocol, hostname } = new URL(url);
+    if (protocol === "https:") return true;
+    // Loopback over http so a local dev tile server still works.
+    return (
+      protocol === "http:" &&
+      (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]")
+    );
   } catch {
     return false;
   }

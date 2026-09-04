@@ -604,22 +604,42 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.urlProviders.length, 1);
   });
 
-  it("skips an arcgis feature layer in imagery sync", async () => {
+  it("keeps both arcgis FeatureServer shapes out of imagery sync", async () => {
+    // arcgis-layer.ts stores a FeatureServer two ways, and neither is imagery:
+    // createArcGISStoreLayer() emits type "arcgis" (maplibre-arcgis renders it
+    // natively, so it is 2D-only on the globe), while the paged query flow emits
+    // a plain geojson layer tagged arcgis-feature-query, which the globe renders
+    // through the GeoJsonDataSource path. Only type "raster" +
+    // sourceKind "arcgis-map-service" may reach ArcGisMapServerImageryProvider.
+    const native = mkLayer({
+      id: "feat-native",
+      type: "arcgis",
+      sourcePath: "https://server/arcgis/rest/services/USA/FeatureServer/0",
+      source: {
+        url: "https://server/arcgis/rest/services/USA/FeatureServer/0",
+        layerType: "feature",
+        type: "geojson",
+      },
+      metadata: { sourceKind: "arcgis-feature-url", arcgisLayerType: "feature" },
+    });
+    const queried = mkLayer({
+      id: "feat-query",
+      type: "geojson",
+      source: { type: "geojson", arcgisQueryUrl: "https://server/FeatureServer/0/query" },
+      metadata: { sourceKind: "arcgis-feature-query" },
+      geojson: { type: "FeatureCollection", features: [{}] } as never,
+    });
+
+    assert.equal(isCesiumSupportedLayerType(native), false);
+    assert.equal(isCesiumSupportedLayerType(queried), true);
+
     const sync = newSync(f);
-    sync.sync([
-      mkLayer({
-        id: "feat",
-        type: "arcgis",
-        source: {
-          url: "https://server/arcgis/rest/services/USA/FeatureServer/0",
-          layerType: "feature",
-        },
-        metadata: { sourceKind: "arcgis-feature-query" },
-      }),
-    ]);
+    sync.sync([native, queried]);
     await f.flush();
     assert.equal(f.calls.arcgisProviders.length, 0);
     assert.equal(f.calls.imageryAdded.length, 0);
+    // The queried layer still renders — via GeoJSON, not imagery.
+    assert.equal(f.calls.geojsonLoads.length, 1);
   });
 
   it("rebuilds an arcgis layer when url or sublayers change", async () => {
