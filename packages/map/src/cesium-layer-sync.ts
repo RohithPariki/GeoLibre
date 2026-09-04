@@ -371,7 +371,9 @@ export class CesiumLayerSync {
         );
         throw new Error("credentials require https");
       };
-      const makeResource = (url: string) => {
+      // Every provider's `url` option is typed `Resource | string`, so the
+      // union is passed through as-is rather than cast.
+      const makeResource = (url: string): string | import("@cesium/engine").Resource => {
         if (!hasHeaders) return url;
         requireSecure(url, "request headers");
         return new Cesium.Resource({ url, headers });
@@ -410,7 +412,7 @@ export class CesiumLayerSync {
         const url = String(layer.source.url);
         const resource = makeResource(url);
         provider = new Cesium.WebMapServiceImageryProvider({
-          url: resource as string,
+          url: resource,
           layers: String(layer.source.layers ?? ""),
           parameters: {
             transparent: layer.source.transparent !== false,
@@ -454,7 +456,7 @@ export class CesiumLayerSync {
         const tileMatrixLabels = Array.isArray(labels) ? labels.map(String) : undefined;
 
         provider = new Cesium.WebMapTileServiceImageryProvider({
-          url: resource as string,
+          url: resource,
           layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
           style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
           // Cesium's own WebMapTileServiceImageryProvider default. The WMS
@@ -476,7 +478,7 @@ export class CesiumLayerSync {
         const maxLevel = Number(layer.source.maxzoom);
         const minLevel = Number(layer.source.minzoom);
         provider = new Cesium.UrlTemplateImageryProvider({
-          url: resource as string,
+          url: resource,
           maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
         });
