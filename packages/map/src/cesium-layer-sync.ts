@@ -203,7 +203,13 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         str(prev.metadata?.sourceKind) !== str(next.metadata?.sourceKind) ||
         str(prev.sourcePath) !== str(next.sourcePath) ||
         str(prev.metadata?.arcgisSublayers) !== str(next.metadata?.arcgisSublayers) ||
-        arcgisToken(prev) !== arcgisToken(next) ||
+        // Only the ArcGIS branch reads a token, and only the image branch reads
+        // bounds. Gate both on the kind that consumes them: `metadata.bounds` is
+        // set broadly (raster/time-slider layers too), and any tile URL can carry
+        // an unrelated `token=` param, so diffing them for every imagery kind
+        // would both waste work and force spurious rebuilds.
+        (next.metadata?.sourceKind === ARCGIS_MAP_SERVICE_KIND &&
+          arcgisToken(prev) !== arcgisToken(next)) ||
         str(prev.source.layers) !== str(next.source.layers) ||
         str(prev.source.layer) !== str(next.source.layer) ||
         str(prev.source.styles) !== str(next.source.styles) ||
@@ -218,7 +224,8 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         str(prev.source.format) !== str(next.source.format) ||
         str(prev.source.version) !== str(next.source.version) ||
         prev.source.transparent !== next.source.transparent ||
-        JSON.stringify(imageBounds(prev)) !== JSON.stringify(imageBounds(next)) ||
+        (next.type === "image" &&
+          JSON.stringify(imageBounds(prev)) !== JSON.stringify(imageBounds(next))) ||
         JSON.stringify(prev.source.requestHeaders ?? null) !==
           JSON.stringify(next.source.requestHeaders ?? null)
       );

@@ -322,6 +322,24 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.urlProviders.length, 0);
   });
 
+  it("does not rebuild a tile layer when unrelated bounds or token metadata change", () => {
+    // metadata.bounds is set broadly (raster/time-slider layers), and a tile URL
+    // can carry an unrelated token= param; neither feeds a UrlTemplateImageryProvider.
+    const sync = newSync(f);
+    const base = mkLayer({
+      id: "r",
+      type: "raster",
+      source: { tiles: ["https://tiles.host/{z}/{x}/{y}.png?token=abc"] },
+      metadata: { bounds: [0, 0, 1, 1] },
+    });
+    sync.sync([base]);
+    assert.equal(f.calls.urlProviders.length, 1);
+
+    sync.sync([{ ...base, metadata: { bounds: [0, 0, 2, 2] } }]);
+    assert.equal(f.calls.urlProviders.length, 1);
+    assert.equal(f.calls.imageryRemoved.length, 0);
+  });
+
   it("treats a wms layer with only a service url as globe-supported", () => {
     // WebMapServiceImageryProvider defaults `layers` to "", so a url is enough —
     // a scripted or hand-edited project without `layers` must not read "2D only".
