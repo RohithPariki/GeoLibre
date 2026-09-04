@@ -322,6 +322,17 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.urlProviders.length, 0);
   });
 
+  it("treats a wms layer with only a service url as globe-supported", () => {
+    // WebMapServiceImageryProvider defaults `layers` to "", so a url is enough —
+    // a scripted or hand-edited project without `layers` must not read "2D only".
+    const wms = mkLayer({ id: "w", type: "wms", source: { url: "https://wms.host/ows" } });
+    assert.equal(isCesiumSupportedLayerType(wms), true);
+    const sync = newSync(f);
+    sync.sync([wms]);
+    assert.equal(f.calls.wmsProviders.length, 1);
+    assert.equal(f.calls.wmsProviders[0].layers, "");
+  });
+
   it("re-asserts imagery stacking in store order after a middle-layer rebuild", () => {
     const sync = newSync(f);
     const A = mkLayer({ id: "a", type: "xyz", source: { tiles: ["a/{z}/{x}/{y}"] } });

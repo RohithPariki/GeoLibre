@@ -17,7 +17,12 @@ type CesiumNs = typeof import("@cesium/engine");
 /** Layer kinds this pass renders on the globe. */
 const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "image"]);
 
-/** `metadata.sourceKind` of the ArcGIS layers Cesium has a native provider for. */
+/**
+ * `metadata.sourceKind` of the ArcGIS layers Cesium has a native provider for.
+ * Must stay in sync with `ARCGIS_MAP_SERVICE_SOURCE_KIND` in
+ * `packages/plugins/src/plugins/arcgis-layer.ts`, which writes it — `@geolibre/map`
+ * cannot import from `@geolibre/plugins` (the dependency runs the other way).
+ */
 const ARCGIS_MAP_SERVICE_KIND = "arcgis-map-service";
 
 type EntryKind = "imagery" | "geojson" | "3dtiles";
@@ -145,7 +150,11 @@ function isSupported(layer: GeoLibreLayer): boolean {
   if (layer.type === "image") {
     return Boolean(str(layer.source.url)) && Boolean(imageBounds(layer));
   }
-  if (layer.type === "wms" || layer.type === "wmts") {
+  // WebMapServiceImageryProvider defaults `layers` to "", so a service URL alone
+  // is enough for WMS. WMTS needs a layer identifier: without one createImagery
+  // has no branch to take and would register an entry that renders nothing.
+  if (layer.type === "wms") return Boolean(str(layer.source.url)) || Boolean(firstTile(layer));
+  if (layer.type === "wmts") {
     return (
       (Boolean(str(layer.source.url)) &&
         (Boolean(str(layer.source.layers)) || Boolean(str(layer.source.layer)))) ||
@@ -363,13 +372,7 @@ export class CesiumLayerSync {
           options.token = token;
         }
 
-        if (typeof Cesium.ArcGisMapServerImageryProvider?.fromUrl === "function") {
-          provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(resource, options);
-        } else {
-          provider = new (Cesium.ArcGisMapServerImageryProvider as unknown as new (
-            opts: Record<string, unknown>,
-          ) => import("@cesium/engine").ImageryProvider)({ url: resource, ...options });
-        }
+        provider = await Cesium.ArcGisMapServerImageryProvider.fromUrl(resource, options);
       } else if (layer.type === "image" && str(layer.source.url)) {
         isAsync = true;
         const url = String(layer.source.url);
@@ -379,13 +382,7 @@ export class CesiumLayerSync {
         const rectangle = Cesium.Rectangle.fromDegrees(bounds[0], bounds[1], bounds[2], bounds[3]);
         const options = { rectangle };
 
-        if (typeof Cesium.SingleTileImageryProvider?.fromUrl === "function") {
-          provider = await Cesium.SingleTileImageryProvider.fromUrl(resource, options);
-        } else {
-          provider = new (Cesium.SingleTileImageryProvider as unknown as new (
-            opts: Record<string, unknown>,
-          ) => import("@cesium/engine").ImageryProvider)({ url: resource, ...options });
-        }
+        provider = await Cesium.SingleTileImageryProvider.fromUrl(resource, options);
       } else if (layer.type === "wms" && str(layer.source.url)) {
         const url = String(layer.source.url);
         const resource = makeResource(url);
