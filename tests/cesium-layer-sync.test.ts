@@ -832,6 +832,37 @@ describe("CesiumLayerSync", () => {
     });
   });
 
+  it("falls back to metadata.bounds when out-of-range corners can't be unwrapped", async () => {
+    // A >180 degree spread that doesn't straddle zero (only reachable with
+    // out-of-range longitudes from a hand-authored project) would leave
+    // Math.min/max of an empty array — an infinite corner Cesium would throw on.
+    const sync = newSync(f);
+    sync.sync([
+      mkLayer({
+        id: "img",
+        type: "image",
+        source: {
+          url: "data:image/png;base64,AAA",
+          coordinates: [
+            [0, 20],
+            [200, 20],
+            [200, 10],
+            [0, 10],
+          ],
+        },
+        metadata: { bounds: [0, 10, 20, 20] },
+      }),
+    ]);
+    await f.flush();
+    assert.equal(f.calls.singleTileProviders.length, 1);
+    assert.deepEqual(f.calls.singleTileProviders[0].options?.rectangle, {
+      west: 0,
+      south: 10,
+      east: 20,
+      north: 20,
+    });
+  });
+
   it("rebuilds an image layer when url or bounds change", async () => {
     const sync = newSync(f);
     const base = mkLayer({

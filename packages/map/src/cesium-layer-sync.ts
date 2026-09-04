@@ -81,6 +81,19 @@ function arcgisToken(layer: GeoLibreLayer): string | undefined {
   return str(new URLSearchParams(query).get("token") ?? undefined);
 }
 
+/** The cached `[west, south, east, north]` an image layer's producer wrote, if usable. */
+function boundsFromMetadata(layer: GeoLibreLayer): [number, number, number, number] | undefined {
+  const b = layer.metadata?.bounds;
+  if (
+    Array.isArray(b) &&
+    b.length === 4 &&
+    b.every((v) => typeof v === "number" && Number.isFinite(v))
+  ) {
+    return [b[0], b[1], b[2], b[3]];
+  }
+  return undefined;
+}
+
 /**
  * Extracts the 2D bounding box [west, south, east, north] in degrees from an
  * image layer's four corner coordinates, falling back to `metadata.bounds`.
@@ -119,20 +132,21 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
     let minLng = Math.min(...lngs);
     let maxLng = Math.max(...lngs);
     if (maxLng - minLng > 180) {
-      minLng = Math.min(...lngs.filter((lng) => lng > 0));
-      maxLng = Math.max(...lngs.filter((lng) => lng < 0));
+      const eastOfZero = lngs.filter((lng) => lng > 0);
+      const westOfZero = lngs.filter((lng) => lng < 0);
+      // In-range longitudes spanning more than 180° always straddle zero, so
+      // both sides are non-empty. Out-of-range corners from a hand-authored
+      // project can empty one, and Math.min/max of nothing is ±Infinity — fall
+      // back to metadata.bounds rather than hand Cesium an infinite corner
+      // (Rectangle.fromDegrees would throw into createImagery's catch, blanking
+      // the layer with no diagnostic tied to this cause).
+      if (!eastOfZero.length || !westOfZero.length) return boundsFromMetadata(layer);
+      minLng = Math.min(...eastOfZero);
+      maxLng = Math.max(...westOfZero);
     }
     return [minLng, Math.min(...lats), maxLng, Math.max(...lats)];
   }
-  const b = layer.metadata?.bounds;
-  if (
-    Array.isArray(b) &&
-    b.length === 4 &&
-    b.every((v) => typeof v === "number" && Number.isFinite(v))
-  ) {
-    return [b[0], b[1], b[2], b[3]];
-  }
-  return undefined;
+  return boundsFromMetadata(layer);
 }
 
 /**
