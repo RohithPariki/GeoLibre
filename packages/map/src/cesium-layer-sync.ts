@@ -150,6 +150,26 @@ function imageBounds(layer: GeoLibreLayer): [number, number, number, number] | u
 }
 
 /**
+ * The pieces a capabilities-driven WMTS layer (no tile template) needs to build a
+ * `WebMapTileServiceImageryProvider`, or undefined if any is missing.
+ *
+ * Cesium requires all three — it throws a `DeveloperError` on a missing
+ * `tileMatrixSetID` rather than defaulting one. A guessed matrix set is worse
+ * than none: the provider would request matrix identifiers the server does not
+ * publish and 404 per tile, so the layer reads as globe-capable but renders
+ * blank. Reporting an incomplete entry as 2D-only fails loudly instead.
+ */
+function wmtsCapabilities(
+  layer: GeoLibreLayer,
+): { url: string; layer: string; tileMatrixSetID: string } | undefined {
+  const url = str(layer.source.url);
+  const id = str(layer.source.layer) ?? str(layer.source.layers);
+  const tileMatrixSetID = str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet);
+  if (!url || !id || !tileMatrixSetID) return undefined;
+  return { url, layer: id, tileMatrixSetID };
+}
+
+/**
  * Whether the globe can render this layer *kind* at all (regardless of whether
  * its data has loaded yet). Exported so the UI can flag "2D only" layers on a
  * globe pane. See the module header for the supported kinds.
@@ -179,11 +199,7 @@ function isSupported(layer: GeoLibreLayer): boolean {
   // has no branch to take and would register an entry that renders nothing.
   if (layer.type === "wms") return Boolean(str(layer.source.url)) || Boolean(firstTile(layer));
   if (layer.type === "wmts") {
-    return (
-      (Boolean(str(layer.source.url)) &&
-        (Boolean(str(layer.source.layers)) || Boolean(str(layer.source.layer)))) ||
-      Boolean(firstTile(layer))
-    );
+    return Boolean(wmtsCapabilities(layer)) || Boolean(firstTile(layer));
   }
   return Boolean(firstTile(layer));
 }
@@ -366,6 +382,10 @@ export class CesiumLayerSync {
       let isAsync = false;
       const headers = layer.source.requestHeaders as Record<string, string> | undefined;
       const hasHeaders = Boolean(headers && Object.keys(headers).length);
+      // A tile template wins over the capabilities metadata: it needs no
+      // provider-side matrix-set negotiation.
+      const wmtsCaps =
+        layer.type === "wmts" && !firstTile(layer) ? wmtsCapabilities(layer) : undefined;
       // Credentials (request headers, an ArcGIS token) never go out over
       // plaintext — loopback excepted, so a local dev tile server still works.
       // Residual exposure: Cesium.Resource issues these through XHR/fetch, which
@@ -402,6 +422,10 @@ export class CesiumLayerSync {
         const url = String(layer.sourcePath);
         const resource = makeResource(url);
         const sublayers = str(layer.metadata?.arcgisSublayers);
+        // arcgis-layer.ts writes a bare id list ("0,2,5"); the `show:` prefix only
+        // ever appears in the tile URL's query string. Stripping it here is purely
+        // defensive, for a hand-authored or MCP project that copies the ArcGIS
+        // `layers=show:0,1` param form straight into the metadata field.
         const cleanLayers = sublayers?.replace(/^show:/i, "").trim() || undefined;
         const options: Record<string, unknown> = {};
         if (cleanLayers) options.layers = cleanLayers;
@@ -435,13 +459,8 @@ export class CesiumLayerSync {
             version: str(layer.source.version) ?? "1.1.1",
           },
         });
-      } else if (
-        layer.type === "wmts" &&
-        str(layer.source.url) &&
-        !firstTile(layer) &&
-        (str(layer.source.layer) || str(layer.source.layers))
-      ) {
-        const url = String(layer.source.url);
+      } else if (wmtsCaps) {
+        const url = wmtsCaps.url;
         const resource = makeResource(url);
         const maxLevel = Number(layer.source.maxzoom);
         const minLevel = Number(layer.source.minzoom);
@@ -471,15 +490,14 @@ export class CesiumLayerSync {
 
         provider = new Cesium.WebMapTileServiceImageryProvider({
           url: resource,
-          layer: str(layer.source.layer) ?? str(layer.source.layers) ?? "",
+          layer: wmtsCaps.layer,
           style: str(layer.source.style) ?? str(layer.source.styles) ?? "",
           // Cesium's own WebMapTileServiceImageryProvider default. The WMS
           // branch above defaults to image/png instead because WMS overlays are
           // usually drawn transparent over the globe, while WMTS sets are
           // typically opaque base imagery — the asymmetry is deliberate.
           format: str(layer.source.format) ?? "image/jpeg",
-          tileMatrixSetID:
-            str(layer.source.tileMatrixSetID) ?? str(layer.source.tileMatrixSet) ?? "default028mm",
+          tileMatrixSetID: wmtsCaps.tileMatrixSetID,
           maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
           tilingScheme,

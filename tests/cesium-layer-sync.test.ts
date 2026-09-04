@@ -670,6 +670,30 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.imageryAdded.length, 1);
   });
 
+  it("reports a capabilities-driven wmts layer with no tileMatrixSetID as 2D only", () => {
+    // Cesium throws on a missing tileMatrixSetID and a guessed one 404s per
+    // tile, so an incomplete hand-authored entry must not read as globe-capable.
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "wmts",
+      type: "wmts",
+      source: { url: "https://wmts.service/endpoint", layer: "ortho" },
+    });
+    assert.equal(isCesiumSupportedLayerType(layer), true);
+    sync.sync([layer]);
+    assert.equal(f.calls.wmtsProviders.length, 0);
+    assert.equal(f.calls.imageryAdded.length, 0);
+
+    // A tile template needs no matrix-set negotiation, so it still renders.
+    sync.sync([
+      {
+        ...layer,
+        source: { ...layer.source, tiles: ["https://wmts.service/{z}/{x}/{y}.png"] },
+      },
+    ]);
+    assert.equal(f.calls.urlProviders.length, 1);
+  });
+
   it("rebuilds a wmts layer when tileMatrixSetID or layer changes", () => {
     const sync = newSync(f);
     const base = mkLayer({
