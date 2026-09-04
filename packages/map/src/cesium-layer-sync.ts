@@ -97,8 +97,11 @@ function arcgisToken(layer: GeoLibreLayer): string | undefined {
   if (explicit) return explicit;
   const tile = firstTile(layer);
   if (!tile) return undefined;
-  const query = tile.slice(tile.indexOf("?") + 1);
-  return str(new URLSearchParams(query).get("token") ?? undefined);
+  // A cached tile template carries no query string at all; without this guard
+  // indexOf returns -1 and the whole URL would be parsed as if it were one.
+  const q = tile.indexOf("?");
+  if (q === -1) return undefined;
+  return str(new URLSearchParams(tile.slice(q + 1)).get("token") ?? undefined);
 }
 
 /** The cached `[west, south, east, north]` an image layer's producer wrote, if usable. */
@@ -551,6 +554,12 @@ export class CesiumLayerSync {
       entry.handle = imageryLayer;
       this.applyAppearance(entry);
       if (isAsync) {
+        // Unlike sync()'s reorder this one is unguarded, since the store order
+        // key can't tell whether an async layer has landed yet. Each resolve
+        // therefore costs its own O(n) raiseToTop sweep, so a project loading
+        // many ArcGIS/image layers at once pays O(n^2) overall. Fine for the
+        // handful a project typically has; worth coalescing into one deferred
+        // reorder if that stops being true.
         this.reorderImagery();
       }
     } catch {
