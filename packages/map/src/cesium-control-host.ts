@@ -8,7 +8,7 @@ class CesiumMapFacade extends maplibregl.Evented {
 
   constructor(
     private host: CesiumControlHost,
-    private viewer: any,
+    private viewer: CesiumWidget,
   ) {
     super();
   }
@@ -187,13 +187,17 @@ export class CesiumControlHost {
     let el: HTMLElement;
     try {
       el = control.onAdd(this.facade as unknown as maplibregl.Map);
+      if (!el || typeof el.style === "undefined") {
+        console.warn("[GeoLibre] control onAdd did not return a valid DOM element");
+        return false;
+      }
     } catch (error) {
       console.warn("[GeoLibre] control could not mount on the globe", error);
       return false;
     }
     el.style.pointerEvents = "auto";
 
-    const corner = this.corners[position];
+    const corner = this.corners[position] ?? this.corners["top-right"];
     if (corner) {
       corner.appendChild(el);
     }
@@ -206,9 +210,6 @@ export class CesiumControlHost {
     if (!this.controls.has(control)) return;
 
     const el = this.controls.get(control)!;
-    if (el.parentElement) {
-      el.parentElement.removeChild(el);
-    }
 
     // Guarded for the same reason `addControl` guards `onAdd`, and it matters
     // more here: `destroy()` calls this in a loop, and `CesiumCanvas`'s unmount
@@ -216,14 +217,23 @@ export class CesiumControlHost {
     // `onRemove` trips one of the facade's deliberate throws would otherwise
     // escape the cleanup — leaving the remaining controls mounted, the
     // container attached, the primary-host registration stale, and the Cesium
-    // viewer never destroyed. The control is dropped from the registry either
-    // way: it is already detached from the DOM by this point.
+    // viewer never destroyed.
+    //
+    // The control's DOM element is intentionally kept in its container until
+    // after `onRemove` returns: many `IControl` implementations invoke
+    // `this._container.parentNode.removeChild(this._container)` directly, and
+    // detaching beforehand causes them to throw on null parentNode. The finally
+    // block guarantees DOM cleanup and registry removal regardless of outcome.
     try {
       control.onRemove(this.facade as unknown as maplibregl.Map);
     } catch (error) {
       console.warn("[GeoLibre] control failed to unmount cleanly from the globe", error);
+    } finally {
+      if (el.parentElement) {
+        el.parentElement.removeChild(el);
+      }
+      this.controls.delete(control);
     }
-    this.controls.delete(control);
   }
 }
 
