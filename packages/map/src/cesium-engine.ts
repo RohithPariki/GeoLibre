@@ -482,12 +482,10 @@ export class CesiumEngine implements MapEngine {
    * `true`: the globe mounts `IControl`s using the control host.
    */
   addControl(control: maplibregl.IControl, position?: maplibregl.ControlPosition): boolean {
-    const host = getPrimaryCesiumControlHost();
-    if (host) {
-      host.addControl(control, position);
-      return true;
-    }
-    return false;
+    // Return the host's own result: it answers `false` for a control that is
+    // already mounted, and a caller that reads `true` there would double-count
+    // its registration.
+    return getPrimaryCesiumControlHost()?.addControl(control, position) ?? false;
   }
 
   removeControl(control: maplibregl.IControl): void {

@@ -18,6 +18,9 @@ import {
   useAppStore,
 } from "@geolibre/core";
 import { getPrimaryCesiumControlHost, type MapController } from "@geolibre/map";
+// Type-only: the Cesium engine itself is imported lazily, inside the globe
+// branch of handleSelect, so it stays off this panel's load path.
+import type { PointPrimitive, PointPrimitiveCollection, Primitive } from "@cesium/engine";
 import { Input } from "@geolibre/ui";
 import { Hexagon, Loader2, LocateFixed, MapPin, Search, Table2, X } from "lucide-react";
 import { formatLatLon, parseLatLon } from "../../lib/coordinates";
@@ -107,8 +110,19 @@ export function LayerPanelPlaceSearch({
   const [activeIndex, setActiveIndex] = useState(-1);
   const abortRef = useRef<AbortController | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
-  const cesiumMarkerRef = useRef<any>(null);
-  const cesiumH3EntitiesRef = useRef<any[]>([]);
+  const cesiumMarkerRef = useRef<{
+    collection: PointPrimitiveCollection;
+    point: PointPrimitive;
+  } | null>(null);
+  const cesiumH3EntitiesRef = useRef<Primitive[]>([]);
+  /**
+   * Bumped on every selection, so an in-flight globe branch can tell it has
+   * been superseded. Two rapid picks both await the Cesium import; without this
+   * the later continuation overwrites `cesiumMarkerRef`, and cleanup then
+   * removes only the collection still in the ref — leaving the earlier one in
+   * the scene forever.
+   */
+  const selectionGeneration = useRef(0);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // `open` read by the local scan's gate. It is a ref rather than a dependency
@@ -419,10 +433,13 @@ export function LayerPanelPlaceSearch({
           for (const position of row.cell.boundary) bounds.extend(position);
           map.fitBounds(bounds, { padding: 60 });
         } else {
-          const store = useAppStore.getState();
-          store.setMapView({
+          // Animated, not `setMapView`: the store path lands in
+          // `MapController.applyView`, which is a `jumpTo` — an instant snap.
+          // Routing the 2D case through the store for cross-engine tidiness
+          // would silently drop the fly-to this box has always had.
+          map.flyTo({
             center: [row.match.lon, row.match.lat],
-            zoom: Math.max(store.mapView.zoom, 12),
+            zoom: Math.max(map.getZoom(), 12),
           });
           markerRef.current = new maplibregl.Marker({ color: H3_HIGHLIGHT_COLOR })
             .setLngLat([row.match.lon, row.match.lat])
@@ -431,69 +448,87 @@ export function LayerPanelPlaceSearch({
       } else {
         const host = getPrimaryCesiumControlHost();
         if (host && !host.viewer.isDestroyed()) {
-          const Cesium = await import("@cesium/engine");
-          if (row.kind === "h3") {
-            const hierarchy = new Cesium.PolygonHierarchy(
-              row.cell.boundary.map((pos) => Cesium.Cartesian3.fromDegrees(pos[0], pos[1])),
-            );
-            // Use primitives since CesiumWidget has no entities
-            const instance = new Cesium.GeometryInstance({
-              geometry: new Cesium.PolygonGeometry({
-                polygonHierarchy: hierarchy,
-                perPositionHeight: true,
-              }),
-              attributes: {
-                color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR).withAlpha(0.15),
-                ),
-              },
-            });
-            const polylineInstance = new Cesium.GeometryInstance({
-              geometry: new Cesium.PolylineGeometry({
-                positions: hierarchy.positions,
-                width: 2,
-              }),
-              attributes: {
-                color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
-                ),
-              },
-            });
-            const primitive = new Cesium.Primitive({
-              geometryInstances: instance,
-              appearance: new Cesium.PerInstanceColorAppearance({
-                flat: true,
-                translucent: true,
-                closed: true,
-              }),
-            });
-            const polylinePrimitive = new Cesium.Primitive({
-              geometryInstances: polylineInstance,
-              appearance: new Cesium.PolylineColorAppearance({
-                translucent: true,
-              }),
-            });
-            host.viewer.scene.primitives.add(primitive);
-            host.viewer.scene.primitives.add(polylinePrimitive);
-            cesiumH3EntitiesRef.current.push(primitive, polylinePrimitive);
-            const boundingSphere = Cesium.BoundingSphere.fromPoints(hierarchy.positions);
-            host.viewer.camera.flyToBoundingSphere(boundingSphere, { duration: 1.5 });
-          } else {
-            const store = useAppStore.getState();
-            store.setMapView({
-              center: [row.match.lon, row.match.lat],
-              zoom: Math.max(store.mapView.zoom, 12),
-            });
-            const points = new Cesium.PointPrimitiveCollection();
-            host.viewer.scene.primitives.add(points);
-            const p = points.add({
-              position: Cesium.Cartesian3.fromDegrees(row.match.lon, row.match.lat),
-              color: Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
-              pixelSize: 12,
-              outlineColor: Cesium.Color.WHITE,
-              outlineWidth: 2,
-            });
-            cesiumMarkerRef.current = { collection: points, point: p };
+          // This selection's ticket. A later pick bumps the counter, so the
+          // checks after each await can tell they have been superseded.
+          const generation = ++selectionGeneration.current;
+          try {
+            const Cesium = await import("@cesium/engine");
+            // The globe can be unmounted (engine switch, panel closed) while the
+            // chunk loads. Cesium throws on any use of a destroyed viewer, so
+            // re-check after the await the way CesiumCanvas does — the import is
+            // usually cached, which narrows the window without closing it.
+            if (host.viewer.isDestroyed() || generation !== selectionGeneration.current) {
+              settle(row.match.displayName);
+              return;
+            }
+            if (row.kind === "h3") {
+              const hierarchy = new Cesium.PolygonHierarchy(
+                row.cell.boundary.map((pos) => Cesium.Cartesian3.fromDegrees(pos[0], pos[1])),
+              );
+              // Use primitives since CesiumWidget has no entities
+              const instance = new Cesium.GeometryInstance({
+                geometry: new Cesium.PolygonGeometry({
+                  polygonHierarchy: hierarchy,
+                  perPositionHeight: true,
+                }),
+                attributes: {
+                  color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+                    Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR).withAlpha(0.15),
+                  ),
+                },
+              });
+              const polylineInstance = new Cesium.GeometryInstance({
+                geometry: new Cesium.PolylineGeometry({
+                  positions: hierarchy.positions,
+                  width: 2,
+                }),
+                attributes: {
+                  color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+                    Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
+                  ),
+                },
+              });
+              const primitive = new Cesium.Primitive({
+                geometryInstances: instance,
+                appearance: new Cesium.PerInstanceColorAppearance({
+                  flat: true,
+                  translucent: true,
+                  closed: true,
+                }),
+              });
+              const polylinePrimitive = new Cesium.Primitive({
+                geometryInstances: polylineInstance,
+                appearance: new Cesium.PolylineColorAppearance({
+                  translucent: true,
+                }),
+              });
+              host.viewer.scene.primitives.add(primitive);
+              host.viewer.scene.primitives.add(polylinePrimitive);
+              cesiumH3EntitiesRef.current.push(primitive, polylinePrimitive);
+              const boundingSphere = Cesium.BoundingSphere.fromPoints(hierarchy.positions);
+              host.viewer.camera.flyToBoundingSphere(boundingSphere, { duration: 1.5 });
+            } else {
+              const store = useAppStore.getState();
+              store.setMapView({
+                center: [row.match.lon, row.match.lat],
+                zoom: Math.max(store.mapView.zoom, 12),
+              });
+              const points = new Cesium.PointPrimitiveCollection();
+              host.viewer.scene.primitives.add(points);
+              const p = points.add({
+                position: Cesium.Cartesian3.fromDegrees(row.match.lon, row.match.lat),
+                color: Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
+                pixelSize: 12,
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 2,
+              });
+              cesiumMarkerRef.current = { collection: points, point: p };
+            }
+          } catch (error) {
+            // A failed import or primitive build must not leave the dropdown
+            // open on a stale query with the old highlight already cleared —
+            // settle below runs either way.
+            console.warn("[GeoLibre] place search could not draw on the globe", error);
           }
         }
       }

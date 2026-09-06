@@ -28,7 +28,13 @@ class CesiumMapFacade extends maplibregl.Evented {
   setStyle(style: any, options?: any) {
     if (typeof style === "string") {
       useAppStore.getState().setBasemapStyleUrl(style);
-      // Wait a tick for state propagation then emit style.load
+      // Best-effort `style.load`, not a real readiness signal. The store update
+      // reaches the globe through CesiumCanvas's own effect, whose imagery
+      // providers and tile requests are asynchronous and not bounded by one
+      // macrotask — so a control that reacts to this by reading style state may
+      // still run before the imagery has actually switched. It exists because
+      // controls wait for it before finishing a basemap swap (they would hang
+      // otherwise); it does not promise the pixels have changed.
       setTimeout(() => {
         this.fire(new maplibregl.Event("style.load"));
       }, 0);
@@ -101,10 +107,10 @@ class CesiumMapFacade extends maplibregl.Evented {
     return useAppStore.getState().mapView.zoom;
   }
   getBearing() {
-    return 0; // Cesium camera mapping handles actual bearing, but keeping shim simple
+    return useAppStore.getState().mapView.bearing;
   }
   getPitch() {
-    return 0;
+    return useAppStore.getState().mapView.pitch;
   }
   getBounds() {
     throw new Error("CesiumControlHost: getBounds not implemented");
@@ -170,7 +176,21 @@ export class CesiumControlHost {
   addControl(control: maplibregl.IControl, position: maplibregl.ControlPosition = "top-right") {
     if (this.controls.has(control)) return false;
 
-    const el = control.onAdd(this.facade as unknown as maplibregl.Map);
+    // The facade throws for the style-spec methods it cannot honour, which is
+    // deliberate — but `addMapControl` is a boolean-returning API that plugins
+    // are written against (`if (!app.addMapControl(...))`), and at least one
+    // caller activates plugins without a try/catch (PluginManager's
+    // project-restore loop). Letting the throw escape would abort restoring the
+    // remaining plugins instead of degrading like any other failed control, so
+    // a control whose onAdd trips the facade reports "not added" rather than
+    // taking the caller down with it.
+    let el: HTMLElement;
+    try {
+      el = control.onAdd(this.facade as unknown as maplibregl.Map);
+    } catch (error) {
+      console.warn("[GeoLibre] control could not mount on the globe", error);
+      return false;
+    }
     el.style.pointerEvents = "auto";
 
     const corner = this.corners[position];
