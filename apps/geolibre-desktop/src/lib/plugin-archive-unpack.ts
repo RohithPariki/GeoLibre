@@ -27,6 +27,21 @@ function isRequiredManifestString(value: unknown): value is string {
 }
 
 /**
+ * Type guard for a declared renderer list: an array whose every entry is a
+ * known renderer kind (`"maplibre"` or `"cesium"`). Shared by the manifest
+ * check below and the external-plugin loader, which validates the same field
+ * on the plugin a bundle exports.
+ *
+ * @param value - The unknown value to validate.
+ * @returns `true` when the value is a valid engines array, otherwise `false`.
+ */
+export function isPluginEngineList(value: unknown): value is ("maplibre" | "cesium")[] {
+  return (
+    Array.isArray(value) && value.every((engine) => engine === "maplibre" || engine === "cesium")
+  );
+}
+
+/**
  * Type guard validating that a candidate object conforms to the GeoLibre external plugin manifest schema.
  *
  * @param value - The unknown value to validate.
@@ -45,9 +60,7 @@ export function isExternalPluginManifest(value: unknown): value is GeoLibreExter
     (manifest.style === undefined ||
       (typeof manifest.style === "string" && manifest.style.endsWith(".css"))) &&
     (manifest.activeByDefault === undefined || typeof manifest.activeByDefault === "boolean") &&
-    (manifest.engines === undefined ||
-      (Array.isArray(manifest.engines) &&
-        manifest.engines.every((e) => e === "maplibre" || e === "cesium")))
+    (manifest.engines === undefined || isPluginEngineList(manifest.engines))
   );
 }
 

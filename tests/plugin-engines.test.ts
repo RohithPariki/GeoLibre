@@ -8,12 +8,19 @@ import {
   maplibreSocrataPlugin,
 } from "../packages/plugins/src/plugins/maplibre-open-data-catalogs";
 import {
+  maplibrePlanetOpenDataPlugin,
+  maplibreStacCatalogsPlugin,
+} from "../packages/plugins/src/plugins/maplibre-stac";
+import {
   maplibreNaturalEarthPlugin,
   maplibreSourceCoopPlugin,
 } from "../packages/plugins/src/plugins/maplibre-source-coop";
 import { osmBasemapPlugin } from "../packages/plugins/src/plugins/osm-basemap";
 import { cartoLightPlugin } from "../packages/plugins/src/plugins/carto-light";
-import { isExternalPluginManifest } from "../apps/geolibre-desktop/src/lib/plugin-archive-unpack";
+import {
+  isExternalPluginManifest,
+  isPluginEngineList,
+} from "../apps/geolibre-desktop/src/lib/plugin-archive-unpack";
 
 describe("isPluginEngineSupported", () => {
   it("defaults to MapLibre support when engines is undefined", () => {
@@ -82,6 +89,18 @@ describe("Tier 1 built-in plugin engine support audit", () => {
     assert.equal(isPluginEngineSupported(maplibreBasemapControlPlugin, "cesium"), false);
   });
 
+  // Both STAC plugins come out of the same createStacPlugin factory, so they
+  // are audited together: the panel is engine-neutral, but footprints, the
+  // "current view" search bbox, the draw-bbox tool, and footprint click/hover
+  // all need app.getMap(), which only MapLibre provides.
+  it("declares support for MapLibre only on the STAC catalog plugins", () => {
+    for (const plugin of [maplibreStacCatalogsPlugin, maplibrePlanetOpenDataPlugin]) {
+      assert.deepEqual(plugin.engines, ["maplibre"], `Plugin ${plugin.id} must be MapLibre-only`);
+      assert.equal(isPluginEngineSupported(plugin, "maplibre"), true);
+      assert.equal(isPluginEngineSupported(plugin, "cesium"), false);
+    }
+  });
+
   it("defaults MapLibre-only plugins without explicit engines to maplibre", () => {
     const defaultPlugin = { id: "plain-plugin", name: "Plain", version: "1.0.0" };
     assert.equal(isPluginEngineSupported(defaultPlugin, "maplibre"), true);
@@ -108,6 +127,15 @@ describe("isExternalPluginManifest engines validation", () => {
       isExternalPluginManifest({ ...baseManifest, engines: ["maplibre", "cesium"] }),
       true,
     );
+  });
+
+  it("rejects plugin engines that are not a list of known renderers", () => {
+    assert.equal(isPluginEngineList(["maplibre", "cesium"]), true);
+    assert.equal(isPluginEngineList([]), true);
+    assert.equal(isPluginEngineList("maplibre"), false);
+    assert.equal(isPluginEngineList(["unsupported"]), false);
+    assert.equal(isPluginEngineList([123]), false);
+    assert.equal(isPluginEngineList(undefined), false);
   });
 
   it("rejects manifests with invalid engines", () => {

@@ -15,6 +15,7 @@ import {
   bundleFromZipBytes,
   type ExternalPluginBundle,
   isExternalPluginManifest,
+  isPluginEngineList,
   MAX_PLUGIN_ASSET_BYTES,
 } from "./plugin-archive-unpack";
 import {
@@ -416,6 +417,12 @@ async function importExternalPlugin(bundle: ExternalPluginBundle): Promise<GeoLi
     validateManifestMatchesPlugin(bundle.manifest, candidate);
     if (candidate.activeByDefault) {
       throw new Error("External plugins cannot use activeByDefault.");
+    }
+    // The manifest's engines are validated by isExternalPluginManifest; the
+    // exported plugin's own engines are not, so check them here rather than
+    // letting an unexpected value reach isPluginEngineSupported.
+    if (candidate.engines !== undefined && !isPluginEngineList(candidate.engines)) {
+      throw new Error('Plugin engines must be an array of "maplibre" or "cesium".');
     }
     if (bundle.manifest.engines && !candidate.engines) {
       candidate.engines = bundle.manifest.engines;

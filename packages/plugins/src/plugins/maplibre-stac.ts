@@ -1,5 +1,5 @@
 import { DEFAULT_LAYER_STYLE, useAppStore } from "@geolibre/core";
-import { fillLayerId, lineLayerId } from "@geolibre/map";
+import { fillLayerId, lineLayerId } from "@geolibre/map/style-layer-ids";
 import type { FeatureCollection, Geometry } from "geojson";
 import type { GeoJSONSource, MapMouseEvent, Map as MapLibreMap } from "maplibre-gl";
 import type {
@@ -1629,7 +1629,10 @@ function createStacPlugin(id: string, name: string, presetCatalogUrl = ""): GeoL
     id,
     name,
     version: "0.1.0",
-    engines: ["maplibre", "cesium"],
+    // MapLibre only: the panel is engine-neutral, but item footprints, the
+    // "current view" search bbox, the draw-bbox tool, and footprint
+    // click/hover all go through `app.getMap()`, which is null off MapLibre.
+    engines: ["maplibre"],
     exclusiveGroup: "stac-catalog-browser",
     activate(app) {
       initialCatalogUrl = presetCatalogUrl;
