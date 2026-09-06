@@ -84,9 +84,17 @@ function makeCesium() {
     EllipsoidTerrainProvider: class {
       readonly kind = "ellipsoid";
     },
+    // Cesium's own numbering, which the engine compares `scene.mode` against.
+    SceneMode: { MORPHING: 0, COLUMBUS_VIEW: 1, SCENE2D: 2, SCENE3D: 3 },
     Math: {
       toRadians: toRad,
-      toDegrees: (rad: number) => (rad * 180) / Math.PI,
+      // Cesium's own `Math.toDegrees` throws `DeveloperError` on a missing
+      // value rather than returning NaN, which is what turns an unguarded
+      // mid-morph camera read into a thrown error instead of a bad number.
+      toDegrees: (rad: number) => {
+        if (typeof rad !== "number") throw new Error("DeveloperError: radians is required.");
+        return (rad * 180) / Math.PI;
+      },
     },
     createWorldTerrainAsync: () => Promise.resolve({ kind: "world-terrain" }),
   } as unknown as typeof import("@cesium/engine");
@@ -120,6 +128,7 @@ function makeViewer(groundHeight = 0) {
   let height = groundHeight;
   const moveEnd = makeEvent();
   const tileLoadProgressEvent = makeEvent();
+  const morphComplete = makeEvent();
   const canvasListeners = new Map<string, Set<(event: unknown) => void>>();
   const canvas = {
     clientWidth: 800,
@@ -183,6 +192,10 @@ function makeViewer(groundHeight = 0) {
     },
     scene: {
       canvas,
+      // SCENE3D, matching the fake namespace above. Mutable so a test can put
+      // the scene mid-morph (or in 2D) the way the scene-mode picker does.
+      mode: 3,
+      morphComplete,
       verticalExaggeration: 1,
       screenSpaceCameraController: {
         minimumZoomDistance: 0,
@@ -215,6 +228,21 @@ function makeViewer(groundHeight = 0) {
     viewer: viewer as never,
     moveEnd,
     tileLoadProgressEvent,
+    morphComplete,
+    /** Put the scene in a scene mode, as the scene-mode picker's morph does. */
+    setSceneMode(mode: number) {
+      viewer.scene.mode = mode;
+    },
+    /**
+     * Make the camera report what Cesium reports mid-morph: `heading` and
+     * `pitch` become `undefined`, and `Math.toDegrees` throws on them. Without
+     * this the fake would keep answering with numbers and a missing morph guard
+     * would pass the test it is supposed to fail.
+     */
+    breakCameraForMorph() {
+      state.heading = undefined as unknown as number;
+      state.pitch = undefined as unknown as number;
+    },
     flights,
     canvasListeners,
     /** Nudge the camera as if the user had navigated there. */
@@ -716,6 +744,229 @@ describe("CesiumEngine framing", () => {
       },
     } as never);
     assert.equal(fakes.flights.length, 1);
+    engine.destroy();
+  });
+});
+
+// --- scene-mode morphs -------------------------------------------------------
+// Cesium's scene-mode picker (the globe's 2D/3D/Columbus button, added in
+// #2270) does not swap the mode instantly: it runs an animated morph, and for
+// its duration the camera is off limits. `Camera.lookAt` and `flyTo` throw
+// outright while `scene.mode` is MORPHING, `camera.heading` returns undefined,
+// and moveEnd fires repeatedly with intermediate poses. So both halves of the
+// camera sync have to stand down until it lands, then publish the native endpoint
+// without a second camera move.
+
+const MORPHING = 0;
+const SCENE2D = 2;
+
+describe("CesiumEngine scene-mode morphs", () => {
+  beforeEach(() => {
+    useAppStore.setState({
+      mapView: { center: [0, 0], zoom: 4, bearing: 0, pitch: 0 },
+      setMapView: (() => {}) as never,
+    } as never);
+  });
+
+  it("does not place the camera while the scene is morphing", () => {
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    const before = fakes.placements;
+    fakes.setSceneMode(MORPHING);
+    engine.applyView({ center: [10, 20], zoom: 8, bearing: 0, pitch: 0 });
+    assert.equal(fakes.placements, before, "lookAt throws mid-morph; it must not be called");
+    engine.destroy();
+  });
+
+  it("does not animate the camera while the scene is morphing", () => {
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    fakes.setSceneMode(MORPHING);
+    engine.zoomIn();
+    assert.equal(fakes.flights.length, 0, "flyTo throws mid-morph; it must not be called");
+    engine.destroy();
+  });
+
+  it("does not publish the intermediate poses a morph fires", () => {
+    // A morph raises moveEnd repeatedly on its way between modes. Publishing
+    // those would walk the stored camera through a series of half-projected
+    // poses, and each pane following mapView would jump with it.
+    const writes: MapViewState[] = [];
+    useAppStore.setState({
+      setMapView: ((view: MapViewState) => writes.push(view)) as never,
+    } as never);
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.applyView(VIEW);
+    fakes.setSceneMode(MORPHING);
+    fakes.nudge(30);
+    fakes.moveEnd.emit();
+    assert.deepEqual(writes, []);
+    engine.destroy();
+  });
+
+  it("publishes the native morph endpoint without snapping back to the stored camera", () => {
+    const writes: MapViewState[] = [];
+    useAppStore.setState({ setMapView: ((view: MapViewState) => writes.push(view)) as never });
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.applyView(VIEW);
+    fakes.setSceneMode(SCENE2D);
+    fakes.nudge(45);
+    const settled = engine.readView();
+    const before = fakes.placements;
+    fakes.morphComplete.emit();
+    assert.equal(fakes.placements, before, "a native morph must not end with a camera placement");
+    assert.deepEqual(writes, [settled], "the project follows Cesium's final view");
+    assert.deepEqual(
+      engine.getLastAppliedView(),
+      settled,
+      "store echo must not reapply the camera",
+    );
+    engine.destroy();
+  });
+
+  it("stops publishing morphs once destroyed", () => {
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.destroy();
+    const before = fakes.placements;
+    fakes.morphComplete.emit();
+    assert.equal(fakes.placements, before);
+    assert.equal(fakes.morphComplete.size, 0, "the listener must be removed on destroy");
+  });
+});
+
+// --- built-in controls -------------------------------------------------------
+// The globe has no MapLibre map, so none of the built-in controls the Controls
+// menu offers exist on it — with one exception. `CesiumCanvas` builds a Cesium
+// fullscreen widget and hands it to the engine under the `fullscreen` id
+// (#2270), so that one menu row governs something here too. The distinction has
+// to be exact: answering `true` for an id the globe cannot honour would move the
+// menu's checkmark while nothing on the map changed, which is precisely what the
+// `false` return exists to prevent.
+
+describe("CesiumEngine built-in controls", () => {
+  /** A control host recording what was mounted and unmounted. */
+  function fakeHost() {
+    const calls = { added: [] as unknown[], removed: [] as unknown[] };
+    const host = {
+      addControl: (control: unknown) => {
+        calls.added.push(control);
+        return true;
+      },
+      removeControl: (control: unknown) => {
+        calls.removed.push(control);
+      },
+    } as unknown as CesiumControlHost;
+    return { calls, host };
+  }
+
+  it("refuses a built-in control nothing has registered", () => {
+    const { calls, host } = fakeHost();
+    setPrimaryCesiumControlHost(host);
+    try {
+      const fakes = makeViewer();
+      const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+      // Every MapLibre-only control: no globe counterpart, so the menu must be
+      // told the toggle did not take.
+      assert.equal(engine.setBuiltInControlVisible("navigation", true), false);
+      assert.equal(engine.setBuiltInControlVisible("fullscreen", true), false);
+      assert.deepEqual(calls.added, []);
+      engine.destroy();
+    } finally {
+      setPrimaryCesiumControlHost(null);
+    }
+  });
+
+  it("mounts and unmounts a registered control through the host", () => {
+    const { calls, host } = fakeHost();
+    setPrimaryCesiumControlHost(host);
+    try {
+      const fakes = makeViewer();
+      const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+      const control = { onAdd: () => document.createElement("div"), onRemove: () => {} };
+      engine.registerBuiltInControl("fullscreen", control as never);
+
+      assert.equal(engine.setBuiltInControlVisible("fullscreen", false), true);
+      assert.deepEqual(calls.removed, [control]);
+      assert.equal(engine.setBuiltInControlVisible("fullscreen", true), true);
+      assert.deepEqual(calls.added, [control]);
+      // Registering one control must not make the engine claim the others.
+      assert.equal(engine.setBuiltInControlVisible("compass", true), false);
+      engine.destroy();
+    } finally {
+      setPrimaryCesiumControlHost(null);
+    }
+  });
+
+  it("keeps a grid pane away from the primary globe's controls", () => {
+    const { calls, host } = fakeHost();
+    setPrimaryCesiumControlHost(host);
+    try {
+      const fakes = makeViewer();
+      const pane = new CesiumEngine(makeCesium(), fakes.viewer, { viewId: "pane-1" });
+      const control = { onAdd: () => document.createElement("div"), onRemove: () => {} };
+      pane.registerBuiltInControl("fullscreen", control as never);
+      // Same guard as `addControl`: the host belongs to the primary map area,
+      // so a pane acting on it would toggle a control on a different viewer.
+      assert.equal(pane.setBuiltInControlVisible("fullscreen", true), false);
+      assert.deepEqual(calls.added, []);
+      pane.destroy();
+    } finally {
+      setPrimaryCesiumControlHost(null);
+    }
+  });
+
+  it("forgets its registrations on destroy", () => {
+    const { calls, host } = fakeHost();
+    setPrimaryCesiumControlHost(host);
+    try {
+      const fakes = makeViewer();
+      const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+      const control = { onAdd: () => document.createElement("div"), onRemove: () => {} };
+      engine.registerBuiltInControl("fullscreen", control as never);
+      engine.destroy();
+      // A late toggle (the app replays control visibility on project load) must
+      // not re-mount a control onto a globe that is already gone.
+      assert.equal(engine.setBuiltInControlVisible("fullscreen", true), false);
+      assert.deepEqual(calls.added, []);
+    } finally {
+      setPrimaryCesiumControlHost(null);
+    }
+  });
+});
+
+describe("CesiumEngine camera reads during a morph", () => {
+  beforeEach(() => {
+    useAppStore.setState({
+      mapView: { center: [0, 0], zoom: 4, bearing: 0, pitch: 0 },
+      setMapView: (() => {}) as never,
+    } as never);
+  });
+
+  it("reports the last applied view instead of reading a half-morphed camera", () => {
+    // Not a nicety. `camera.heading` is `undefined` while the scene is
+    // MORPHING, and Cesium's `Math.toDegrees` throws on that rather than
+    // returning NaN — so an unguarded read takes its caller down. The callers
+    // are ordinary background work: the autosave snapshot, the View menu's
+    // zoom-limit check, the status bar.
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.applyView(VIEW);
+    fakes.setSceneMode(MORPHING);
+    fakes.breakCameraForMorph();
+    assert.deepEqual(engine.readView(), VIEW);
+    assert.equal(engine.readCameraAltitude(), null);
+    engine.destroy();
+  });
+
+  it("falls back to the store when a morph starts before any view is applied", () => {
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    fakes.setSceneMode(MORPHING);
+    fakes.breakCameraForMorph();
+    assert.deepEqual(engine.readView(), useAppStore.getState().mapView);
     engine.destroy();
   });
 });
