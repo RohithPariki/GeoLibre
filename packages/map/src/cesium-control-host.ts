@@ -210,7 +210,19 @@ export class CesiumControlHost {
       el.parentElement.removeChild(el);
     }
 
-    control.onRemove(this.facade as unknown as maplibregl.Map);
+    // Guarded for the same reason `addControl` guards `onAdd`, and it matters
+    // more here: `destroy()` calls this in a loop, and `CesiumCanvas`'s unmount
+    // effect calls `destroy()` with no try/catch of its own. A control whose
+    // `onRemove` trips one of the facade's deliberate throws would otherwise
+    // escape the cleanup — leaving the remaining controls mounted, the
+    // container attached, the primary-host registration stale, and the Cesium
+    // viewer never destroyed. The control is dropped from the registry either
+    // way: it is already detached from the DOM by this point.
+    try {
+      control.onRemove(this.facade as unknown as maplibregl.Map);
+    } catch (error) {
+      console.warn("[GeoLibre] control failed to unmount cleanly from the globe", error);
+    }
     this.controls.delete(control);
   }
 }

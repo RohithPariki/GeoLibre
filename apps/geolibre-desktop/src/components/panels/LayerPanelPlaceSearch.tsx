@@ -123,6 +123,15 @@ export function LayerPanelPlaceSearch({
    * the scene forever.
    */
   const selectionGeneration = useRef(0);
+  /**
+   * False once this panel has unmounted. The generation and `isDestroyed`
+   * checks below cover a superseded pick and a torn-down globe, but not a
+   * torn-down *panel*: the unmount cleanup runs against whatever is in the refs
+   * at that moment, so a pick still awaiting the Cesium import would resume
+   * afterwards and add primitives to a live globe under refs nobody will read
+   * again — orphaning them in the scene for as long as the globe lives.
+   */
+  const mountedRef = useRef(true);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // `open` read by the local scan's gate. It is a ref rather than a dependency
@@ -187,15 +196,16 @@ export function LayerPanelPlaceSearch({
     }
   }, []);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
       abortRef.current?.abort();
       clearMarkers();
       clearH3Highlight();
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
-    },
-    [clearH3Highlight, clearMarkers],
-  );
+    };
+  }, [clearH3Highlight, clearMarkers]);
 
   const runSearch = useCallback(
     async (text: string) => {
@@ -457,7 +467,11 @@ export function LayerPanelPlaceSearch({
             // chunk loads. Cesium throws on any use of a destroyed viewer, so
             // re-check after the await the way CesiumCanvas does — the import is
             // usually cached, which narrows the window without closing it.
-            if (host.viewer.isDestroyed() || generation !== selectionGeneration.current) {
+            if (
+              !mountedRef.current ||
+              host.viewer.isDestroyed() ||
+              generation !== selectionGeneration.current
+            ) {
               // Do not settle: a superseded selection has already been settled
               // by whichever pick superseded it, and re-settling here would
               // rewrite the box (and settledQuery) back to this stale row's

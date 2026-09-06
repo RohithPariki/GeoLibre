@@ -3,6 +3,10 @@ import { beforeEach, describe, it } from "node:test";
 import { useAppStore } from "../packages/core/src/store";
 import type { MapViewState } from "../packages/core/src/types";
 import { CesiumEngine, CESIUM_CAPABILITIES } from "../packages/map/src/cesium-engine";
+import {
+  setPrimaryCesiumControlHost,
+  type CesiumControlHost,
+} from "../packages/map/src/cesium-control-host";
 
 // The globe's camera state machine, which moved out of CesiumCanvas's mount
 // effect and into CesiumEngine (issue #2260). It had no coverage while it lived
@@ -245,13 +249,43 @@ describe("CesiumEngine capabilities", () => {
     // The control host is a singleton owned by the primary map area, so
     // delegating from a pane would mount its control onto a different viewer —
     // or onto nothing when the primary renderer is MapLibre (#2266 review).
-    const fakes = makeViewer();
-    const pane = new CesiumEngine(makeCesium(), fakes.viewer, { viewId: "pane-1" });
-    assert.equal(pane.addControl({} as never), false);
-    // ...and the capability says so, rather than advertising one it refuses.
-    assert.equal(pane.capabilities.domControls, false);
+    //
+    // A registered host is what makes this test mean anything: without one an
+    // unguarded addControl would answer `false` too, and the assertion would
+    // pass whether or not the guard exists.
+    const calls = { added: 0, removed: 0 };
+    const host = {
+      addControl: () => {
+        calls.added++;
+        return true;
+      },
+      removeControl: () => {
+        calls.removed++;
+      },
+    } as unknown as CesiumControlHost;
+    setPrimaryCesiumControlHost(host);
+    try {
+      const fakes = makeViewer();
+      const pane = new CesiumEngine(makeCesium(), fakes.viewer, { viewId: "pane-1" });
+      assert.equal(pane.addControl({} as never), false);
+      pane.removeControl({} as never);
+      assert.equal(calls.added, 0, "a pane must not reach the primary host");
+      assert.equal(calls.removed, 0, "nor unmount a control it never added");
+      // ...and the capability says so, rather than advertising one it refuses.
+      assert.equal(pane.capabilities.domControls, false);
+      pane.destroy();
+
+      // The primary globe, by contrast, does delegate to the host.
+      const primaryFakes = makeViewer();
+      const primary = new CesiumEngine(makeCesium(), primaryFakes.viewer);
+      assert.equal(primary.addControl({} as never), true);
+      assert.equal(calls.added, 1);
+      assert.equal(primary.capabilities.domControls, true);
+      primary.destroy();
+    } finally {
+      setPrimaryCesiumControlHost(null);
+    }
     assert.equal(CESIUM_CAPABILITIES.domControls, true, "the primary globe still hosts controls");
-    pane.destroy();
   });
 
   it("reports no MapLibre map and refuses controls, rather than pretending", () => {
