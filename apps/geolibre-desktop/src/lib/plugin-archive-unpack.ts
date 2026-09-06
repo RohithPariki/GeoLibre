@@ -26,6 +26,12 @@ function isRequiredManifestString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.trim() === value;
 }
 
+/**
+ * Type guard validating that a candidate object conforms to the GeoLibre external plugin manifest schema.
+ *
+ * @param value - The unknown value to validate.
+ * @returns `true` if the value is a valid {@link GeoLibreExternalPluginManifest}, otherwise `false`.
+ */
 export function isExternalPluginManifest(value: unknown): value is GeoLibreExternalPluginManifest {
   if (!value || typeof value !== "object") return false;
   const manifest = value as Partial<GeoLibreExternalPluginManifest>;

@@ -59,7 +59,6 @@ describe("Tier 1 built-in plugin engine support audit", () => {
     maplibreArcGisHubPlugin,
     maplibreSocrataPlugin,
     maplibreCkanPlugin,
-    maplibreBasemapControlPlugin,
     osmBasemapPlugin,
     cartoLightPlugin,
   ];
@@ -75,6 +74,12 @@ describe("Tier 1 built-in plugin engine support audit", () => {
       assert.equal(isPluginEngineSupported(plugin, "maplibre"), true);
       assert.equal(isPluginEngineSupported(plugin, "cesium"), true);
     }
+  });
+
+  it("declares support for MapLibre only on BasemapControl plugin", () => {
+    assert.deepEqual(maplibreBasemapControlPlugin.engines, ["maplibre"]);
+    assert.equal(isPluginEngineSupported(maplibreBasemapControlPlugin, "maplibre"), true);
+    assert.equal(isPluginEngineSupported(maplibreBasemapControlPlugin, "cesium"), false);
   });
 
   it("defaults MapLibre-only plugins without explicit engines to maplibre", () => {

@@ -392,6 +392,13 @@ async function fetchPluginText(url: string, label: string, signal?: AbortSignal)
   return new TextDecoder().decode(merged);
 }
 
+/**
+ * Imports an external plugin bundle by creating an ephemeral object URL, verifying its export contract,
+ * and propagating manifest engines metadata when omitted by the candidate plugin.
+ *
+ * @param bundle - The unpacked external plugin bundle.
+ * @returns A promise resolving to the validated {@link GeoLibrePlugin}.
+ */
 async function importExternalPlugin(bundle: ExternalPluginBundle): Promise<GeoLibrePlugin> {
   const moduleUrl = URL.createObjectURL(
     new Blob([bundle.entrySource], { type: "text/javascript" }),

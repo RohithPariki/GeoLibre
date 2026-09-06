@@ -1616,6 +1616,14 @@ function mountPanel(container: HTMLElement): void {
   disposePanel = buildPanel(container);
 }
 
+/**
+ * Factory creating a STAC catalog browser plugin instance with optional preset catalog URL.
+ *
+ * @param id - Unique plugin identifier.
+ * @param name - Display name for the plugin.
+ * @param presetCatalogUrl - Optional default catalog URL to connect to on load.
+ * @returns A {@link GeoLibrePlugin} instance for browsing STAC catalogs.
+ */
 function createStacPlugin(id: string, name: string, presetCatalogUrl = ""): GeoLibrePlugin {
   return {
     id,
