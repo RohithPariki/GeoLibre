@@ -173,6 +173,13 @@ export class CesiumControlHost {
     return this.container;
   }
 
+  /**
+   * Mounts a MapLibre control onto the Cesium viewer container in the requested corner.
+   *
+   * @param control - The MapLibre control instance to add.
+   * @param position - The target corner position ('top-left', 'top-right', 'bottom-left', 'bottom-right').
+   * @returns `true` if the control was successfully added, or `false` if addition failed or element was invalid.
+   */
   addControl(control: maplibregl.IControl, position: maplibregl.ControlPosition = "top-right") {
     if (this.controls.has(control)) return false;
 
@@ -187,13 +194,7 @@ export class CesiumControlHost {
     let el: HTMLElement;
     try {
       el = control.onAdd(this.facade as unknown as maplibregl.Map);
-      if (
-        !el ||
-        typeof el !== "object" ||
-        typeof (el as Node).nodeType !== "number" ||
-        typeof el.style !== "object" ||
-        el.style === null
-      ) {
+      if (!(el instanceof HTMLElement)) {
         console.warn("[GeoLibre] control onAdd did not return a valid DOM element");
         return false;
       }
@@ -217,6 +218,11 @@ export class CesiumControlHost {
     return true;
   }
 
+  /**
+   * Removes a MapLibre control from the Cesium viewer container and cleans up its DOM element.
+   *
+   * @param control - The MapLibre control instance to remove.
+   */
   removeControl(control: maplibregl.IControl) {
     if (!this.controls.has(control)) return;
 

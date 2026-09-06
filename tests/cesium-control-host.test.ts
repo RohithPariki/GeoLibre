@@ -136,6 +136,13 @@ describe("CesiumControlHost", () => {
     };
     assert.equal(host.addControl(controlWithDuckType), false);
 
+    const forgedNode = { nodeType: 1, style: {} };
+    const controlWithForgedNode: IControl = {
+      onAdd: () => forgedNode as never,
+      onRemove: () => {},
+    };
+    assert.equal(host.addControl(controlWithForgedNode), false);
+
     const controlWithNull: IControl = {
       onAdd: () => null as never,
       onRemove: () => {},
