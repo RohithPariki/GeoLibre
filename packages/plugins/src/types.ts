@@ -4,6 +4,7 @@ import type {
   GeoLibreLayer,
   GeoLibreProject,
   LayerStyle,
+  MapRendererKind,
 } from "@geolibre/core";
 import type {
   QueryGeometry as ZarrQueryGeometry,
@@ -1007,6 +1008,13 @@ export interface GeoLibrePlugin {
   name: string;
   version: string;
   activeByDefault?: boolean;
+  /**
+   * Renderers this plugin supports. Defaults to `["maplibre"]`.
+   * Engine-neutral plugins (e.g. catalog/service browsers that only write to
+   * the GeoLibre store) or plugins with multi-engine adapters declare
+   * `["maplibre", "cesium"]`.
+   */
+  engines?: MapRendererKind[];
   /** Plugins in the same group cannot be active at the same time. */
   exclusiveGroup?: string;
   /** At least one name is required for handleUrlParameters to be called. */
@@ -1066,6 +1074,10 @@ export interface GeoLibreExternalPluginManifest {
   description?: string;
   style?: string;
   /**
+   * Renderers this plugin supports. Defaults to `["maplibre"]`.
+   */
+  engines?: MapRendererKind[];
+  /**
    * Activate the plugin on startup when no saved plugin state overrides it.
    * Honored only for bundled drop-ins (public/plugins/<id>/), which are baked
    * into the build by the deployer and therefore as trusted as built-ins.
@@ -1073,4 +1085,17 @@ export interface GeoLibreExternalPluginManifest {
    * third-party plugins cannot force themselves active.
    */
   activeByDefault?: boolean;
+}
+
+/**
+ * Test whether a plugin supports the specified map renderer engine.
+ * Defaults to `["maplibre"]` when `engines` is omitted or empty.
+ */
+export function isPluginEngineSupported(
+  plugin: Pick<GeoLibrePlugin, "engines"> | { engines?: MapRendererKind[] } | null | undefined,
+  engine: MapRendererKind,
+): boolean {
+  const supported: readonly MapRendererKind[] =
+    plugin?.engines && plugin.engines.length > 0 ? plugin.engines : ["maplibre"];
+  return supported.includes(engine);
 }

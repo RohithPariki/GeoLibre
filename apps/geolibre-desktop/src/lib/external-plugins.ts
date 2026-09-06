@@ -410,6 +410,9 @@ async function importExternalPlugin(bundle: ExternalPluginBundle): Promise<GeoLi
     if (candidate.activeByDefault) {
       throw new Error("External plugins cannot use activeByDefault.");
     }
+    if (bundle.manifest.engines && !candidate.engines) {
+      candidate.engines = bundle.manifest.engines;
+    }
     return candidate;
   } finally {
     URL.revokeObjectURL(moduleUrl);

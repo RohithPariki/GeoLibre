@@ -38,7 +38,10 @@ export function isExternalPluginManifest(value: unknown): value is GeoLibreExter
     (manifest.description === undefined || typeof manifest.description === "string") &&
     (manifest.style === undefined ||
       (typeof manifest.style === "string" && manifest.style.endsWith(".css"))) &&
-    (manifest.activeByDefault === undefined || typeof manifest.activeByDefault === "boolean")
+    (manifest.activeByDefault === undefined || typeof manifest.activeByDefault === "boolean") &&
+    (manifest.engines === undefined ||
+      (Array.isArray(manifest.engines) &&
+        manifest.engines.every((e) => e === "maplibre" || e === "cesium")))
   );
 }
 

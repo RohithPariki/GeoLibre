@@ -12,7 +12,9 @@ import {
   ROUTE_ANIMATION_PLUGIN_ID,
   SUN_PLUGIN_ID,
   WEB_SERVICE_PLUGIN_IDS,
+  isPluginEngineSupported,
 } from "@geolibre/plugins";
+import { useAppStore } from "@geolibre/core";
 import {
   Button,
   DropdownMenu,
@@ -66,13 +68,22 @@ export function PluginsMenu({
   hiddenPluginIds,
 }: PluginsMenuProps) {
   const { t } = useTranslation();
+  const primaryRenderer = useAppStore((state) => state.primaryRenderer);
 
   const renderPluginMenuItem = (p: RegisteredPlugin) => {
+    const isSupported = isPluginEngineSupported(p, primaryRenderer);
     const pluginPosition = getMapControlPosition(p.id);
     const pluginName = pluginDisplayName(t, p);
     if (!pluginPosition) {
       return (
-        <DropdownMenuItem key={p.id} onClick={() => toggle(p.id, appApi)}>
+        <DropdownMenuItem
+          key={p.id}
+          disabled={!isSupported}
+          onClick={() => {
+            if (!isSupported) return;
+            toggle(p.id, appApi);
+          }}
+        >
           {pluginName}
           {isActive(p.id) ? " ✓" : ""}
         </DropdownMenuItem>
@@ -81,26 +92,34 @@ export function PluginsMenu({
 
     return (
       <DropdownMenuSub key={p.id}>
-        <DropdownMenuSubTrigger>
+        <DropdownMenuSubTrigger disabled={!isSupported}>
           {pluginName}
           {isActive(p.id) ? " ✓" : ""}
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent>
-          <DropdownMenuItem onClick={() => toggle(p.id, appApi)}>
+          <DropdownMenuItem
+            disabled={!isSupported}
+            onClick={() => {
+              if (!isSupported) return;
+              toggle(p.id, appApi);
+            }}
+          >
             {isActive(p.id) ? t("toolbar.item.deactivate") : t("toolbar.item.activate")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuLabel>{t("toolbar.item.position")}</DropdownMenuLabel>
           <DropdownMenuRadioGroup
             value={pluginPosition}
-            onValueChange={(position: string) =>
-              setMapControlPosition(p.id, appApi, position as GeoLibreMapControlPosition)
-            }
+            onValueChange={(position: string) => {
+              if (!isSupported) return;
+              setMapControlPosition(p.id, appApi, position as GeoLibreMapControlPosition);
+            }}
           >
             {PLUGIN_POSITION_ITEMS.map((position) => (
               <DropdownMenuRadioItem
                 key={position.value}
                 value={position.value}
+                disabled={!isSupported}
                 onSelect={(event: Event) => event.preventDefault()}
               >
                 {t(position.labelKey)}
@@ -125,6 +144,11 @@ export function PluginsMenu({
   // The DGGS grid plugins (H3, S2, A5) render as one grouped submenu, placed
   // where the first of them appears in registration order.
   let dggsRendered = false;
+
+  const dggsSupported = dggsPlugins.some((p) => isPluginEngineSupported(p, primaryRenderer));
+  const webServicesSupported = webServicePlugins.some((p) =>
+    isPluginEngineSupported(p, primaryRenderer),
+  );
 
   return (
     <DropdownMenu>
@@ -178,7 +202,7 @@ export function PluginsMenu({
             dggsRendered = true;
             return (
               <DropdownMenuSub key="dggs">
-                <DropdownMenuSubTrigger>
+                <DropdownMenuSubTrigger disabled={!dggsSupported}>
                   {t("toolbar.item.dggs")}
                   {dggsPlugins.some((plugin) => isActive(plugin.id)) ? " ✓" : ""}
                 </DropdownMenuSubTrigger>
@@ -199,7 +223,7 @@ export function PluginsMenu({
           webServicesRendered = true;
           return (
             <DropdownMenuSub key="web-services">
-              <DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger disabled={!webServicesSupported}>
                 {t("toolbar.item.webServices")}
                 {webServicePlugins.some((plugin) => isActive(plugin.id)) ? " ✓" : ""}
               </DropdownMenuSubTrigger>

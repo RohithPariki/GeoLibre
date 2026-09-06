@@ -1621,6 +1621,7 @@ function createStacPlugin(id: string, name: string, presetCatalogUrl = ""): GeoL
     id,
     name,
     version: "0.1.0",
+    engines: ["maplibre", "cesium"],
     exclusiveGroup: "stac-catalog-browser",
     activate(app) {
       initialCatalogUrl = presetCatalogUrl;
