@@ -39,12 +39,18 @@ class CesiumMapFacade extends maplibregl.Evented {
   }
 
   jumpTo(options: maplibregl.JumpToOptions) {
+    const currentView = useAppStore.getState().mapView;
+    const update: any = {};
     if (options.center) {
       const center = maplibregl.LngLat.convert(options.center);
-      useAppStore.getState().setMapView({
-        center: [center.lng, center.lat],
-        zoom: options.zoom ?? useAppStore.getState().mapView.zoom,
-      });
+      update.center = [center.lng, center.lat];
+    }
+    if (options.zoom !== undefined) update.zoom = options.zoom;
+    if (options.bearing !== undefined) update.bearing = options.bearing;
+    if (options.pitch !== undefined) update.pitch = options.pitch;
+
+    if (Object.keys(update).length > 0) {
+      useAppStore.getState().setMapView({ ...currentView, ...update });
     }
     return this;
   }
@@ -77,7 +83,6 @@ class CesiumMapFacade extends maplibregl.Evented {
 
   removeLayer(id: string) {
     this.layers.delete(id);
-    useAppStore.getState().removeLayer(id);
     return this;
   }
 
@@ -150,6 +155,9 @@ export class CesiumControlHost {
   }
 
   destroy() {
+    for (const control of Array.from(this.controls)) {
+      this.removeControl(control);
+    }
     if (this.container.parentElement) {
       this.container.parentElement.removeChild(this.container);
     }

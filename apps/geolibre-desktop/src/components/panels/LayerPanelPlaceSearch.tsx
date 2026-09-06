@@ -152,22 +152,35 @@ export function LayerPanelPlaceSearch({
       if (map.getSource(H3_SOURCE_ID)) map.removeSource(H3_SOURCE_ID);
     }
     const host = getPrimaryCesiumControlHost();
-    if (host) {
+    if (host && !host.viewer.isDestroyed()) {
       for (const prim of cesiumH3EntitiesRef.current) {
         host.viewer.scene.primitives.remove(prim);
       }
-      cesiumH3EntitiesRef.current = [];
     }
+    cesiumH3EntitiesRef.current = [];
   }, [mapControllerRef]);
+
+  const clearMarkers = useCallback(() => {
+    markerRef.current?.remove();
+    markerRef.current = null;
+    if (cesiumMarkerRef.current) {
+      const host = getPrimaryCesiumControlHost();
+      if (host && !host.viewer.isDestroyed()) {
+        cesiumMarkerRef.current.collection.remove(cesiumMarkerRef.current.point);
+        host.viewer.scene.primitives.remove(cesiumMarkerRef.current.collection);
+      }
+      cesiumMarkerRef.current = null;
+    }
+  }, []);
 
   useEffect(
     () => () => {
       abortRef.current?.abort();
-      markerRef.current?.remove();
+      clearMarkers();
       clearH3Highlight();
       if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
     },
-    [clearH3Highlight],
+    [clearH3Highlight, clearMarkers],
   );
 
   const runSearch = useCallback(
@@ -343,15 +356,7 @@ export function LayerPanelPlaceSearch({
       // Drop the previous marker and cell outline unconditionally so neither is
       // ever orphaned when the map is briefly unavailable (mount/teardown/
       // headless) or when the next result is of a different kind.
-      markerRef.current?.remove();
-      markerRef.current = null;
-      if (cesiumMarkerRef.current) {
-        cesiumMarkerRef.current.collection.remove(cesiumMarkerRef.current.point);
-        getPrimaryCesiumControlHost()?.viewer.scene.primitives.remove(
-          cesiumMarkerRef.current.collection,
-        );
-        cesiumMarkerRef.current = null;
-      }
+      clearMarkers();
       clearH3Highlight();
 
       // A place, a coordinate, or a cell takes the box's attention off the
@@ -425,7 +430,7 @@ export function LayerPanelPlaceSearch({
         }
       } else {
         const host = getPrimaryCesiumControlHost();
-        if (host) {
+        if (host && !host.viewer.isDestroyed()) {
           const Cesium = await import("@cesium/engine");
           if (row.kind === "h3") {
             const hierarchy = new Cesium.PolygonHierarchy(
@@ -455,14 +460,23 @@ export function LayerPanelPlaceSearch({
               },
             });
             const primitive = new Cesium.Primitive({
-              geometryInstances: [instance, polylineInstance],
+              geometryInstances: instance,
               appearance: new Cesium.PerInstanceColorAppearance({
                 flat: true,
                 translucent: true,
+                closed: true,
+              }),
+            });
+            const polylinePrimitive = new Cesium.Primitive({
+              geometryInstances: polylineInstance,
+              appearance: new Cesium.PolylineColorAppearance({
+                translucent: true,
+                closed: true,
               }),
             });
             host.viewer.scene.primitives.add(primitive);
-            cesiumH3EntitiesRef.current.push(primitive);
+            host.viewer.scene.primitives.add(polylinePrimitive);
+            cesiumH3EntitiesRef.current.push(primitive, polylinePrimitive);
             const boundingSphere = Cesium.BoundingSphere.fromPoints(hierarchy.positions);
             host.viewer.camera.flyToBoundingSphere(boundingSphere, { duration: 1.5 });
           } else {
@@ -491,8 +505,7 @@ export function LayerPanelPlaceSearch({
 
   const handleClear = useCallback(() => {
     abortRef.current?.abort();
-    markerRef.current?.remove();
-    markerRef.current = null;
+    clearMarkers();
     clearH3Highlight();
     // Clearing the box clears what the box put on the map, and a picked feature
     // row leaves a live selection behind. Dropping it here takes the highlight
