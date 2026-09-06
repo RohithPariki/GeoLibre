@@ -17,7 +17,7 @@ import {
   resolveGeocoderConfig,
   useAppStore,
 } from "@geolibre/core";
-import type { MapController } from "@geolibre/map";
+import { getPrimaryCesiumControlHost, type MapController } from "@geolibre/map";
 import { Input } from "@geolibre/ui";
 import { Hexagon, Loader2, LocateFixed, MapPin, Search, Table2, X } from "lucide-react";
 import { formatLatLon, parseLatLon } from "../../lib/coordinates";
@@ -107,6 +107,8 @@ export function LayerPanelPlaceSearch({
   const [activeIndex, setActiveIndex] = useState(-1);
   const abortRef = useRef<AbortController | null>(null);
   const markerRef = useRef<maplibregl.Marker | null>(null);
+  const cesiumMarkerRef = useRef<any>(null);
+  const cesiumH3EntitiesRef = useRef<any[]>([]);
   const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // `open` read by the local scan's gate. It is a ref rather than a dependency
@@ -143,11 +145,19 @@ export function LayerPanelPlaceSearch({
    */
   const clearH3Highlight = useCallback(() => {
     const map = mapControllerRef.current?.getMap();
-    if (!map) return;
-    for (const layerId of [H3_FILL_LAYER_ID, H3_LINE_LAYER_ID]) {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map) {
+      for (const layerId of [H3_FILL_LAYER_ID, H3_LINE_LAYER_ID]) {
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+      }
+      if (map.getSource(H3_SOURCE_ID)) map.removeSource(H3_SOURCE_ID);
     }
-    if (map.getSource(H3_SOURCE_ID)) map.removeSource(H3_SOURCE_ID);
+    const host = getPrimaryCesiumControlHost();
+    if (host) {
+      for (const prim of cesiumH3EntitiesRef.current) {
+        host.viewer.scene.primitives.remove(prim);
+      }
+      cesiumH3EntitiesRef.current = [];
+    }
   }, [mapControllerRef]);
 
   useEffect(
@@ -328,13 +338,18 @@ export function LayerPanelPlaceSearch({
   }, []);
 
   const handleSelect = useCallback(
-    (row: SearchRow) => {
+    async (row: SearchRow) => {
       const map = mapControllerRef.current?.getMap();
       // Drop the previous marker and cell outline unconditionally so neither is
       // ever orphaned when the map is briefly unavailable (mount/teardown/
       // headless) or when the next result is of a different kind.
       markerRef.current?.remove();
       markerRef.current = null;
+      if (cesiumMarkerRef.current) {
+        cesiumMarkerRef.current.collection.remove(cesiumMarkerRef.current.point);
+        getPrimaryCesiumControlHost()?.viewer.scene.primitives.remove(cesiumMarkerRef.current.collection);
+        cesiumMarkerRef.current = null;
+      }
       clearH3Highlight();
 
       // A place, a coordinate, or a cell takes the box's attention off the
@@ -371,41 +386,101 @@ export function LayerPanelPlaceSearch({
         return;
       }
 
-      if (map && row.kind === "h3") {
-        // An H3 cell spans anything from a continent (resolution 0) to under a
-        // square meter (resolution 15), so frame the cell itself rather than
-        // flying to a fixed zoom, and outline it so the match is visible.
-        map.addSource(H3_SOURCE_ID, {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: { h3: row.cell.cell, resolution: row.cell.resolution },
-            geometry: { type: "Polygon", coordinates: [row.cell.boundary] },
-          },
-        });
-        map.addLayer({
-          id: H3_FILL_LAYER_ID,
-          type: "fill",
-          source: H3_SOURCE_ID,
-          paint: { "fill-color": H3_HIGHLIGHT_COLOR, "fill-opacity": 0.15 },
-        });
-        map.addLayer({
-          id: H3_LINE_LAYER_ID,
-          type: "line",
-          source: H3_SOURCE_ID,
-          paint: { "line-color": H3_HIGHLIGHT_COLOR, "line-width": 2 },
-        });
-        const bounds = new maplibregl.LngLatBounds();
-        for (const position of row.cell.boundary) bounds.extend(position);
-        map.fitBounds(bounds, { padding: 60 });
-      } else if (map) {
-        map.flyTo({
-          center: [row.match.lon, row.match.lat],
-          zoom: Math.max(map.getZoom(), 12),
-        });
-        markerRef.current = new maplibregl.Marker({ color: H3_HIGHLIGHT_COLOR })
-          .setLngLat([row.match.lon, row.match.lat])
-          .addTo(map);
+      if (map) {
+        if (row.kind === "h3") {
+          map.addSource(H3_SOURCE_ID, {
+            type: "geojson",
+            data: {
+              type: "Feature",
+              properties: { h3: row.cell.cell, resolution: row.cell.resolution },
+              geometry: { type: "Polygon", coordinates: [row.cell.boundary] },
+            },
+          });
+          map.addLayer({
+            id: H3_FILL_LAYER_ID,
+            type: "fill",
+            source: H3_SOURCE_ID,
+            paint: { "fill-color": H3_HIGHLIGHT_COLOR, "fill-opacity": 0.15 },
+          });
+          map.addLayer({
+            id: H3_LINE_LAYER_ID,
+            type: "line",
+            source: H3_SOURCE_ID,
+            paint: { "line-color": H3_HIGHLIGHT_COLOR, "line-width": 2 },
+          });
+          const bounds = new maplibregl.LngLatBounds();
+          for (const position of row.cell.boundary) bounds.extend(position);
+          map.fitBounds(bounds, { padding: 60 });
+        } else {
+          const store = useAppStore.getState();
+          store.setMapView({
+            center: [row.match.lon, row.match.lat],
+            zoom: Math.max(store.mapView.zoom, 12),
+          });
+          markerRef.current = new maplibregl.Marker({ color: H3_HIGHLIGHT_COLOR })
+            .setLngLat([row.match.lon, row.match.lat])
+            .addTo(map);
+        }
+      } else {
+        const host = getPrimaryCesiumControlHost();
+        if (host) {
+          const Cesium = await import("@cesium/engine");
+          if (row.kind === "h3") {
+            const hierarchy = new Cesium.PolygonHierarchy(
+              row.cell.boundary.map((pos) => Cesium.Cartesian3.fromDegrees(pos[0], pos[1]))
+            );
+            // Use primitives since CesiumWidget has no entities
+            const instance = new Cesium.GeometryInstance({
+              geometry: new Cesium.PolygonGeometry({
+                polygonHierarchy: hierarchy,
+                perPositionHeight: true,
+              }),
+              attributes: {
+                color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR).withAlpha(0.15)
+                ),
+              },
+            });
+            const polylineInstance = new Cesium.GeometryInstance({
+              geometry: new Cesium.PolylineGeometry({
+                positions: hierarchy.positions,
+                width: 2,
+              }),
+              attributes: {
+                color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR)
+                ),
+              },
+            });
+            const primitive = new Cesium.Primitive({
+              geometryInstances: [instance, polylineInstance],
+              appearance: new Cesium.PerInstanceColorAppearance({
+                flat: true,
+                translucent: true,
+              }),
+            });
+            host.viewer.scene.primitives.add(primitive);
+            cesiumH3EntitiesRef.current.push(primitive);
+            const boundingSphere = Cesium.BoundingSphere.fromPoints(hierarchy.positions);
+            host.viewer.camera.flyToBoundingSphere(boundingSphere, { duration: 1.5 });
+          } else {
+            const store = useAppStore.getState();
+            store.setMapView({
+              center: [row.match.lon, row.match.lat],
+              zoom: Math.max(store.mapView.zoom, 12),
+            });
+            const points = new Cesium.PointPrimitiveCollection();
+            host.viewer.scene.primitives.add(points);
+            const p = points.add({
+              position: Cesium.Cartesian3.fromDegrees(row.match.lon, row.match.lat),
+              color: Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
+              pixelSize: 12,
+              outlineColor: Cesium.Color.WHITE,
+              outlineWidth: 2,
+            });
+            cesiumMarkerRef.current = { collection: points, point: p };
+          }
+        }
       }
       settle(row.match.displayName);
     },

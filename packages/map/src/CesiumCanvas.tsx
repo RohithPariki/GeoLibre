@@ -12,6 +12,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { applyBasemapAppearance, applyBasemapImagery } from "./cesium-basemap";
 import { isSameView } from "./cesium-camera";
 import { CesiumEngine } from "./cesium-engine";
+import { CesiumControlHost, setPrimaryCesiumControlHost } from "./cesium-control-host";
 
 // The Cesium 3D-globe view (see private/cesium-view-plan.md). M1 wired the
 // build, token, and split-pane mount; M2 synced the camera with the shared store
@@ -278,6 +279,12 @@ export const CesiumCanvas = memo(function CesiumCanvas({ viewId, ionToken }: Ces
         cesiumRef.current = Cesium;
         viewerRef.current = viewer;
 
+        let controlHost: CesiumControlHost | null = null;
+        if (viewId === undefined) {
+          controlHost = new CesiumControlHost(viewer, container);
+          setPrimaryCesiumControlHost(controlHost);
+        }
+
         // Note for anyone reintroducing `Viewer`: it installs a double-click
         // "track entity" gesture that flies to and camera-locks a picked
         // feature, which fights the store-driven camera sync and isn't wired to
@@ -343,6 +350,9 @@ export const CesiumCanvas = memo(function CesiumCanvas({ viewId, ionToken }: Ces
       // the handles so a remount starts from an empty stack and redraws.
       baseImageryLayersRef.current = [];
       appliedImageryRef.current = null;
+      if (viewId === undefined) {
+        setPrimaryCesiumControlHost(null);
+      }
       const viewer = viewerRef.current;
       if (viewer && !viewer.isDestroyed()) viewer.destroy();
       viewerRef.current = null;
