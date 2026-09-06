@@ -51,12 +51,10 @@ class CesiumMapFacade extends maplibregl.Evented {
 
   flyTo(options: maplibregl.FlyToOptions) {
     return this.jumpTo(options as any);
-    
   }
 
   easeTo(options: maplibregl.EaseToOptions) {
     return this.jumpTo(options as any);
-    
   }
 
   addSource(id: string, source: any) {
@@ -166,24 +164,24 @@ export class CesiumControlHost {
 
     const el = control.onAdd(this.facade as unknown as maplibregl.Map);
     el.style.pointerEvents = "auto";
-    
+
     const corner = this.corners[position];
     if (corner) {
       corner.appendChild(el);
     }
-    
+
     this.controls.set(control, el);
     return true;
   }
 
   removeControl(control: maplibregl.IControl) {
     if (!this.controls.has(control)) return;
-    
+
     const el = this.controls.get(control)!;
     if (el.parentElement) {
       el.parentElement.removeChild(el);
     }
-    
+
     control.onRemove(this.facade as unknown as maplibregl.Map);
     this.controls.delete(control);
   }

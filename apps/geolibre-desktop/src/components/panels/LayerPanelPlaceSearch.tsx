@@ -347,7 +347,9 @@ export function LayerPanelPlaceSearch({
       markerRef.current = null;
       if (cesiumMarkerRef.current) {
         cesiumMarkerRef.current.collection.remove(cesiumMarkerRef.current.point);
-        getPrimaryCesiumControlHost()?.viewer.scene.primitives.remove(cesiumMarkerRef.current.collection);
+        getPrimaryCesiumControlHost()?.viewer.scene.primitives.remove(
+          cesiumMarkerRef.current.collection,
+        );
         cesiumMarkerRef.current = null;
       }
       clearH3Highlight();
@@ -427,7 +429,7 @@ export function LayerPanelPlaceSearch({
           const Cesium = await import("@cesium/engine");
           if (row.kind === "h3") {
             const hierarchy = new Cesium.PolygonHierarchy(
-              row.cell.boundary.map((pos) => Cesium.Cartesian3.fromDegrees(pos[0], pos[1]))
+              row.cell.boundary.map((pos) => Cesium.Cartesian3.fromDegrees(pos[0], pos[1])),
             );
             // Use primitives since CesiumWidget has no entities
             const instance = new Cesium.GeometryInstance({
@@ -437,7 +439,7 @@ export function LayerPanelPlaceSearch({
               }),
               attributes: {
                 color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR).withAlpha(0.15)
+                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR).withAlpha(0.15),
                 ),
               },
             });
@@ -448,7 +450,7 @@ export function LayerPanelPlaceSearch({
               }),
               attributes: {
                 color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR)
+                  Cesium.Color.fromCssColorString(H3_HIGHLIGHT_COLOR),
                 ),
               },
             });
