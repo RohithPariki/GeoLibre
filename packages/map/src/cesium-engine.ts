@@ -21,6 +21,7 @@ import {
   readMapViewFromCamera,
   zoomToRange,
 } from "./cesium-camera";
+import { getPrimaryCesiumControlHost } from "./cesium-control-host";
 import { CesiumLayerSync } from "./cesium-layer-sync";
 import { getLayerBounds } from "./geojson-loader";
 import type {
@@ -64,7 +65,7 @@ export const CESIUM_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   terrain: true,
   picking: false,
   onMapDrawing: false,
-  domControls: false,
+  domControls: true,
 });
 
 /**
@@ -478,16 +479,20 @@ export class CesiumEngine implements MapEngine {
   // ----------------------------------------------------------------- controls
 
   /**
-   * `false`: the globe has nowhere to mount an `IControl` yet. Callers already
-   * read a `false` return as "not available" (it is what a `MapController`
-   * returns before `init`), so plugins fail their activation honestly rather
-   * than reporting success and drawing nothing. The control host is issue #2263.
+   * `true`: the globe mounts `IControl`s using the control host.
    */
-  addControl(_control: maplibregl.IControl, _position?: maplibregl.ControlPosition): boolean {
+  addControl(control: maplibregl.IControl, position?: maplibregl.ControlPosition): boolean {
+    const host = getPrimaryCesiumControlHost();
+    if (host) {
+      host.addControl(control, position);
+      return true;
+    }
     return false;
   }
 
-  removeControl(_control: maplibregl.IControl): void {}
+  removeControl(control: maplibregl.IControl): void {
+    getPrimaryCesiumControlHost()?.removeControl(control);
+  }
 
   setBuiltInControlVisible(_control: BuiltInMapControl, _visible: boolean): boolean {
     return false;
