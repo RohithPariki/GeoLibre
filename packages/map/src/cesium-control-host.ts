@@ -155,7 +155,7 @@ export class CesiumControlHost {
   }
 
   destroy() {
-    for (const control of Array.from(this.controls)) {
+    for (const control of Array.from(this.controls.keys())) {
       this.removeControl(control);
     }
     if (this.container.parentElement) {

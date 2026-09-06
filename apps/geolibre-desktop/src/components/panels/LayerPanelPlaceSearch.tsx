@@ -471,7 +471,6 @@ export function LayerPanelPlaceSearch({
               geometryInstances: polylineInstance,
               appearance: new Cesium.PolylineColorAppearance({
                 translucent: true,
-                closed: true,
               }),
             });
             host.viewer.scene.primitives.add(primitive);
