@@ -69,6 +69,19 @@ export const CESIUM_CAPABILITIES: MapEngineCapabilities = Object.freeze({
 });
 
 /**
+ * Capabilities of a globe rendered as a **grid pane** rather than the primary
+ * map area.
+ *
+ * Identical to {@link CESIUM_CAPABILITIES} except for `domControls`: the
+ * control host is a singleton owned by the primary globe, so a pane has nowhere
+ * to mount an `IControl`.
+ */
+export const CESIUM_PANE_CAPABILITIES: MapEngineCapabilities = Object.freeze({
+  ...CESIUM_CAPABILITIES,
+  domControls: false,
+});
+
+/**
  * Coerce a preference zoom into MapLibre's [0, 24] range, falling back to
  * `fallback` for a non-finite value. Mirrors `clampNumber` in `map-controller.ts`.
  */
@@ -125,7 +138,15 @@ export interface CesiumEngineOptions {
  */
 export class CesiumEngine implements MapEngine {
   readonly kind = "cesium" as const;
-  readonly capabilities: MapEngineCapabilities = CESIUM_CAPABILITIES;
+  /**
+   * Per-instance, because `domControls` is not true of every globe: the control
+   * host is a singleton belonging to the primary map area, so a grid pane has
+   * nowhere to mount an `IControl`. A flag that claimed otherwise while
+   * {@link addControl} returned `false` would be the exact failure the
+   * capability flags exist to prevent — UI gating on a capability the engine
+   * does not actually honour.
+   */
+  readonly capabilities: MapEngineCapabilities;
 
   private readonly Cesium: CesiumNs;
   private viewer: CesiumWidget | null;
@@ -184,6 +205,8 @@ export class CesiumEngine implements MapEngine {
     this.Cesium = Cesium;
     this.viewer = viewer;
     this.viewId = options.viewId;
+    this.capabilities =
+      options.viewId === undefined ? CESIUM_CAPABILITIES : CESIUM_PANE_CAPABILITIES;
     this.layerSync = new CesiumLayerSync(Cesium, viewer);
     this.terrainExaggeration = viewer.scene.verticalExaggeration ?? 1;
     this.installInputTracking();
@@ -479,16 +502,26 @@ export class CesiumEngine implements MapEngine {
   // ----------------------------------------------------------------- controls
 
   /**
-   * `true`: the globe mounts `IControl`s using the control host.
+   * Mount a control on the globe's control host.
+   *
+   * Only the **primary** globe has one. The host is a module-level singleton
+   * keyed to whichever globe owns the primary map area, so delegating from a
+   * grid pane's engine would mount the pane's control onto a different viewer
+   * — or onto nothing at all when the primary renderer is MapLibre. A pane
+   * reports `false`, the same answer every caller already reads as "this engine
+   * has nowhere to host it".
    */
   addControl(control: maplibregl.IControl, position?: maplibregl.ControlPosition): boolean {
+    if (!this.isPrimary) return false;
     // Return the host's own result: it answers `false` for a control that is
     // already mounted, and a caller that reads `true` there would double-count
     // its registration.
     return getPrimaryCesiumControlHost()?.addControl(control, position) ?? false;
   }
 
+  /** No-op for a grid pane, which never mounted a control. See {@link addControl}. */
   removeControl(control: maplibregl.IControl): void {
+    if (!this.isPrimary) return;
     getPrimaryCesiumControlHost()?.removeControl(control);
   }
 

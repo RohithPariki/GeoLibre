@@ -241,12 +241,25 @@ describe("CesiumEngine capabilities", () => {
     assert.ok(Object.isFrozen(CESIUM_CAPABILITIES));
   });
 
+  it("does not let a grid pane mount controls on the primary globe's host", () => {
+    // The control host is a singleton owned by the primary map area, so
+    // delegating from a pane would mount its control onto a different viewer —
+    // or onto nothing when the primary renderer is MapLibre (#2266 review).
+    const fakes = makeViewer();
+    const pane = new CesiumEngine(makeCesium(), fakes.viewer, { viewId: "pane-1" });
+    assert.equal(pane.addControl({} as never), false);
+    // ...and the capability says so, rather than advertising one it refuses.
+    assert.equal(pane.capabilities.domControls, false);
+    assert.equal(CESIUM_CAPABILITIES.domControls, true, "the primary globe still hosts controls");
+    pane.destroy();
+  });
+
   it("reports no MapLibre map and refuses controls, rather than pretending", () => {
     const fakes = makeViewer();
     const engine = new CesiumEngine(makeCesium(), fakes.viewer);
     assert.equal(engine.getMap(), null);
-    // `false` is what callers already read as "not available" — a `true` here
-    // would let a plugin activate and silently draw nothing.
+    // No control host registered in this test, so there is nowhere to mount:
+    // `false` is what callers already read as "not available".
     assert.equal(engine.addControl({} as never), false);
     assert.equal(engine.kind, "cesium");
     engine.destroy();

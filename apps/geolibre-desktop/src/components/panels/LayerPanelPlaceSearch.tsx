@@ -458,7 +458,10 @@ export function LayerPanelPlaceSearch({
             // re-check after the await the way CesiumCanvas does — the import is
             // usually cached, which narrows the window without closing it.
             if (host.viewer.isDestroyed() || generation !== selectionGeneration.current) {
-              settle(row.match.displayName);
+              // Do not settle: a superseded selection has already been settled
+              // by whichever pick superseded it, and re-settling here would
+              // rewrite the box (and settledQuery) back to this stale row's
+              // label after the newer one had won.
               return;
             }
             if (row.kind === "h3") {

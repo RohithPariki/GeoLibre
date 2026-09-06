@@ -19,7 +19,12 @@ export { SecondaryMapCanvas, type SecondaryMapCanvasProps } from "./SecondaryMap
 export { CesiumCanvas, type CesiumCanvasProps } from "./CesiumCanvas";
 export { getPrimaryCesiumControlHost } from "./cesium-control-host";
 export { isCesiumSupportedLayerType } from "./cesium-layer-sync";
-export { CESIUM_CAPABILITIES, CesiumEngine, type CesiumEngineOptions } from "./cesium-engine";
+export {
+  CESIUM_CAPABILITIES,
+  CESIUM_PANE_CAPABILITIES,
+  CesiumEngine,
+  type CesiumEngineOptions,
+} from "./cesium-engine";
 export {
   applyMapViewToCamera,
   cameraFovy,
