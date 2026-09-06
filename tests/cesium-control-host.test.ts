@@ -126,6 +126,46 @@ describe("CesiumControlHost", () => {
     host.destroy();
   });
 
+  it("rejects controls returning invalid elements or duck-typed objects from onAdd", () => {
+    const host = new CesiumControlHost(viewer as never, parent);
+
+    const duckTypedObj = { style: {} };
+    const controlWithDuckType: IControl = {
+      onAdd: () => duckTypedObj as never,
+      onRemove: () => {},
+    };
+    assert.equal(host.addControl(controlWithDuckType), false);
+
+    const controlWithNull: IControl = {
+      onAdd: () => null as never,
+      onRemove: () => {},
+    };
+    assert.equal(host.addControl(controlWithNull), false);
+
+    const controlWithNumber: IControl = {
+      onAdd: () => 42 as never,
+      onRemove: () => {},
+    };
+    assert.equal(host.addControl(controlWithNumber), false);
+
+    host.destroy();
+  });
+
+  it("safely falls back to top-right on inherited prototype properties as position", () => {
+    const host = new CesiumControlHost(viewer as never, parent);
+    const ctrlEl = doc.createElement("div");
+    const control: IControl = {
+      onAdd: () => ctrlEl,
+      onRemove: () => {},
+    };
+
+    const added = host.addControl(control, "__proto__" as never);
+    assert.equal(added, true);
+    const corner = host.getContainer().querySelector(".maplibregl-ctrl-top-right")!;
+    assert.ok(corner.contains(ctrlEl));
+    host.destroy();
+  });
+
   it("handles control whose onRemove detaches its container from parentNode directly", () => {
     const host = new CesiumControlHost(viewer as never, parent);
     const ctrlEl = doc.createElement("div");

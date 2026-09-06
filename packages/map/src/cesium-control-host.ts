@@ -187,7 +187,13 @@ export class CesiumControlHost {
     let el: HTMLElement;
     try {
       el = control.onAdd(this.facade as unknown as maplibregl.Map);
-      if (!el || typeof el.style === "undefined") {
+      if (
+        !el ||
+        typeof el !== "object" ||
+        typeof (el as Node).nodeType !== "number" ||
+        typeof el.style !== "object" ||
+        el.style === null
+      ) {
         console.warn("[GeoLibre] control onAdd did not return a valid DOM element");
         return false;
       }
@@ -197,10 +203,15 @@ export class CesiumControlHost {
     }
     el.style.pointerEvents = "auto";
 
-    const corner = this.corners[position] ?? this.corners["top-right"];
-    if (corner) {
-      corner.appendChild(el);
-    }
+    const VALID_POSITIONS: readonly maplibregl.ControlPosition[] = [
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+    ];
+    const target = VALID_POSITIONS.includes(position) ? position : "top-right";
+    const corner = this.corners[target];
+    corner.appendChild(el);
 
     this.controls.set(control, el);
     return true;
