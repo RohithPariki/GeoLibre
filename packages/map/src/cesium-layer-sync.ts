@@ -373,9 +373,10 @@ function entryKind(layer: GeoLibreLayer): EntryKind {
 
 // Fill/stroke *colours*, stroke width, marker colour, extrusion settings, and
 // 3D elevation parameters bake into the GeoJSON entities at load, so a change to
-// any of them forces a rebuild. Opacity (layer.opacity × fill opacity) is deliberately
-// excluded: it is re-applied in place by applyGeoJsonStyle, so dragging the opacity
-// slider restyles the fill alpha instead of reloading the whole GeoJsonDataSource on every tick.
+// any of them forces a rebuild. Opacity (layer.opacity × fill opacity, and the
+// extrusion opacity) is deliberately excluded: it is re-applied in place by
+// applyGeoJsonStyle, so dragging the opacity slider restyles the alpha instead
+// of reloading the whole GeoJsonDataSource on every tick.
 function styleSignature(layer: GeoLibreLayer): string {
   const style = layer.style ?? {};
   // The layer zoom range only reaches the globe through the labels' distance
@@ -392,7 +393,6 @@ function styleSignature(layer: GeoLibreLayer): string {
     style.extrusionHeightScale,
     style.extrusionBase,
     style.extrusionColor,
-    style.extrusionOpacity,
     style.extrusionAdvancedStyleEnabled,
     style.extrusionHeightExpression,
     style.extrusionColorExpression,
@@ -1032,6 +1032,9 @@ export class CesiumLayerSync {
           if (res.ok && res.evaluate) colorEvaluator = res.evaluate;
         }
 
+        // Parsed once: a full 3D-buildings layer would otherwise re-parse the
+        // same CSS string per polygon. withAlpha() below returns a fresh Color.
+        const baseColor = Cesium.Color.fromCssColorString(extColorStr);
         const features = sourceGeoJson.features;
         for (const entity of dataSource.entities.values) {
           if (!entity.polygon) continue;
@@ -1066,7 +1069,7 @@ export class CesiumLayerSync {
           const height = Number.isFinite(num) ? num : 0;
           const extrudedHeight = Math.max(0, height * heightScale + base);
 
-          let resolvedColor = Cesium.Color.fromCssColorString(extColorStr);
+          let resolvedColor = baseColor;
           if (feat && colorEvaluator) {
             try {
               const colVal = colorEvaluator(feat);
@@ -1093,9 +1096,14 @@ export class CesiumLayerSync {
           }
           entity.polygon.material = makeMat(resolvedColor.withAlpha(extOpacity)) as never;
         }
-      } else if (has3dElevation) {
+      }
+      // Runs alongside extrusion too: a collection mixing extruded buildings
+      // with Z-carrying points/lines loads unclamped (clampToGround is false
+      // whenever either applies), so those entities still need their
+      // terrain-relative reference; the polygons were handled above.
+      if (has3dElevation) {
         for (const entity of dataSource.entities.values) {
-          if (entity.polygon && !perPositionHeight(entity.polygon)) {
+          if (entity.polygon && !style.extrusionEnabled && !perPositionHeight(entity.polygon)) {
             entity.polygon.heightReference = makeProp(heightRef) as never;
           }
           if (entity.billboard) {
@@ -1356,9 +1364,12 @@ export class CesiumLayerSync {
     const style = entry.layer.style ?? {};
     const opacity = this.effectiveOpacity(entry);
     const fillAlpha = (style.fillOpacity ?? 0.6) * opacity;
-    // Key on both alphas so any opacity change is picked up (e.g. a lines-only
-    // layer whose fill alpha never varies).
-    const key = `${fillAlpha}|${opacity}`;
+    const extOpacity =
+      (Number.isFinite(style.extrusionOpacity) ? (style.extrusionOpacity as number) : 0.8) *
+      opacity;
+    // Key on every alpha so any opacity change is picked up (e.g. a lines-only
+    // layer whose fill alpha never varies, or an extrusion-opacity edit alone).
+    const key = `${fillAlpha}|${opacity}|${extOpacity}`;
     if (entry.appliedAlpha === key) return;
     entry.appliedAlpha = key;
     const { Cesium } = this;
@@ -1371,9 +1382,6 @@ export class CesiumLayerSync {
     const marker = Cesium.Color.WHITE.withAlpha(opacity);
     const isExtruded = style.extrusionEnabled;
     const extColorStr = style.extrusionColor || style.fillColor || "#3b82f6";
-    const extOpacity =
-      (Number.isFinite(style.extrusionOpacity) ? (style.extrusionOpacity as number) : 0.8) *
-      opacity;
     const extFill = Cesium.Color.fromCssColorString(extColorStr).withAlpha(extOpacity);
 
     const hasColorExpr =

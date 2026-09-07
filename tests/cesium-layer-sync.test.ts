@@ -1540,6 +1540,105 @@ describe("CesiumLayerSync", () => {
     assert.equal(f.calls.geojsonLoads.length, 6);
   });
 
+  it("restyles extrusion opacity in place instead of rebuilding the data source", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "poly-ext-opacity",
+      type: "geojson",
+      opacity: 1,
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { height: 10 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      style: { extrusionEnabled: true, extrusionColor: "#ff0000", extrusionOpacity: 0.9 },
+    });
+    sync.sync([layer]);
+    await f.flush();
+    assert.equal(f.calls.geojsonLoads.length, 1);
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: {
+        values: Array<{ polygon?: { material: { color: { css: string; alpha: number } } } }>;
+      };
+    };
+    const poly = ds.entities.values.find((e) => e.polygon)?.polygon;
+    assert.ok(poly);
+    assert.equal(poly.material.color.alpha, 0.9);
+
+    sync.sync([{ ...layer, style: { ...layer.style, extrusionOpacity: 0.3 } }]);
+    await f.flush();
+    // No reload: the alpha is re-applied on the existing entities.
+    assert.equal(f.calls.geojsonLoads.length, 1);
+    assert.equal(poly.material.color.css, "#ff0000");
+    assert.ok(Math.abs(poly.material.color.alpha - 0.3) < 1e-9);
+  });
+
+  it("gives Z points and lines a terrain-relative reference alongside extruded polygons", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "buildings-and-pois",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { height: 10 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [2, 2, 30] } },
+        ],
+      },
+      style: { extrusionEnabled: true },
+    });
+    sync.sync([layer]);
+    await f.flush();
+    assert.equal(f.calls.geojsonLoads[0].options.clampToGround, false);
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: {
+        values: Array<{
+          polygon: { extrudedHeight: { value: number }; heightReference?: { value: number } };
+          billboard: { heightReference?: { value: number } };
+          polyline: { clampToGround?: { value: boolean } };
+        }>;
+      };
+    };
+    const [building, poi] = ds.entities.values;
+    assert.equal(building.polygon.extrudedHeight.value, 10);
+    // transformGeojsonElevation normalises every position to [x, y, z], so the
+    // 2D building ring becomes a perPositionHeight polygon (z = 0) that Cesium
+    // extrudes from the ellipsoid; it takes no terrain reference.
+    assert.equal(building.polygon.heightReference, undefined);
+    // The Z point/line entities are not left as absolute ellipsoid heights.
+    assert.equal(poi.billboard.heightReference?.value, 2);
+    assert.equal(poi.polyline.clampToGround?.value, false);
+  });
+
   it("leaves height references off polygons whose ring carries Z (perPositionHeight)", async () => {
     const sync = newSync(f);
     const zRing = [
