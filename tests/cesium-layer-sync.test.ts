@@ -1306,7 +1306,8 @@ describe("CesiumLayerSync", () => {
         extrusionEnabled: true,
         extrusionAdvancedStyleEnabled: true,
         extrusionHeightExpression: '["*", ["get", "floors"], 3]',
-        extrusionColorExpression: '["case", ["==", ["get", "type"], "commercial"], "#0000ff", "#00ff00"]',
+        extrusionColorExpression:
+          '["case", ["==", ["get", "type"], "commercial"], "#0000ff", "#00ff00"]',
       },
     });
 

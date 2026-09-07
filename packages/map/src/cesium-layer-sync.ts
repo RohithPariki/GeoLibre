@@ -807,9 +807,11 @@ export class CesiumLayerSync {
       const heightRef = (Cesium.HeightReference?.RELATIVE_TO_GROUND ?? 2) as number;
       const ConstantProperty = (Cesium as { ConstantProperty?: new (v: unknown) => unknown })
         .ConstantProperty;
-      const ColorMaterialProperty = (Cesium as {
-        ColorMaterialProperty?: new (c: unknown) => unknown;
-      }).ColorMaterialProperty;
+      const ColorMaterialProperty = (
+        Cesium as {
+          ColorMaterialProperty?: new (c: unknown) => unknown;
+        }
+      ).ColorMaterialProperty;
       const makeProp = (v: unknown) => (ConstantProperty ? new ConstantProperty(v) : v);
       const makeMat = (c: unknown) =>
         ColorMaterialProperty ? new ColorMaterialProperty(c) : { color: c };
@@ -819,9 +821,7 @@ export class CesiumLayerSync {
         const heightScale = Number.isFinite(style.extrusionHeightScale)
           ? (style.extrusionHeightScale as number)
           : 1;
-        const base = Number.isFinite(style.extrusionBase)
-          ? (style.extrusionBase as number)
-          : 0;
+        const base = Number.isFinite(style.extrusionBase) ? (style.extrusionBase as number) : 0;
         const extColorStr = style.extrusionColor || style.fillColor || "#3b82f6";
         const extOpacity =
           (Number.isFinite(style.extrusionOpacity) ? (style.extrusionOpacity as number) : 0.8) *
