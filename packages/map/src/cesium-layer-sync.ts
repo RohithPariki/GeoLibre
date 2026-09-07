@@ -6,6 +6,7 @@ import {
   type GeoLibreLayer,
 } from "@geolibre/core";
 import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
+import { readMapViewFromCamera } from "./cesium-camera";
 import { createCesiumLabeler, pickLabelPart } from "./cesium-labels";
 import type {
   Cesium3DTileset,
@@ -31,6 +32,15 @@ import type {
 // build graph itself.
 
 type CesiumNs = typeof import("@cesium/engine");
+
+/** Whether a serialized filter reads `["zoom"]`, so its result depends on the camera. */
+const ZOOM_OPERAND = /\[\s*"zoom"\s*\]/;
+
+/** The subset of a Cesium `Event` the camera watch needs. */
+interface CameraEvent {
+  addEventListener(listener: () => void): unknown;
+  removeEventListener(listener: () => void): unknown;
+}
 
 /** Layer kinds this pass renders on the globe. */
 const IMAGERY_TYPES = new Set(["raster", "xyz", "wms", "wmts", "image"]);
@@ -86,6 +96,8 @@ interface LayerEntry {
   appliedAlpha?: string;
   /** Last filter expression key applied in place (skips redundant filter evaluations). */
   appliedFilterKey?: string;
+  /** Whether the applied filter reads `["zoom"]`, so it must re-run when the camera moves. */
+  zoomFilter?: boolean;
 }
 
 /**
@@ -520,9 +532,14 @@ export class CesiumLayerSync {
   /** Active layer list from the current/latest sync pass. */
   private currentLayers: GeoLibreLayer[] = [];
 
+  /**
+   * @param readZoom Supplies the camera's MapLibre zoom for `["zoom"]` filters;
+   *   defaults to reading the live camera and is injectable for tests.
+   */
   constructor(
     private readonly Cesium: CesiumNs,
     private readonly viewer: CesiumWidget,
+    private readonly readZoom: () => number = () => readMapViewFromCamera(Cesium, viewer).zoom,
   ) {}
 
   /** Reconcile the globe to `layers` (order preserved for imagery stacking). */
@@ -594,6 +611,7 @@ export class CesiumLayerSync {
       this.lastImageryOrder = imageryOrder;
     }
     this.applyHighlight();
+    this.watchCameraZoom();
   }
 
   destroy(): void {
@@ -601,6 +619,66 @@ export class CesiumLayerSync {
     this.selection = null;
     for (const entry of this.entries.values()) this.destroyEntry(entry);
     this.entries.clear();
+    this.unwatchCamera?.();
+    this.unwatchCamera = null;
+  }
+
+  /** Removes the camera listeners installed by {@link watchCameraZoom}, or null when none are. */
+  private unwatchCamera: (() => void) | null = null;
+
+  /**
+   * Keep camera listeners installed exactly while some entry's filter reads
+   * `["zoom"]`. MapLibre evaluates such a filter live; on the globe the filter
+   * is re-run when the camera settles (`moveEnd`) or moves far enough to fire
+   * `changed`, and {@link applyGeoJsonFilter} skips the work unless the integer
+   * zoom actually crossed a level.
+   */
+  private watchCameraZoom(): void {
+    let wanted = false;
+    for (const entry of this.entries.values()) {
+      if (entry.zoomFilter) {
+        wanted = true;
+        break;
+      }
+    }
+    if (wanted === Boolean(this.unwatchCamera)) return;
+    if (!wanted) {
+      this.unwatchCamera?.();
+      this.unwatchCamera = null;
+      return;
+    }
+    const camera = this.viewer.camera as
+      | { moveEnd?: CameraEvent; changed?: CameraEvent }
+      | undefined;
+    const events = [camera?.moveEnd, camera?.changed].filter((e): e is CameraEvent => Boolean(e));
+    if (events.length === 0) return;
+    const onMove = () => this.reapplyZoomFilters();
+    for (const event of events) event.addEventListener(onMove);
+    this.unwatchCamera = () => {
+      for (const event of events) event.removeEventListener(onMove);
+    };
+  }
+
+  /** Re-run every zoom-dependent filter; renders only if some entity's visibility changed. */
+  private reapplyZoomFilters(): void {
+    let changed = false;
+    for (const entry of this.entries.values()) {
+      if (entry.kind !== "geojson" || !entry.zoomFilter || !entry.handle) continue;
+      const before = entry.appliedFilterKey;
+      this.applyGeoJsonFilter(entry);
+      if (entry.appliedFilterKey !== before) changed = true;
+    }
+    if (changed) this.viewer.scene?.requestRender?.();
+  }
+
+  /** The camera's integer MapLibre zoom, as `["zoom"]` filters evaluate at integer levels. */
+  private cameraZoom(): number {
+    try {
+      const zoom = this.readZoom();
+      return Number.isFinite(zoom) ? Math.floor(zoom) : 0;
+    } catch {
+      return 0;
+    }
   }
 
   private reorderImagery(): void {
@@ -966,7 +1044,7 @@ export class CesiumLayerSync {
    */
   setStoryLayerOpacity(layerId: string, opacity: number): void {
     const entry = this.entries.get(layerId);
-    if (!entry || !entry.handle) return;
+    if (!entry) return;
     const clamped = Math.min(1, Math.max(0, opacity));
     const existing = this.storyOpacities.get(layerId);
     if (!existing) {
@@ -977,6 +1055,10 @@ export class CesiumLayerSync {
     } else {
       existing.currentOpacity = clamped;
     }
+    // The override is stored either way; while the async create is still in
+    // flight there is nothing to restyle yet, and the create path applies the
+    // effective (story) opacity once the handle lands.
+    if (!entry.handle) return;
     entry.appliedAlpha = undefined;
     this.applyAppearance(entry);
     this.viewer.scene?.requestRender?.();
@@ -1007,7 +1089,15 @@ export class CesiumLayerSync {
     const dataSource = entry.handle as DataSource | null;
     if (!dataSource) return;
     const filter = composeLayerFeatureFilter(entry.layer);
-    const key = filter ? JSON.stringify(filter) : "";
+    const filterKey = filter ? JSON.stringify(filter) : "";
+    // A rule-based visibility filter carries `["zoom"]` for per-rule zoom
+    // bounds (and an embed filter may too). The integer camera zoom joins the
+    // cache key so the filter re-runs exactly when the camera crosses a level.
+    const zoomDependent = ZOOM_OPERAND.test(filterKey);
+    const zoom = zoomDependent ? this.cameraZoom() : 0;
+    const key = zoomDependent ? `${filterKey}@z${zoom}` : filterKey;
+    entry.zoomFilter = zoomDependent;
+    this.watchCameraZoom();
     if (entry.appliedFilterKey === key) return;
     entry.appliedFilterKey = key;
 
@@ -1072,7 +1162,7 @@ export class CesiumLayerSync {
 
       let visible = true;
       try {
-        visible = compiled.filter({ zoom: 0 }, {
+        visible = compiled.filter({ zoom }, {
           type: geomType,
           properties,
           id,

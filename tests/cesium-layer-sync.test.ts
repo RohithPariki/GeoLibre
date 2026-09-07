@@ -26,11 +26,16 @@ function makeFakes() {
     singleTileProviders: [] as { url: unknown; options?: Record<string, unknown> }[],
     geojsonLoads: [] as { data: unknown; options: Record<string, unknown> }[],
     tilesetUrls: [] as unknown[],
+    cameraListeners: [] as (() => void)[],
   };
 
   const viewer = {
     clock: {
       currentTime: { dayNumber: 0, secondsOfDay: 0 },
+    },
+    camera: {
+      moveEnd: mkEvent(calls.cameraListeners),
+      changed: mkEvent(calls.cameraListeners),
     },
     scene: {
       canvas: { clientWidth: 800, clientHeight: 600, width: 800, height: 600 },
@@ -235,11 +240,25 @@ function mkLayer(over: Partial<GeoLibreLayer>): GeoLibreLayer {
   } as GeoLibreLayer;
 }
 
-function newSync(f: ReturnType<typeof makeFakes>) {
+/** A minimal Cesium `Event` stand-in that records its listeners in `bag`. */
+function mkEvent(bag: (() => void)[]) {
+  return {
+    addEventListener: (fn: () => void) => {
+      bag.push(fn);
+    },
+    removeEventListener: (fn: () => void) => {
+      const i = bag.indexOf(fn);
+      if (i >= 0) bag.splice(i, 1);
+    },
+  };
+}
+
+function newSync(f: ReturnType<typeof makeFakes>, readZoom?: () => number) {
   // The fakes stand in for the Cesium namespace + Viewer (cast through unknown).
   return new CesiumLayerSync(
     f.Cesium as unknown as typeof import("cesium"),
     f.viewer as unknown as import("cesium").Viewer,
+    readZoom,
   );
 }
 
@@ -1427,5 +1446,69 @@ describe("CesiumLayerSync", () => {
     // Restoring reverts to persistent layer opacity
     sync.restoreStoryLayerStyles();
     assert.equal(imgHandle.alpha, 0.8);
+  });
+
+  it("re-evaluates a zoom-dependent filter when the camera crosses an integer zoom", async () => {
+    let zoom = 5.4;
+    const sync = newSync(f, () => zoom);
+    const layer = mkLayer({
+      id: "zoomed",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } },
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [1, 1] } },
+        ],
+      },
+      embedFilter: [">=", ["zoom"], 10],
+    });
+    sync.sync([layer]);
+    await f.flush();
+    const ds = f.calls.dataSourcesAdded[0] as { entities: { values: Array<{ show: boolean }> } };
+    // Evaluated at the camera's zoom, not at zoom 0.
+    assert.equal(ds.entities.values[0].show, false);
+    assert.equal(ds.entities.values[1].show, false);
+    assert.ok(f.calls.cameraListeners.length > 0, "a zoom filter installs camera listeners");
+
+    // Camera settles above the threshold: the filter re-runs on the move event.
+    zoom = 12.2;
+    for (const fn of [...f.calls.cameraListeners]) fn();
+    assert.equal(ds.entities.values[0].show, true);
+    assert.equal(ds.entities.values[1].show, true);
+
+    // Clearing the zoom operand drops the listeners again.
+    sync.sync([{ ...layer, embedFilter: undefined }]);
+    assert.equal(f.calls.cameraListeners.length, 0);
+    assert.equal(ds.entities.values[0].show, true);
+  });
+
+  it("keeps a story opacity set before the layer's async create resolves", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "geo",
+      type: "geojson",
+      opacity: 0.8,
+      style: { fillOpacity: 0.5 },
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } },
+        ],
+      },
+    });
+    sync.sync([layer]);
+    // The GeoJsonDataSource is still loading (no handle yet) when the story fires.
+    sync.setStoryLayerOpacity("geo", 0.1);
+    await f.flush();
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: { values: [{ polygon: { material: { color: { alpha: number } } } }] };
+    };
+    // fill = 0.5 fill opacity × 0.1 story opacity, not × 0.8 layer opacity.
+    assert.ok(Math.abs(ds.entities.values[0].polygon.material.color.alpha - 0.05) < 1e-9);
+    assert.equal(layer.opacity, 0.8);
+
+    sync.restoreStoryLayerStyles();
+    assert.ok(Math.abs(ds.entities.values[0].polygon.material.color.alpha - 0.4) < 1e-9);
   });
 });
