@@ -1085,7 +1085,9 @@ export class CesiumLayerSync {
               ? rawHeight
               : Number(rawHeight);
           const height = Number.isFinite(num) ? num : 0;
-          const relativeTop = Math.max(0, height * heightScale + base);
+          // Never below the base: a negative height property or expression would
+          // otherwise put the roof under the floor.
+          const relativeTop = Math.max(base, height * heightScale + base);
           // With perPositionHeight Cesium takes each vertex's own height as the
           // base but reads extrudedHeight as an absolute altitude, so lift the
           // roof by the ring's highest vertex; otherwise it would extrude down
