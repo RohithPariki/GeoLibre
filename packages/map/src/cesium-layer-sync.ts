@@ -993,6 +993,24 @@ export class CesiumLayerSync {
       // ignores height/heightReference on it (with a one-time console warning),
       // keeping each vertex's own ellipsoid height. Only flat polygons take the
       // terrain-relative references.
+      // Highest Z on a polygon feature's rings (0 when none carries a height).
+      const ringTopAltitude = (feature: Feature | null): number => {
+        const geometry = feature?.geometry;
+        const polygons =
+          geometry?.type === "Polygon"
+            ? [geometry.coordinates]
+            : geometry?.type === "MultiPolygon"
+              ? geometry.coordinates
+              : [];
+        let top = Number.NEGATIVE_INFINITY;
+        for (const rings of polygons)
+          for (const ring of rings)
+            for (const position of ring) {
+              const z = position[2];
+              if (typeof z === "number" && Number.isFinite(z) && z > top) top = z;
+            }
+        return Number.isFinite(top) ? top : 0;
+      };
       const perPositionHeight = (polygon: { perPositionHeight?: unknown }): boolean => {
         const prop = polygon.perPositionHeight as
           | { getValue?: (time: unknown) => unknown }
@@ -1067,7 +1085,14 @@ export class CesiumLayerSync {
               ? rawHeight
               : Number(rawHeight);
           const height = Number.isFinite(num) ? num : 0;
-          const extrudedHeight = Math.max(0, height * heightScale + base);
+          const relativeTop = Math.max(0, height * heightScale + base);
+          // With perPositionHeight Cesium takes each vertex's own height as the
+          // base but reads extrudedHeight as an absolute altitude, so lift the
+          // roof by the ring's highest vertex; otherwise it would extrude down
+          // to `relativeTop` metres above the ellipsoid.
+          const extrudedHeight = perPositionHeight(entity.polygon)
+            ? ringTopAltitude(feat) + relativeTop
+            : relativeTop;
 
           let resolvedColor = baseColor;
           if (feat && colorEvaluator) {

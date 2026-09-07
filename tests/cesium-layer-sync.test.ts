@@ -1684,8 +1684,9 @@ describe("CesiumLayerSync", () => {
       2,
     );
 
-    // The extrusion path likewise skips height/heightReference on it, but still
-    // extrudes from the per-vertex heights.
+    // The extrusion path likewise skips height/heightReference on it and, since
+    // Cesium reads extrudedHeight as an absolute altitude there, lifts the roof
+    // above the ring's own height (100 m + 10 m) rather than extruding down to 10 m.
     sync.sync([{ ...layer, style: { extrusionEnabled: true, extrusionHeightProperty: "height" } }]);
     await f.flush();
     const extruded = f.calls.dataSourcesAdded[1] as {
@@ -1702,7 +1703,7 @@ describe("CesiumLayerSync", () => {
     };
     const ext = extruded.entities.values.find((e) => e.polygon)?.polygon;
     assert.ok(ext);
-    assert.equal(ext.extrudedHeight?.value, 10);
+    assert.equal(ext.extrudedHeight?.value, 110);
     assert.equal(ext.height, undefined);
     assert.equal(ext.heightReference, undefined);
     assert.equal(ext.extrudedHeightReference, undefined);
