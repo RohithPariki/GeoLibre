@@ -1,4 +1,10 @@
-import { resolveThreeDTilesRequestHeaders, type GeoLibreLayer } from "@geolibre/core";
+import {
+  compileQuickFilters,
+  resolveThreeDTilesRequestHeaders,
+  ruleBasedVisibilityFilter,
+  type GeoLibreLayer,
+} from "@geolibre/core";
+import { featureFilter } from "@maplibre/maplibre-gl-style-spec";
 import type {
   Cesium3DTileset,
   CesiumWidget,
@@ -76,6 +82,58 @@ interface LayerEntry {
   cancelled: boolean;
   /** Last opacity key applied in place to a geojson entry (skips redundant restyles). */
   appliedAlpha?: string;
+  /** Last filter expression key applied in place (skips redundant filter evaluations). */
+  appliedFilterKey?: string;
+}
+
+/**
+ * Compose a layer's per-feature filter expression from its transient time filter,
+ * embed API filter, compiled quick filters, rule-based visibility filter, and
+ * annotation visibility filter. Returns null when no filter constrains the layer.
+ */
+export function composeLayerFeatureFilter(layer: GeoLibreLayer): unknown[] | null {
+  const filters: unknown[] = [];
+  const timeFilter = layer.timeFilter;
+  if (Array.isArray(timeFilter) && timeFilter.length > 0) {
+    filters.push(timeFilter);
+  }
+  if (Array.isArray(layer.embedFilter) && layer.embedFilter.length > 0) {
+    filters.push(layer.embedFilter);
+  }
+  const quickFilter = compileQuickFilters(layer.quickFilters);
+  if (quickFilter) {
+    filters.push(quickFilter);
+  }
+  const ruleFilter = ruleBasedVisibilityFilter(layer.style ?? {});
+  if (ruleFilter) {
+    filters.push(ruleFilter);
+  }
+  if (layer.metadata?.sourceKind === "annotation") {
+    filters.push(["!=", ["get", "visible"], false]);
+  }
+  if (filters.length === 0) return null;
+  if (filters.length === 1) return filters[0] as unknown[];
+  return ["all", ...filters];
+}
+
+export function extractTimeFilterDate(filter: unknown): Date | null {
+  if (!Array.isArray(filter)) return null;
+  for (const item of filter) {
+    if (Array.isArray(item)) {
+      const d = extractTimeFilterDate(item);
+      if (d) return d;
+    } else if (typeof item === "number" && Number.isFinite(item)) {
+      if (item > 100000000000 && item < 4102444800000) {
+        return new Date(item);
+      }
+    } else if (typeof item === "string" && item.length >= 10) {
+      const d = new Date(item);
+      if (!Number.isNaN(d.getTime()) && d.getFullYear() >= 1970 && d.getFullYear() <= 2100) {
+        return d;
+      }
+    }
+  }
+  return null;
 }
 
 function str(value: unknown): string | undefined {
@@ -373,6 +431,7 @@ export class CesiumLayerSync {
       !entry.layer.visible ||
       entry.layer.opacity <= 0 ||
       entry.kind !== "geojson" ||
+      (entity as { show?: boolean }).show === false ||
       !(entry.handle as DataSource | null)?.entities.contains(entity as Entity)
     )
       return null;
@@ -450,6 +509,15 @@ export class CesiumLayerSync {
   sync(layers: GeoLibreLayer[]): void {
     this.restoreHighlight();
     this.currentLayers = layers;
+    for (const layer of layers) {
+      if (Array.isArray(layer.timeFilter) && layer.timeFilter.length > 0) {
+        const d = extractTimeFilterDate(layer.timeFilter);
+        if (d) {
+          this.setTime(d);
+          break;
+        }
+      }
+    }
     const nextIds = new Set(layers.map((l) => l.id));
     for (const [id, entry] of this.entries) {
       if (!nextIds.has(id)) {
@@ -750,7 +818,11 @@ export class CesiumLayerSync {
         return;
       }
       for (const entity of dataSource.entities.values) {
-        const index = entity.properties?.[indexKey]?.getValue(viewer.clock.currentTime);
+        const propIndex = entity.properties?.[indexKey];
+        const index =
+          typeof propIndex?.getValue === "function"
+            ? propIndex.getValue(viewer.clock?.currentTime)
+            : propIndex;
         if (Number.isInteger(index)) this.featureRefs.set(entity, { layerId: layer.id, index });
       }
       entry.handle = dataSource;
@@ -815,8 +887,153 @@ export class CesiumLayerSync {
     } else if (entry.kind === "geojson") {
       (handle as DataSource).show = layer.visible;
       this.applyGeoJsonStyle(entry);
+      this.applyGeoJsonFilter(entry);
     } else {
       (handle as Cesium3DTileset).show = layer.visible;
+    }
+  }
+
+  private readonly storyOpacities = new Map<string, number>();
+
+  /** Synchronize the viewer clock's current time to a date (e.g. from the Time Slider). */
+  setTime(date: Date | string | number): void {
+    const d = date instanceof Date ? date : new Date(date);
+    if (Number.isNaN(d.getTime())) return;
+    const JulianDate = (this.Cesium as { JulianDate?: { fromDate?: (d: Date) => unknown } })
+      ?.JulianDate;
+    if (JulianDate?.fromDate && this.viewer.clock) {
+      this.viewer.clock.currentTime = JulianDate.fromDate(d) as never;
+    } else if (this.viewer.clock) {
+      (this.viewer.clock as unknown as { currentTime: unknown }).currentTime = d;
+    }
+    this.viewer.scene?.requestRender?.();
+  }
+
+  /**
+   * Temporarily override a layer's opacity for story playback without mutating the
+   * underlying layer in the project store.
+   */
+  setStoryLayerOpacity(layerId: string, opacity: number): void {
+    const entry = this.entries.get(layerId);
+    if (!entry || !entry.handle) return;
+    if (!this.storyOpacities.has(layerId)) {
+      this.storyOpacities.set(layerId, entry.layer.opacity);
+    }
+    const clamped = Math.min(1, Math.max(0, opacity));
+    if (entry.kind === "imagery") {
+      (entry.handle as ImageryLayer).alpha = clamped;
+    } else if (entry.kind === "geojson") {
+      const prev = entry.layer;
+      entry.layer = { ...prev, opacity: clamped };
+      this.applyGeoJsonStyle(entry);
+      entry.layer = prev;
+    }
+    this.viewer.scene?.requestRender?.();
+  }
+
+  /**
+   * Revert all temporary story opacities applied by {@link setStoryLayerOpacity}
+   * back to the stored layer opacity.
+   */
+  restoreStoryLayerStyles(): void {
+    if (this.storyOpacities.size === 0) return;
+    for (const [layerId, originalOpacity] of this.storyOpacities) {
+      const entry = this.entries.get(layerId);
+      if (!entry || !entry.handle) continue;
+      if (entry.kind === "imagery") {
+        (entry.handle as ImageryLayer).alpha = originalOpacity;
+      } else if (entry.kind === "geojson") {
+        entry.appliedAlpha = undefined;
+        this.applyGeoJsonStyle(entry);
+      }
+    }
+    this.storyOpacities.clear();
+    this.viewer.scene?.requestRender?.();
+  }
+
+  /**
+   * Evaluate a layer's composed feature filter (timeFilter, embedFilter, quickFilters,
+   * rule-based visibility) against each GeoJSON entity, toggling `entity.show` in place.
+   */
+  private applyGeoJsonFilter(entry: LayerEntry): void {
+    const dataSource = entry.handle as DataSource | null;
+    if (!dataSource) return;
+    const filter = composeLayerFeatureFilter(entry.layer);
+    const key = filter ? JSON.stringify(filter) : "";
+    if (entry.appliedFilterKey === key) return;
+    entry.appliedFilterKey = key;
+
+    const { viewer } = this;
+    const currentTime = viewer.clock?.currentTime;
+    const indexKey = "__geolibre_cesium_feature_index";
+    const features = entry.layer.geojson?.features;
+
+    if (!filter) {
+      for (const entity of dataSource.entities.values) {
+        entity.show = true;
+      }
+      return;
+    }
+
+    let compiled: {
+      filter: (
+        globalContext: { zoom: number },
+        feature: { type: number; properties: Record<string, unknown>; geometry?: unknown; id?: unknown },
+      ) => boolean;
+    };
+    try {
+      compiled = featureFilter(filter as never, "layers[0].filter");
+    } catch {
+      for (const entity of dataSource.entities.values) {
+        entity.show = true;
+      }
+      return;
+    }
+
+    const typeMap: Record<string, number> = {
+      Point: 1,
+      MultiPoint: 1,
+      LineString: 2,
+      MultiLineString: 2,
+      Polygon: 3,
+      MultiPolygon: 3,
+    };
+
+    for (const entity of dataSource.entities.values) {
+      const propIndex = entity.properties?.[indexKey];
+      const index = typeof propIndex?.getValue === "function"
+        ? propIndex.getValue(currentTime)
+        : propIndex;
+      const feat = Number.isInteger(index) && features ? features[index] : null;
+      let properties: Record<string, unknown> = {};
+      let geomType = 1;
+      let id: unknown = undefined;
+
+      if (feat) {
+        properties = (feat.properties as Record<string, unknown>) ?? {};
+        geomType = (feat.geometry?.type && typeMap[feat.geometry.type]) ?? 1;
+        id = feat.id;
+      } else if (entity.properties) {
+        const propBag = entity.properties as Record<string, unknown>;
+        const names = Array.isArray(propBag.propertyNames)
+          ? propBag.propertyNames
+          : Object.keys(propBag);
+        for (const name of names) {
+          if (name === indexKey) continue;
+          const val = propBag[name];
+          properties[name] = typeof (val as { getValue?: (t: unknown) => unknown })?.getValue === "function"
+            ? (val as { getValue: (t: unknown) => unknown }).getValue(currentTime)
+            : val;
+        }
+      }
+
+      let visible = true;
+      try {
+        visible = compiled.filter({ zoom: 0 }, { type: geomType, properties, id, geometry: feat?.geometry });
+      } catch {
+        visible = true;
+      }
+      entity.show = visible;
     }
   }
 
@@ -863,6 +1080,7 @@ export class CesiumLayerSync {
 
   private destroyEntry(entry: LayerEntry): void {
     entry.cancelled = true;
+    this.storyOpacities.delete(entry.layer.id);
     const { handle } = entry;
     if (!handle) return;
     if (entry.kind === "imagery") {
