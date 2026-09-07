@@ -978,7 +978,12 @@ export class CesiumLayerSync {
     let compiled: {
       filter: (
         globalContext: { zoom: number },
-        feature: { type: number; properties: Record<string, unknown>; geometry?: unknown; id?: unknown },
+        feature: {
+          type: number;
+          properties: Record<string, unknown>;
+          geometry?: unknown;
+          id?: unknown;
+        },
       ) => boolean;
     };
     try {
@@ -1001,9 +1006,8 @@ export class CesiumLayerSync {
 
     for (const entity of dataSource.entities.values) {
       const propIndex = entity.properties?.[indexKey];
-      const index = typeof propIndex?.getValue === "function"
-        ? propIndex.getValue(currentTime)
-        : propIndex;
+      const index =
+        typeof propIndex?.getValue === "function" ? propIndex.getValue(currentTime) : propIndex;
       const feat = Number.isInteger(index) && features ? features[index] : null;
       let properties: Record<string, unknown> = {};
       let geomType = 1;
@@ -1021,15 +1025,19 @@ export class CesiumLayerSync {
         for (const name of names) {
           if (name === indexKey) continue;
           const val = propBag[name];
-          properties[name] = typeof (val as { getValue?: (t: unknown) => unknown })?.getValue === "function"
-            ? (val as { getValue: (t: unknown) => unknown }).getValue(currentTime)
-            : val;
+          properties[name] =
+            typeof (val as { getValue?: (t: unknown) => unknown })?.getValue === "function"
+              ? (val as { getValue: (t: unknown) => unknown }).getValue(currentTime)
+              : val;
         }
       }
 
       let visible = true;
       try {
-        visible = compiled.filter({ zoom: 0 }, { type: geomType, properties, id, geometry: feat?.geometry });
+        visible = compiled.filter(
+          { zoom: 0 },
+          { type: geomType, properties, id, geometry: feat?.geometry },
+        );
       } catch {
         visible = true;
       }

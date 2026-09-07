@@ -1283,7 +1283,9 @@ describe("CesiumLayerSync", () => {
       type: "geojson",
       geojson: {
         type: "FeatureCollection",
-        features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } }],
+        features: [
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } },
+        ],
       },
       timeFilter: [">=", ["get", "time"], dateMs],
     });
@@ -1291,7 +1293,10 @@ describe("CesiumLayerSync", () => {
     sync.sync([layer]);
     await f.flush();
 
-    const clockTime = f.viewer.clock.currentTime as unknown as { date: Date; isJulianDate: boolean };
+    const clockTime = f.viewer.clock.currentTime as unknown as {
+      date: Date;
+      isJulianDate: boolean;
+    };
     assert.ok(clockTime, "clock should receive currentTime");
     assert.equal(clockTime.date.getTime(), dateMs);
   });
@@ -1304,7 +1309,9 @@ describe("CesiumLayerSync", () => {
       opacity: 0.8,
       geojson: {
         type: "FeatureCollection",
-        features: [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } }],
+        features: [
+          { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [0, 0] } },
+        ],
       },
     });
     const imgLayer = mkLayer({
