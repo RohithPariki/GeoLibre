@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
-import type { GeoLibreLayer } from "../packages/core/src/types";
+import { DEFAULT_LAYER_STYLE, type GeoLibreLayer } from "../packages/core/src/types";
 import { CesiumLayerSync, isCesiumSupportedLayerType } from "../packages/map/src/cesium-layer-sync";
 
 // Verifies the store → Cesium reconciler against a fake Cesium namespace + viewer
@@ -167,6 +167,14 @@ function makeFakes() {
                       billboard: { color: undefined },
                       show: true,
                     },
+                    {
+                      properties: {
+                        ...(features[0]?.properties ?? {}),
+                        __geolibre_cesium_feature_index: { getValue: () => 0 },
+                      },
+                      label: {},
+                      show: true,
+                    },
                   ],
           },
         });
@@ -196,6 +204,8 @@ function makeFakes() {
     Color: {
       fromCssColorString: (css: string) => ({
         css,
+        // Only rgba() carries an alpha of its own here; every other form is opaque.
+        alpha: css.startsWith("rgba(") ? Number(/,\s*([\d.]+)\s*\)$/.exec(css)?.[1] ?? 1) : 1,
         withAlpha: (a: number) => ({ css, alpha: a }),
       }),
       WHITE: { withAlpha: (a: number) => ({ css: "WHITE", alpha: a }) },
@@ -435,6 +445,39 @@ describe("CesiumLayerSync", () => {
     assert.ok(Math.abs(v[0].polygon.material.color.alpha - 0.2) < 1e-9);
     assert.ok(Math.abs(v[1].polyline.material.color.alpha - 0.4) < 1e-9);
     assert.ok(Math.abs(v[2].billboard.color.value.alpha - 0.4) < 1e-9);
+  });
+
+  it("fades labels by layer opacity without discarding the colour's own alpha", async () => {
+    const sync = newSync(f);
+    const fc = { type: "FeatureCollection", features: [{}] };
+    sync.sync([
+      mkLayer({
+        type: "geojson",
+        geojson: fc as never,
+        opacity: 0.5,
+        style: { labels: { ...DEFAULT_LAYER_STYLE.labels, color: "rgba(255, 0, 0, 0.2)" } },
+      }),
+    ]);
+    await f.flush();
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: {
+        values: [
+          unknown,
+          unknown,
+          unknown,
+          {
+            label: {
+              fillColor: { value: { alpha: number } };
+              outlineColor: { value: { alpha: number } };
+            };
+          },
+        ];
+      };
+    };
+    const label = ds.entities.values[3].label;
+    // text = 0.2 colour alpha × 0.5 layer opacity; the opaque halo = layer opacity.
+    assert.ok(Math.abs(label.fillColor.value.alpha - 0.1) < 1e-9);
+    assert.ok(Math.abs(label.outlineColor.value.alpha - 0.5) < 1e-9);
   });
 
   it("renders xyz/raster tiles as an imagery layer with opacity + visibility", () => {
