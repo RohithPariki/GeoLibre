@@ -1826,6 +1826,9 @@
     "cesiumTokenHint": "Tambahkan token Cesium Ion di Pengaturan untuk medan dan citra Ion"
   },
   "renderer": {
+    "basemap": "Peta dasar",
+    "imagery": "Citra",
+    "projectBasemap": "Peta dasar proyek",
     "layerUnsupported": "Tidak dirender oleh bola dunia 3D",
     "resetView": "Atur Ulang Tampilan",
     "scene3D": "Bola dunia 3D",

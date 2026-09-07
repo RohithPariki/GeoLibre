@@ -7,7 +7,7 @@ import {
   type StoryChapterAnimation,
   type StoryChapterLocation,
 } from "@geolibre/core";
-import type { CesiumWidget } from "@cesium/engine";
+import type { Cartesian2, CesiumWidget } from "@cesium/engine";
 import type { FeatureCollection } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import {
@@ -39,7 +39,7 @@ type CesiumNs = typeof import("@cesium/engine");
 /**
  * What the globe can do (issue #2260).
  *
- * The four `false` flags are not "not yet wired" — they are the operations
+ * The `false` flags are not "not yet wired" — they are the operations
  * Cesium has no equivalent for, or that this engine deliberately does not claim:
  *
  * - `styleSpec` / `nativeMapInstance`: Cesium draws imagery layers and
@@ -48,12 +48,7 @@ type CesiumNs = typeof import("@cesium/engine");
  *   canvas stays 2D-only.
  * - `customLayers`: a MapLibre `CustomLayerInterface` is a callback into
  *   MapLibre's own WebGL pass; deck.gl's MapLibre interop is the same shape.
- * - `picking`: `identifyFeatures` needs `scene.drillPick` plus a mapping from a
- *   picked primitive back to a `GeoLibreLayer` id and feature id, which
- *   `CesiumLayerSync` does not record today. Claiming it before that exists
- *   would make Identify report "no features here" instead of "not available".
- * - `onMapDrawing` / `domControls`: no manual-placement pin and nowhere to host
- *   an `IControl`. The control host is issue #2263.
+ * - `onMapDrawing`: no manual-placement pin.
  *
  * `terrain: true` is the flag worth noting in the other direction — terrain is
  * native on the globe, and the old `primaryRenderer === "cesium"` gates disabled
@@ -64,7 +59,7 @@ export const CESIUM_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   nativeMapInstance: false,
   customLayers: false,
   terrain: true,
-  picking: false,
+  picking: true,
   onMapDrawing: false,
   domControls: true,
 });
@@ -111,6 +106,8 @@ const FLY_SECONDS = 0.8;
 const POINT_FIT_ZOOM = 14;
 
 export interface CesiumEngineOptions {
+  /** Whether this canvas has credentials for Cesium World Terrain. */
+  worldTerrainAvailable?: boolean;
   /**
    * Id of the `secondaryMapViews` record this globe draws, or `undefined` when
    * it *is* the primary map area. Decides which camera the engine publishes to
@@ -198,7 +195,9 @@ export class CesiumEngine implements MapEngine {
   private minZoom = 0;
   private maxZoom = 24;
 
+  private readonly worldTerrainAvailable: boolean;
   private terrainEnabled = false;
+  private terrainRequest = 0;
   private terrainExaggeration = 1;
   private disposers: Array<() => void> = [];
   /**
@@ -211,6 +210,7 @@ export class CesiumEngine implements MapEngine {
     this.Cesium = Cesium;
     this.viewer = viewer;
     this.viewId = options.viewId;
+    this.worldTerrainAvailable = options.worldTerrainAvailable ?? true;
     this.capabilities =
       options.viewId === undefined ? CESIUM_CAPABILITIES : CESIUM_PANE_CAPABILITIES;
     this.layerSync = new CesiumLayerSync(Cesium, viewer);
@@ -517,18 +517,87 @@ export class CesiumEngine implements MapEngine {
 
   // ------------------------------------------------------------------ picking
 
-  /** Empty until the globe can map a picked primitive back to a feature id. */
-  identifyFeatures(_lngLat: [number, number], _layerId?: string): IdentifiedFeature[] {
-    return [];
+  identifyFeatures(lngLat: [number, number], layerId?: string): IdentifiedFeature[] {
+    const viewer = this.live();
+    if (!viewer || this.isMorphing() || !lngLat.every(Number.isFinite)) return [];
+    const height = groundHeightAt(this.Cesium, viewer, lngLat[0], lngLat[1]);
+    const world = this.Cesium.Cartesian3.fromDegrees(lngLat[0], lngLat[1], height);
+    if (viewer.scene.mode === this.Cesium.SceneMode.SCENE3D) {
+      // Projection alone also maps the far hemisphere onto the visible globe.
+      // Use the public ray/ellipsoid API (EllipsoidalOccluder is private).
+      const origin = viewer.camera.positionWC;
+      // Below-sea-level terrain must not be rejected merely for lying inside the ellipsoid.
+      const target =
+        height < 0 ? this.Cesium.Cartesian3.fromDegrees(lngLat[0], lngLat[1], 0) : world;
+      const direction = this.Cesium.Cartesian3.subtract(
+        target,
+        origin,
+        new this.Cesium.Cartesian3(),
+      );
+      const distance = this.Cesium.Cartesian3.magnitude(direction);
+      if (distance === 0) return [];
+      const intersection = this.Cesium.IntersectionTests.rayEllipsoid(
+        new this.Cesium.Ray(origin, direction),
+        viewer.scene.globe.ellipsoid,
+      );
+      // Allow rounding at the surface; only intersections before the target occlude it.
+      if (intersection && intersection.start > 0 && intersection.start < distance - 1) return [];
+    }
+    const point = this.Cesium.SceneTransforms.worldToWindowCoordinates(viewer.scene, world);
+    return point ? this.identifyAtScreen(point, layerId) : [];
+  }
+
+  /** Use the actual pointer position for hover/click, including elevated geometry. */
+  identifyAtScreen(point: Cartesian2, layerId?: string): IdentifiedFeature[] {
+    const viewer = this.live();
+    if (
+      !viewer ||
+      this.isMorphing() ||
+      !Number.isFinite(point.x) ||
+      !Number.isFinite(point.y) ||
+      point.x < 0 ||
+      point.y < 0 ||
+      point.x > viewer.canvas.clientWidth ||
+      point.y > viewer.canvas.clientHeight
+    )
+      return [];
+    const results: IdentifiedFeature[] = [];
+    const seen = new Set<string>();
+    for (const picked of viewer.scene.drillPick(point)) {
+      const entity = picked?.id ?? picked?.primitive?.id;
+      if (!entity || typeof entity !== "object") continue;
+      const feature = this.layerSync.resolveFeature(entity);
+      if (!feature || (layerId !== undefined && feature.layerId !== layerId)) continue;
+      const key = JSON.stringify([feature.layerId, feature.featureId]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      results.push(feature);
+    }
+    return results;
   }
 
   highlightFeature(
-    _layer: GeoLibreLayer | undefined,
-    _featureId: string | string[] | null,
-    _options: { fit?: boolean } = {},
-  ): void {}
+    layer: GeoLibreLayer | undefined,
+    featureId: string | string[] | null,
+    options: { fit?: boolean } = {},
+  ): void {
+    if (!this.live()) return;
+    const ids = featureId === null ? [] : Array.isArray(featureId) ? featureId : [featureId];
+    this.layerSync.highlight(layer?.id, ids);
+    if (!options.fit || !layer?.geojson || !ids.length) return;
+    const selected = new Set(ids);
+    const features = layer.geojson.features.filter((feature, index) =>
+      selected.has(String(feature.id ?? index)),
+    );
+    const bounds = getLayerBounds({ ...layer, geojson: { type: "FeatureCollection", features } });
+    if (features.length && bounds) this.fitBounds(bounds);
+  }
 
-  clearFeatureHighlight(): void {}
+  clearFeatureHighlight(): void {
+    if (!this.live()) return;
+    this.layerSync.highlight(undefined, []);
+    this.live()?.scene.requestRender();
+  }
 
   /** Places nothing and returns a no-op teardown; see `onMapDrawing`. */
   startManualPlacement(_lngLat: [number, number], _options: ManualPlacementOptions): () => void {
@@ -576,6 +645,9 @@ export class CesiumEngine implements MapEngine {
   }
 
   setBuiltInControlVisible(control: BuiltInMapControl, visible: boolean): boolean {
+    // Terrain is a scene setting; unlike fullscreen it has no separate control
+    // instance. The menu and project restore must still reach the engine.
+    if (control === "terrain" && this.isPrimary) return this.setTerrainEnabled(visible);
     const instance = this.builtInControls.get(control);
     if (!instance || !this.isPrimary) return false;
     const host = getPrimaryCesiumControlHost();
@@ -620,9 +692,11 @@ export class CesiumEngine implements MapEngine {
    */
   setTerrainEnabled(enabled: boolean): boolean {
     const viewer = this.live();
-    if (!viewer) return false;
+    if (!viewer || (enabled && !this.worldTerrainAvailable)) return false;
+    if (this.terrainEnabled === enabled) return true;
     if (!enabled) {
       this.terrainEnabled = false;
+      this.terrainRequest++;
       viewer.terrainProvider = new this.Cesium.EllipsoidTerrainProvider();
       return true;
     }
@@ -641,16 +715,21 @@ export class CesiumEngine implements MapEngine {
    * to it fire-and-forget.
    */
   async enableWorldTerrain(): Promise<void> {
+    if (!this.worldTerrainAvailable) return;
     this.terrainEnabled = true;
+    const request = ++this.terrainRequest;
     try {
       const provider = await this.Cesium.createWorldTerrainAsync();
       const viewer = this.live();
       // The toggle may have been reversed, or the viewer destroyed, while the
       // provider loaded; applying it then would resurrect terrain the user just
       // turned off.
-      if (viewer && this.terrainEnabled) viewer.terrainProvider = provider;
+      if (viewer && this.terrainEnabled && request === this.terrainRequest) {
+        viewer.terrainProvider = provider;
+      }
     } catch {
-      // Terrain is best-effort; the globe still renders without it.
+      // Allow a subsequent enable to retry, without resetting a newer request.
+      if (request === this.terrainRequest) this.terrainEnabled = false;
     }
   }
 

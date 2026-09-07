@@ -40,6 +40,11 @@ export function PrimaryCesiumCanvas({ engineRef, onEngineReady }: PrimaryCesiumC
   // identity changes.
   const controlLabels = useMemo<CesiumWidgetControlLabels>(
     () => ({
+      basemap: t("renderer.basemap"),
+      imagery: t("renderer.imagery"),
+      other: t("newProject.sectionOther"),
+      terrain: t("toolbar.mapControl.terrain"),
+      projectBasemap: t("renderer.projectBasemap"),
       home: t("renderer.resetView"),
       sceneMode3D: t("renderer.scene3D"),
       sceneMode2D: t("renderer.scene2D"),
@@ -63,6 +68,7 @@ export function PrimaryCesiumCanvas({ engineRef, onEngineReady }: PrimaryCesiumC
         engineRef={engineRef}
         onEngineReady={onEngineReady}
         controlLabels={controlLabels}
+        popupCloseLabel={t("common.close")}
       />
       {/* The globe works without an Ion token — it draws the project basemap —
           so say what a token would add rather than hiding the view. Bottom-end
