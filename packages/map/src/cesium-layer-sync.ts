@@ -989,6 +989,21 @@ export class CesiumLayerSync {
       const makeProp = (v: unknown) => (ConstantProperty ? new ConstantProperty(v) : v);
       const makeMat = (c: unknown) =>
         ColorMaterialProperty ? new ColorMaterialProperty(c) : { color: c };
+      // Cesium flags a polygon whose ring carries Z as perPositionHeight and then
+      // ignores height/heightReference on it (with a one-time console warning),
+      // keeping each vertex's own ellipsoid height. Only flat polygons take the
+      // terrain-relative references.
+      const perPositionHeight = (polygon: { perPositionHeight?: unknown }): boolean => {
+        const prop = polygon.perPositionHeight as
+          | { getValue?: (time: unknown) => unknown }
+          | boolean
+          | undefined;
+        return Boolean(
+          typeof prop === "object" && typeof prop.getValue === "function"
+            ? prop.getValue(viewer.clock?.currentTime)
+            : prop,
+        );
+      };
 
       if (style.extrusionEnabled) {
         const heightProp = style.extrusionHeightProperty?.trim() || "height";
@@ -1071,14 +1086,16 @@ export class CesiumLayerSync {
           }
 
           entity.polygon.extrudedHeight = makeProp(extrudedHeight) as never;
-          entity.polygon.height = makeProp(base) as never;
-          entity.polygon.heightReference = makeProp(heightRef) as never;
-          entity.polygon.extrudedHeightReference = makeProp(heightRef) as never;
+          if (!perPositionHeight(entity.polygon)) {
+            entity.polygon.height = makeProp(base) as never;
+            entity.polygon.heightReference = makeProp(heightRef) as never;
+            entity.polygon.extrudedHeightReference = makeProp(heightRef) as never;
+          }
           entity.polygon.material = makeMat(resolvedColor.withAlpha(extOpacity)) as never;
         }
       } else if (has3dElevation) {
         for (const entity of dataSource.entities.values) {
-          if (entity.polygon) {
+          if (entity.polygon && !perPositionHeight(entity.polygon)) {
             entity.polygon.heightReference = makeProp(heightRef) as never;
           }
           if (entity.billboard) {
@@ -1373,12 +1390,18 @@ export class CesiumLayerSync {
     for (const feature of dataSource.entities.values) {
       if (feature.polygon) {
         if (hasColorExpr) {
-          const currentMat = feature.polygon.material as
-            | { color?: { withAlpha?: (a: number) => Color } }
+          // ColorMaterialProperty wraps its colour in a ConstantProperty, so
+          // resolve the Property before re-alphaing the per-feature colour.
+          const colorProp = (feature.polygon.material as { color?: unknown } | undefined)?.color as
+            | { getValue?: (time: unknown) => Color | undefined; withAlpha?: (a: number) => Color }
             | undefined;
-          if (currentMat?.color?.withAlpha) {
+          const current =
+            typeof colorProp?.getValue === "function"
+              ? colorProp.getValue(this.viewer.clock?.currentTime)
+              : colorProp;
+          if (current?.withAlpha) {
             feature.polygon.material = new Cesium.ColorMaterialProperty(
-              currentMat.color.withAlpha(extOpacity),
+              current.withAlpha(extOpacity),
             );
           }
         } else {
