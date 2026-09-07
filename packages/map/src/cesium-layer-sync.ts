@@ -116,6 +116,13 @@ export function composeLayerFeatureFilter(layer: GeoLibreLayer): unknown[] | nul
   return ["all", ...filters];
 }
 
+/**
+ * Recursively extracts a valid timestamp or ISO date string from a MapLibre filter
+ * expression, returning a Date instance if found.
+ *
+ * @param filter The filter expression array or sub-expression to inspect.
+ * @returns A parsed Date if a temporal value is found, or null otherwise.
+ */
 export function extractTimeFilterDate(filter: unknown): Date | null {
   if (!Array.isArray(filter)) return null;
   for (const item of filter) {
@@ -883,7 +890,7 @@ export class CesiumLayerSync {
     if (entry.kind === "imagery") {
       const imagery = handle as ImageryLayer;
       imagery.show = layer.visible;
-      imagery.alpha = layer.opacity;
+      imagery.alpha = this.effectiveOpacity(entry);
     } else if (entry.kind === "geojson") {
       (handle as DataSource).show = layer.visible;
       this.applyGeoJsonStyle(entry);
@@ -893,9 +900,21 @@ export class CesiumLayerSync {
     }
   }
 
-  private readonly storyOpacities = new Map<string, number>();
+  private readonly storyOpacities = new Map<
+    string,
+    { originalOpacity: number; currentOpacity: number }
+  >();
 
-  /** Synchronize the viewer clock's current time to a date (e.g. from the Time Slider). */
+  private effectiveOpacity(entry: LayerEntry): number {
+    const override = this.storyOpacities.get(entry.layer.id);
+    return override !== undefined ? override.currentOpacity : entry.layer.opacity;
+  }
+
+  /**
+   * Synchronize the viewer clock's current time to a date (e.g. from the Time Slider).
+   *
+   * @param date Date, timestamp string, or epoch milliseconds to set on the Cesium clock.
+   */
   setTime(date: Date | string | number): void {
     const d = date instanceof Date ? date : new Date(date);
     if (Number.isNaN(d.getTime())) return;
@@ -912,22 +931,25 @@ export class CesiumLayerSync {
   /**
    * Temporarily override a layer's opacity for story playback without mutating the
    * underlying layer in the project store.
+   *
+   * @param layerId Unique identifier of the layer whose opacity to override.
+   * @param opacity Desired opacity clamped between 0 and 1.
    */
   setStoryLayerOpacity(layerId: string, opacity: number): void {
     const entry = this.entries.get(layerId);
     if (!entry || !entry.handle) return;
-    if (!this.storyOpacities.has(layerId)) {
-      this.storyOpacities.set(layerId, entry.layer.opacity);
-    }
     const clamped = Math.min(1, Math.max(0, opacity));
-    if (entry.kind === "imagery") {
-      (entry.handle as ImageryLayer).alpha = clamped;
-    } else if (entry.kind === "geojson") {
-      const prev = entry.layer;
-      entry.layer = { ...prev, opacity: clamped };
-      this.applyGeoJsonStyle(entry);
-      entry.layer = prev;
+    const existing = this.storyOpacities.get(layerId);
+    if (!existing) {
+      this.storyOpacities.set(layerId, {
+        originalOpacity: entry.layer.opacity,
+        currentOpacity: clamped,
+      });
+    } else {
+      existing.currentOpacity = clamped;
     }
+    entry.appliedAlpha = undefined;
+    this.applyAppearance(entry);
     this.viewer.scene?.requestRender?.();
   }
 
@@ -937,17 +959,14 @@ export class CesiumLayerSync {
    */
   restoreStoryLayerStyles(): void {
     if (this.storyOpacities.size === 0) return;
-    for (const [layerId, originalOpacity] of this.storyOpacities) {
+    const layersToRestore = Array.from(this.storyOpacities.keys());
+    this.storyOpacities.clear();
+    for (const layerId of layersToRestore) {
       const entry = this.entries.get(layerId);
       if (!entry || !entry.handle) continue;
-      if (entry.kind === "imagery") {
-        (entry.handle as ImageryLayer).alpha = originalOpacity;
-      } else if (entry.kind === "geojson") {
-        entry.appliedAlpha = undefined;
-        this.applyGeoJsonStyle(entry);
-      }
+      entry.appliedAlpha = undefined;
+      this.applyAppearance(entry);
     }
-    this.storyOpacities.clear();
     this.viewer.scene?.requestRender?.();
   }
 
@@ -975,17 +994,7 @@ export class CesiumLayerSync {
       return;
     }
 
-    let compiled: {
-      filter: (
-        globalContext: { zoom: number },
-        feature: {
-          type: number;
-          properties: Record<string, unknown>;
-          geometry?: unknown;
-          id?: unknown;
-        },
-      ) => boolean;
-    };
+    let compiled: ReturnType<typeof featureFilter>;
     try {
       compiled = featureFilter(filter as never, "layers[0].filter");
     } catch {
@@ -995,7 +1004,7 @@ export class CesiumLayerSync {
       return;
     }
 
-    const typeMap: Record<string, number> = {
+    const typeMap: Record<string, 1 | 2 | 3> = {
       Point: 1,
       MultiPoint: 1,
       LineString: 2,
@@ -1010,7 +1019,7 @@ export class CesiumLayerSync {
         typeof propIndex?.getValue === "function" ? propIndex.getValue(currentTime) : propIndex;
       const feat = Number.isInteger(index) && features ? features[index] : null;
       let properties: Record<string, unknown> = {};
-      let geomType = 1;
+      let geomType: 0 | 1 | 2 | 3 = 1;
       let id: unknown = undefined;
 
       if (feat) {
@@ -1036,7 +1045,7 @@ export class CesiumLayerSync {
       try {
         visible = compiled.filter(
           { zoom: 0 },
-          { type: geomType, properties, id, geometry: feat?.geometry },
+          { type: geomType, properties, id, geometry: feat?.geometry } as never,
         );
       } catch {
         visible = true;
@@ -1058,7 +1067,7 @@ export class CesiumLayerSync {
     const dataSource = entry.handle as DataSource | null;
     if (!dataSource) return;
     const style = entry.layer.style ?? {};
-    const opacity = entry.layer.opacity;
+    const opacity = this.effectiveOpacity(entry);
     const fillAlpha = (style.fillOpacity ?? 0.6) * opacity;
     // Key on both alphas so any opacity change is picked up (e.g. a lines-only
     // layer whose fill alpha never varies).

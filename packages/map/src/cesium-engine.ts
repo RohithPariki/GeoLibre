@@ -515,12 +515,18 @@ export class CesiumEngine implements MapEngine {
     this.layerSync.setStoryLayerOpacity(layerId, opacity);
   }
 
+  /**
+   * Revert all temporary layer style overrides (such as story opacities) applied
+   * during playback back to their stored layer opacities.
+   */
   restoreLayerStyles(): void {
     this.layerSync.restoreStoryLayerStyles();
   }
 
   /**
    * Synchronize the globe clock's current time to a date (e.g. from the Time Slider).
+   *
+   * @param date Date, timestamp string, or epoch milliseconds to set on the Cesium clock.
    */
   setTime(date: Date | string | number): void {
     this.layerSync.setTime(date);

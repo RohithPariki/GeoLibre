@@ -1244,17 +1244,30 @@ describe("CesiumLayerSync", () => {
           {
             type: "Feature",
             id: "a",
-            properties: { category: "A", score: 10 },
+            properties: { category: "A", score: 25 },
             geometry: { type: "Point", coordinates: [0, 0] },
           },
           {
             type: "Feature",
             id: "b",
-            properties: { category: "B", score: 20 },
+            properties: { category: "B", score: 25 },
             geometry: { type: "Point", coordinates: [1, 1] },
+          },
+          {
+            type: "Feature",
+            id: "c",
+            properties: { category: "A", score: 5 },
+            geometry: { type: "Point", coordinates: [2, 2] },
+          },
+          {
+            type: "Feature",
+            id: "d",
+            properties: { category: "B", score: 5 },
+            geometry: { type: "Point", coordinates: [3, 3] },
           },
         ],
       },
+      embedFilter: [">=", ["get", "score"], 10],
       quickFilters: [
         {
           id: "q1",
@@ -1271,8 +1284,14 @@ describe("CesiumLayerSync", () => {
     const ds = f.calls.dataSourcesAdded[0] as {
       entities: { values: Array<{ show: boolean }> };
     };
+    // Feature 'a': category A, score >= 10 -> passes both
     assert.equal(ds.entities.values[0].show, true);
+    // Feature 'b': category B, score >= 10 -> fails quickFilter
     assert.equal(ds.entities.values[1].show, false);
+    // Feature 'c': category A, score < 10 -> fails embedFilter
+    assert.equal(ds.entities.values[2].show, false);
+    // Feature 'd': category B, score < 10 -> fails both
+    assert.equal(ds.entities.values[3].show, false);
   });
 
   it("synchronizes viewer clock currentTime when a layer carries a timeFilter date", async () => {
@@ -1338,5 +1357,32 @@ describe("CesiumLayerSync", () => {
     // Restore original styles
     sync.restoreStoryLayerStyles();
     assert.equal(imgHandle.alpha, 0.7);
+  });
+
+  it("preserves active story opacity override across sync until restored", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "img",
+      type: "xyz",
+      opacity: 0.8,
+      source: { tiles: ["https://tiles/{z}/{x}/{y}"] },
+    });
+    sync.sync([layer]);
+    await f.flush();
+
+    const imgHandle = f.calls.imageryAdded[0] as { alpha: number };
+    assert.equal(imgHandle.alpha, 0.8);
+
+    // Override opacity during story playback
+    sync.setStoryLayerOpacity("img", 0.25);
+    assert.equal(imgHandle.alpha, 0.25);
+
+    // Later sync pass with unmodified layer state preserves the active override
+    sync.sync([layer]);
+    assert.equal(imgHandle.alpha, 0.25);
+
+    // Restoring reverts to persistent layer opacity
+    sync.restoreStoryLayerStyles();
+    assert.equal(imgHandle.alpha, 0.8);
   });
 });
