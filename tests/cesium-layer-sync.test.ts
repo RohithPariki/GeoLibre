@@ -120,20 +120,58 @@ function makeFakes() {
     GeoJsonDataSource: {
       load: (data: unknown, options: Record<string, unknown>) => {
         calls.geojsonLoads.push({ data, options });
+        const features =
+          (data as { features?: Array<{ properties?: Record<string, unknown> }> })?.features ?? [];
         return Promise.resolve({
           kind: "geojson",
           show: true,
-          // One entity of each kind so in-place restyle (applyGeoJsonStyle) can
-          // be checked for polygons, lines, and points.
           entities: {
-            values: [
-              { polygon: { material: options.fill } },
-              { polyline: { material: options.stroke } },
-              { billboard: { color: undefined } },
-            ],
+            values:
+              features.length > 1
+                ? features.map((f, i) => ({
+                    properties: {
+                      ...f.properties,
+                      __geolibre_cesium_feature_index: { getValue: () => i },
+                    },
+                    polygon: { material: options.fill },
+                    polyline: { material: options.stroke },
+                    billboard: { color: undefined },
+                    show: true,
+                  }))
+                : [
+                    {
+                      properties: {
+                        ...(features[0]?.properties ?? {}),
+                        __geolibre_cesium_feature_index: { getValue: () => 0 },
+                      },
+                      polygon: { material: options.fill },
+                      show: true,
+                    },
+                    {
+                      properties: {
+                        ...(features[0]?.properties ?? {}),
+                        __geolibre_cesium_feature_index: { getValue: () => 0 },
+                      },
+                      polyline: { material: options.stroke },
+                      show: true,
+                    },
+                    {
+                      properties: {
+                        ...(features[0]?.properties ?? {}),
+                        __geolibre_cesium_feature_index: { getValue: () => 0 },
+                      },
+                      billboard: { color: undefined },
+                      show: true,
+                    },
+                  ],
           },
         });
       },
+    },
+    HeightReference: {
+      NONE: 0,
+      CLAMP_TO_GROUND: 1,
+      RELATIVE_TO_GROUND: 2,
     },
     ColorMaterialProperty: class {
       constructor(public color: unknown) {}
@@ -1135,5 +1173,256 @@ describe("CesiumLayerSync", () => {
       layers.filter((l) => !isCesiumSupportedLayerType(l)).map((l) => l.id),
       ["p", "z"],
     );
+  });
+
+  it("loads ordinary 2D GeoJSON with clampToGround: true", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "flat",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    assert.equal(f.calls.geojsonLoads.length, 1);
+    assert.equal(f.calls.geojsonLoads[0].options.clampToGround, true);
+  });
+
+  it("renders extruded polygons with clampToGround: false, extrudedHeight, base height, and RELATIVE_TO_GROUND", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "buildings",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "b1",
+            properties: { height: 10 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      style: {
+        extrusionEnabled: true,
+        extrusionHeightProperty: "height",
+        extrusionHeightScale: 2,
+        extrusionBase: 5,
+        extrusionColor: "#ff0000",
+        extrusionOpacity: 0.9,
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    assert.equal(f.calls.geojsonLoads.length, 1);
+    assert.equal(f.calls.geojsonLoads[0].options.clampToGround, false);
+
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: {
+        values: Array<{
+          polygon: {
+            extrudedHeight: { value: number };
+            height: { value: number };
+            heightReference: { value: number };
+            extrudedHeightReference: { value: number };
+            material: { color: { css: string; alpha: number } };
+          };
+        }>;
+      };
+    };
+    assert.ok(ds, "dataSource should be added");
+    const poly = ds.entities.values[0]?.polygon;
+    assert.ok(poly, "polygon should be present");
+    // height = 10 * 2 + 5 = 25
+    assert.equal(poly.extrudedHeight.value, 25);
+    assert.equal(poly.height.value, 5);
+    assert.equal(poly.heightReference.value, 2);
+    assert.equal(poly.extrudedHeightReference.value, 2);
+    assert.equal(poly.material.color.css, "#ff0000");
+    assert.equal(poly.material.color.alpha, 0.9);
+  });
+
+  it("evaluates advanced extrusion expressions for height and color", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "buildings-expr",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "b1",
+            properties: { floors: 4, type: "commercial" },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      style: {
+        extrusionEnabled: true,
+        extrusionAdvancedStyleEnabled: true,
+        extrusionHeightExpression: '["*", ["get", "floors"], 3]',
+        extrusionColorExpression: '["case", ["==", ["get", "type"], "commercial"], "#0000ff", "#00ff00"]',
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    const ds = f.calls.dataSourcesAdded[0] as {
+      entities: {
+        values: Array<{
+          polygon: {
+            extrudedHeight: { value: number };
+            material: { color: { css: string } };
+          };
+        }>;
+      };
+    };
+    const poly = ds.entities.values[0]?.polygon;
+    assert.ok(poly, "polygon should be present");
+    // floors: 4 * 3 = 12
+    assert.equal(poly.extrudedHeight.value, 12);
+    assert.equal(poly.material.color.css, "rgba(0,0,255,1)");
+  });
+
+  it("renders layers with 3D coordinates using clampToGround: false, vertical scale, offset, and RELATIVE_TO_GROUND", async () => {
+    const sync = newSync(f);
+    const layer = mkLayer({
+      id: "track-3d",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            id: "t1",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: [
+                [0, 0, 100],
+                [1, 1, 200],
+              ],
+            },
+          },
+        ],
+      },
+      style: {
+        elevation3dEnabled: true,
+        elevation3dVerticalScale: 2,
+        elevation3dOffset: 50,
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    assert.equal(f.calls.geojsonLoads.length, 1);
+    assert.equal(f.calls.geojsonLoads[0].options.clampToGround, false);
+
+    const loadedData = f.calls.geojsonLoads[0].data as {
+      features: Array<{ geometry: { coordinates: number[][] } }>;
+    };
+    // Z transformed: 100 * 2 + 50 = 250, 200 * 2 + 50 = 450
+    assert.deepEqual(loadedData.features[0].geometry.coordinates, [
+      [0, 0, 250],
+      [1, 1, 450],
+    ]);
+  });
+
+  it("rebuilds GeoJsonDataSource when extrusion or elevation style properties change", async () => {
+    const sync = newSync(f);
+    const baseLayer = mkLayer({
+      id: "poly",
+      type: "geojson",
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { h: 10 },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+      style: {
+        fillColor: "#3b82f6",
+        extrusionEnabled: false,
+      },
+    });
+
+    sync.sync([baseLayer]);
+    await f.flush();
+    assert.equal(f.calls.geojsonLoads.length, 1);
+
+    // Toggling extrusionEnabled forces rebuild
+    sync.sync([{ ...baseLayer, style: { ...baseLayer.style, extrusionEnabled: true } }]);
+    await f.flush();
+    assert.equal(f.calls.geojsonLoads.length, 2);
+
+    // Modifying extrusionHeightScale forces rebuild
+    sync.sync([
+      {
+        ...baseLayer,
+        style: { ...baseLayer.style, extrusionEnabled: true, extrusionHeightScale: 5 },
+      },
+    ]);
+    await f.flush();
+    assert.equal(f.calls.geojsonLoads.length, 3);
   });
 });
