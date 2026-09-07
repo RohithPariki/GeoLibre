@@ -1043,10 +1043,12 @@ export class CesiumLayerSync {
 
       let visible = true;
       try {
-        visible = compiled.filter(
-          { zoom: 0 },
-          { type: geomType, properties, id, geometry: feat?.geometry } as never,
-        );
+        visible = compiled.filter({ zoom: 0 }, {
+          type: geomType,
+          properties,
+          id,
+          geometry: feat?.geometry,
+        } as never);
       } catch {
         visible = true;
       }
