@@ -223,11 +223,7 @@ export function ManagePluginsDialog({
       if (externalLoadIssues.has(entry.manifestUrl)) return true;
       const loaded = loadedVersions.get(entry.id);
       const ownsLoadedPlugin = pluginManifestUrlsForIds([entry.id]).includes(entry.manifestUrl);
-      return (
-        ownsLoadedPlugin &&
-        loaded !== undefined &&
-        isNewerVersion(entry.version, loaded)
-      );
+      return ownsLoadedPlugin && loaded !== undefined && isNewerVersion(entry.version, loaded);
     },
     [isInstalled, loadedVersions, externalLoadIssues],
   );
