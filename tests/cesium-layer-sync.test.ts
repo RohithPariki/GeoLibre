@@ -27,6 +27,8 @@ function makeFakes() {
     geojsonLoads: [] as { data: unknown; options: Record<string, unknown> }[],
     tilesetUrls: [] as unknown[],
     cameraListeners: [] as (() => void)[],
+    suspendEventsCount: 0,
+    resumeEventsCount: 0,
   };
 
   const viewer = {
@@ -44,6 +46,10 @@ function makeFakes() {
         remove: (p: unknown) => calls.primitivesRemoved.push(p),
       },
       requestRender: () => {},
+    },
+    dataSourceDisplay: {
+      ready: true,
+      getBoundingSphere: (_entity: unknown, _allowPartial: boolean, _result: unknown): number => 0,
     },
     imageryLayers: {
       addImageryProvider: (provider: unknown) => {
@@ -81,6 +87,15 @@ function makeFakes() {
   const Cesium = {
     GeographicTilingScheme: class {},
     WebMercatorTilingScheme: class {},
+    BoundingSphere: class {
+      center = { x: 0, y: 0, z: 0 };
+      radius = 1;
+    },
+    BoundingSphereState: {
+      DONE: 0,
+      PENDING: 1,
+      FAILED: 2,
+    },
     UrlTemplateImageryProvider: class {
       url?: string;
       constructor(opts: Record<string, unknown>) {
@@ -151,6 +166,12 @@ function makeFakes() {
           kind: "geojson",
           show: true,
           entities: {
+            suspendEvents: () => {
+              calls.suspendEventsCount++;
+            },
+            resumeEvents: () => {
+              calls.resumeEventsCount++;
+            },
             values:
               features.length > 1
                 ? features.map((f, i) => ({
@@ -2037,5 +2058,99 @@ describe("CesiumLayerSync", () => {
 
     sync.restoreStoryLayerStyles();
     assert.ok(Math.abs(ds.entities.values[0].polygon.material.color.alpha - 0.4) < 1e-9);
+  });
+
+  it("suspends entity events and styles entities before adding GeoJsonDataSource to viewer", async () => {
+    const sync = newSync(f);
+    let eventsSuspendedAtAdd = false;
+    let materialStyledAtAdd = false;
+    const originalAdd = f.viewer.dataSources.add;
+    f.viewer.dataSources.add = (ds: unknown) => {
+      eventsSuspendedAtAdd = f.calls.suspendEventsCount > 0;
+      const entities = (ds as { entities?: { values?: Array<{ polygon?: { material?: unknown } }> } })?.entities;
+      materialStyledAtAdd = Boolean(entities?.values?.[0]?.polygon?.material);
+      return originalAdd(ds);
+    };
+
+    const layer = mkLayer({
+      id: "poly-layer",
+      type: "geojson",
+      opacity: 1,
+      style: { fillColor: "#ff0000", fillOpacity: 0.5 },
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    assert.equal(eventsSuspendedAtAdd, true, "events must be suspended before adding dataSource");
+    assert.equal(materialStyledAtAdd, true, "entities must be styled before adding dataSource");
+    assert.ok(f.calls.resumeEventsCount >= f.calls.suspendEventsCount, "events must be resumed");
+  });
+
+  it("reports pending in getRenderStatus when polygon entities report BoundingSphereState.PENDING", async () => {
+    const sync = newSync(f);
+    let sphereState = f.Cesium.BoundingSphereState.PENDING;
+    f.viewer.dataSourceDisplay.getBoundingSphere = () => sphereState;
+
+    const layer = mkLayer({
+      id: "pending-polys",
+      name: "Countries",
+      type: "geojson",
+      visible: true,
+      geojson: {
+        type: "FeatureCollection",
+        features: [
+          {
+            type: "Feature",
+            properties: { name: "Country" },
+            geometry: {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 1],
+                  [0, 0],
+                ],
+              ],
+            },
+          },
+        ],
+      },
+    });
+
+    sync.sync([layer]);
+    await f.flush();
+
+    // While entity bounding sphere is PENDING, getRenderStatus reports the layer as pending
+    const pendingStatus = sync.getRenderStatus();
+    assert.deepEqual(pendingStatus.pending, ["Countries"]);
+
+    // When entity reaches DONE, getRenderStatus reports settled
+    sphereState = f.Cesium.BoundingSphereState.DONE;
+    const settledStatus = sync.getRenderStatus();
+    assert.deepEqual(settledStatus.pending, []);
   });
 });

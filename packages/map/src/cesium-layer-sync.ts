@@ -545,6 +545,7 @@ export class CesiumLayerSync {
   }
 
   private readonly entries = new Map<string, LayerEntry>();
+  private scratchBoundingSphere?: import("@cesium/engine").BoundingSphere;
 
   getRenderStatus(): { pending: string[]; errors: string[] } {
     const pending: string[] = [];
@@ -569,8 +570,34 @@ export class CesiumLayerSync {
       // `allTilesLoaded` is an Event (always truthy); `tilesLoaded` is the flag.
       else if (entry.kind === "3dtiles" && !(entry.handle as Cesium3DTileset).tilesLoaded)
         pending.push(layer.name);
-      else if (entry.kind === "geojson" && (entry.handle as DataSource).isLoading)
-        pending.push(layer.name);
+      else if (entry.kind === "geojson") {
+        const ds = entry.handle as DataSource;
+        if (ds.isLoading) {
+          pending.push(layer.name);
+        } else if (this.viewer.dataSourceDisplay) {
+          const display = this.viewer.dataSourceDisplay as {
+            getBoundingSphere?: (
+              entity: unknown,
+              allowPartial: boolean,
+              result: unknown,
+            ) => number | undefined;
+          };
+          if (typeof display.getBoundingSphere === "function") {
+            const pendingState = (this.Cesium.BoundingSphereState?.PENDING ?? 1) as number;
+            const scratch = (this.scratchBoundingSphere ??= new this.Cesium.BoundingSphere());
+            for (const entity of ds.entities.values) {
+              if (entity.show === false) continue;
+              if (entity.polygon || entity.polyline || entity.corridor || entity.wall) {
+                const state = display.getBoundingSphere(entity, false, scratch);
+                if (state === pendingState) {
+                  pending.push(layer.name);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
       else if (entry.kind === "imagery" && !(entry.handle as ImageryLayer).ready)
         pending.push(layer.name);
     }
@@ -939,7 +966,11 @@ export class CesiumLayerSync {
     // Fold the layer + fill opacity into the fill colour (a GeoJsonDataSource has
     // no global alpha). A later opacity change re-applies this alpha in place
     // (applyGeoJsonStyle) rather than reloading the whole data source.
-    const fillAlpha = (style.fillOpacity ?? 0.6) * layer.opacity;
+    const opacity = this.effectiveOpacity(entry);
+    const fillAlpha = (style.fillOpacity ?? 0.6) * opacity;
+    const extOpacity =
+      (Number.isFinite(style.extrusionOpacity) ? (style.extrusionOpacity as number) : 0.8) *
+      opacity;
 
     const has3dElevation = Boolean(
       style.elevation3dEnabled || geojsonHasZCoordinates(layer.geojson),
@@ -968,19 +999,23 @@ export class CesiumLayerSync {
           properties: { ...feature.properties, [indexKey]: index },
         })),
       };
+      // Pre-bake initial alpha into fill, stroke, and marker load options so
+      // entities are created with their final initial materials.
       const dataSource = await Cesium.GeoJsonDataSource.load(data, {
-        stroke,
+        stroke: stroke.withAlpha(opacity),
         strokeWidth: style.strokeWidth ?? 2,
         fill: fill.withAlpha(fillAlpha),
-        markerColor: Cesium.Color.fromCssColorString(style.markerColor ?? "#3b82f6"),
+        markerColor: Cesium.Color.fromCssColorString(style.markerColor ?? "#3b82f6").withAlpha(
+          opacity,
+        ),
         clampToGround,
       });
       if (entry.cancelled) return;
-      await viewer.dataSources.add(dataSource);
-      if (entry.cancelled) {
-        viewer.dataSources.remove(dataSource, true);
-        return;
-      }
+
+      entry.handle = dataSource;
+
+      (dataSource.entities as { suspendEvents?: () => void }).suspendEvents?.();
+
       // A multipart feature arrives as several entities sharing one index; it
       // gets one label, on its largest part (pickLabelPart), not one per part.
       // The grouping (and pickLabelPart's geometry math) is skipped outright
@@ -1005,10 +1040,7 @@ export class CesiumLayerSync {
       if (labelEntity)
         for (const [index, entities] of parts)
           labelEntity(pickLabelPart(Cesium, viewer, entities), index);
-      entry.handle = dataSource;
-      // applyAppearance → applyGeoJsonStyle fades every entity kind (fill,
-      // stroke, marker) by the layer opacity right after load, so points/lines
-      // match the 2D map instead of rendering fully opaque.
+
       this.applyAppearance(entry);
 
       const heightRef = (Cesium.HeightReference?.RELATIVE_TO_GROUND ?? 2) as number;
@@ -1063,9 +1095,6 @@ export class CesiumLayerSync {
           : 1;
         const base = Number.isFinite(style.extrusionBase) ? (style.extrusionBase as number) : 0;
         const extColorStr = style.extrusionColor || style.fillColor || "#3b82f6";
-        const extOpacity =
-          (Number.isFinite(style.extrusionOpacity) ? (style.extrusionOpacity as number) : 0.8) *
-          layer.opacity;
 
         let heightEvaluator: ((f: Feature) => unknown) | undefined;
         if (style.extrusionAdvancedStyleEnabled && style.extrusionHeightExpression) {
@@ -1118,6 +1147,7 @@ export class CesiumLayerSync {
               ? rawHeight
               : Number(rawHeight);
           const height = Number.isFinite(num) ? num : 0;
+
           // Never below the base: a negative height property or expression would
           // otherwise put the roof under the floor.
           const relativeTop = Math.max(base, height * heightScale + base);
@@ -1176,6 +1206,20 @@ export class CesiumLayerSync {
             (entity.polyline as { clampToGround?: unknown }).clampToGround = makeProp(false);
           }
         }
+      }
+
+      (dataSource.entities as { resumeEvents?: () => void }).resumeEvents?.();
+
+      if (entry.cancelled) return;
+      // Add the data source to the viewer ONLY after all entity properties,
+      // materials, visibilities, and 3D heights are settled. Adding beforehand
+      // causes Cesium's StaticGroundGeometryColorBatch to start building worker
+      // batches that get repeatedly invalidated and rebuilt by subsequent
+      // property mutations, starving polygon compilation (#2311).
+      await viewer.dataSources.add(dataSource);
+      if (entry.cancelled) {
+        viewer.dataSources.remove(dataSource, true);
+        return;
       }
 
       this.restoreHighlight();
@@ -1342,72 +1386,83 @@ export class CesiumLayerSync {
     const indexKey = "__geolibre_cesium_feature_index";
     const features = entry.layer.geojson?.features;
 
-    if (!filter) {
-      for (const entity of dataSource.entities.values) {
-        entity.show = true;
-      }
-      return;
-    }
-
-    let compiled: ReturnType<typeof featureFilter>;
+    (dataSource.entities as { suspendEvents?: () => void }).suspendEvents?.();
     try {
-      compiled = featureFilter(filter as never, "layers[0].filter");
-    } catch {
-      for (const entity of dataSource.entities.values) {
-        entity.show = true;
+      if (!filter) {
+        for (const entity of dataSource.entities.values) {
+          if (entity.show === false) {
+            entity.show = true;
+          }
+        }
+        return;
       }
-      return;
-    }
 
-    const typeMap: Record<string, 1 | 2 | 3> = {
-      Point: 1,
-      MultiPoint: 1,
-      LineString: 2,
-      MultiLineString: 2,
-      Polygon: 3,
-      MultiPolygon: 3,
-    };
+      let compiled: ReturnType<typeof featureFilter>;
+      try {
+        compiled = featureFilter(filter as never, "layers[0].filter");
+      } catch {
+        for (const entity of dataSource.entities.values) {
+          if (entity.show === false) {
+            entity.show = true;
+          }
+        }
+        return;
+      }
 
-    for (const entity of dataSource.entities.values) {
-      const propIndex = entity.properties?.[indexKey];
-      const index =
-        typeof propIndex?.getValue === "function" ? propIndex.getValue(currentTime) : propIndex;
-      const feat = Number.isInteger(index) && features ? features[index] : null;
-      let properties: Record<string, unknown> = {};
-      let geomType: 0 | 1 | 2 | 3 = 1;
-      let id: unknown = undefined;
+      const typeMap: Record<string, 1 | 2 | 3> = {
+        Point: 1,
+        MultiPoint: 1,
+        LineString: 2,
+        MultiLineString: 2,
+        Polygon: 3,
+        MultiPolygon: 3,
+      };
 
-      if (feat) {
-        properties = (feat.properties as Record<string, unknown>) ?? {};
-        geomType = (feat.geometry?.type && typeMap[feat.geometry.type]) ?? 1;
-        id = feat.id;
-      } else if (entity.properties) {
-        const propBag = entity.properties as Record<string, unknown>;
-        const names = Array.isArray(propBag.propertyNames)
-          ? propBag.propertyNames
-          : Object.keys(propBag);
-        for (const name of names) {
-          if (name === indexKey) continue;
-          const val = propBag[name];
-          properties[name] =
-            typeof (val as { getValue?: (t: unknown) => unknown })?.getValue === "function"
-              ? (val as { getValue: (t: unknown) => unknown }).getValue(currentTime)
-              : val;
+      for (const entity of dataSource.entities.values) {
+        const propIndex = entity.properties?.[indexKey];
+        const index =
+          typeof propIndex?.getValue === "function" ? propIndex.getValue(currentTime) : propIndex;
+        const feat = Number.isInteger(index) && features ? features[index] : null;
+        let properties: Record<string, unknown> = {};
+        let geomType: 0 | 1 | 2 | 3 = 1;
+        let id: unknown = undefined;
+
+        if (feat) {
+          properties = (feat.properties as Record<string, unknown>) ?? {};
+          geomType = (feat.geometry?.type && typeMap[feat.geometry.type]) ?? 1;
+          id = feat.id;
+        } else if (entity.properties) {
+          const propBag = entity.properties as Record<string, unknown>;
+          const names = Array.isArray(propBag.propertyNames)
+            ? propBag.propertyNames
+            : Object.keys(propBag);
+          for (const name of names) {
+            if (name === indexKey) continue;
+            const val = propBag[name];
+            properties[name] =
+              typeof (val as { getValue?: (t: unknown) => unknown })?.getValue === "function"
+                ? (val as { getValue: (t: unknown) => unknown }).getValue(currentTime)
+                : val;
+          }
+        }
+
+        let visible = true;
+        try {
+          visible = compiled.filter({ zoom }, {
+            type: geomType,
+            properties,
+            id,
+            geometry: feat?.geometry,
+          } as never);
+        } catch {
+          visible = true;
+        }
+        if (entity.show !== visible) {
+          entity.show = visible;
         }
       }
-
-      let visible = true;
-      try {
-        visible = compiled.filter({ zoom }, {
-          type: geomType,
-          properties,
-          id,
-          geometry: feat?.geometry,
-        } as never);
-      } catch {
-        visible = true;
-      }
-      entity.show = visible;
+    } finally {
+      (dataSource.entities as { resumeEvents?: () => void }).resumeEvents?.();
     }
   }
 
@@ -1457,37 +1512,42 @@ export class CesiumLayerSync {
     const labelFill = labelColor.withAlpha(labelColor.alpha * opacity);
     const halo = Cesium.Color.fromCssColorString(labels.haloColor);
     const labelOutline = halo.withAlpha(halo.alpha * opacity);
-    for (const feature of dataSource.entities.values) {
-      if (feature.polygon) {
-        if (hasColorExpr) {
-          // ColorMaterialProperty wraps its colour in a ConstantProperty, so
-          // resolve the Property before re-alphaing the per-feature colour.
-          const colorProp = (feature.polygon.material as { color?: unknown } | undefined)?.color as
-            | { getValue?: (time: unknown) => Color | undefined; withAlpha?: (a: number) => Color }
-            | undefined;
-          const current =
-            typeof colorProp?.getValue === "function"
-              ? colorProp.getValue(this.viewer.clock?.currentTime)
-              : colorProp;
-          if (current?.withAlpha) {
-            feature.polygon.material = new Cesium.ColorMaterialProperty(
-              current.withAlpha(extOpacity),
-            );
+    (dataSource.entities as { suspendEvents?: () => void }).suspendEvents?.();
+    try {
+      for (const feature of dataSource.entities.values) {
+        if (feature.polygon) {
+          if (hasColorExpr) {
+            // ColorMaterialProperty wraps its colour in a ConstantProperty, so
+            // resolve the Property before re-alphaing the per-feature colour.
+            const colorProp = (feature.polygon.material as { color?: unknown } | undefined)?.color as
+              | { getValue?: (time: unknown) => Color | undefined; withAlpha?: (a: number) => Color }
+              | undefined;
+            const current =
+              typeof colorProp?.getValue === "function"
+                ? colorProp.getValue(this.viewer.clock?.currentTime)
+                : colorProp;
+            if (current?.withAlpha) {
+              feature.polygon.material = new Cesium.ColorMaterialProperty(
+                current.withAlpha(extOpacity),
+              );
+            }
+          } else {
+            feature.polygon.material = new Cesium.ColorMaterialProperty(isExtruded ? extFill : fill);
           }
-        } else {
-          feature.polygon.material = new Cesium.ColorMaterialProperty(isExtruded ? extFill : fill);
+        }
+        if (feature.polyline) {
+          feature.polyline.material = new Cesium.ColorMaterialProperty(stroke);
+        }
+        if (feature.billboard) {
+          feature.billboard.color = new Cesium.ConstantProperty(marker);
+        }
+        if (feature.label) {
+          feature.label.fillColor = new Cesium.ConstantProperty(labelFill);
+          feature.label.outlineColor = new Cesium.ConstantProperty(labelOutline);
         }
       }
-      if (feature.polyline) {
-        feature.polyline.material = new Cesium.ColorMaterialProperty(stroke);
-      }
-      if (feature.billboard) {
-        feature.billboard.color = new Cesium.ConstantProperty(marker);
-      }
-      if (feature.label) {
-        feature.label.fillColor = new Cesium.ConstantProperty(labelFill);
-        feature.label.outlineColor = new Cesium.ConstantProperty(labelOutline);
-      }
+    } finally {
+      (dataSource.entities as { resumeEvents?: () => void }).resumeEvents?.();
     }
   }
 
