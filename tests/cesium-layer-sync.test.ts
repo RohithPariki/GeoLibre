@@ -282,6 +282,37 @@ function mkLayer(over: Partial<GeoLibreLayer>): GeoLibreLayer {
   } as GeoLibreLayer;
 }
 
+/** A one-polygon GeoJSON layer, the shape the render-status tests need. */
+function mkPolygonLayer(id: string, name: string): GeoLibreLayer {
+  return mkLayer({
+    id,
+    name,
+    type: "geojson",
+    visible: true,
+    geojson: {
+      type: "FeatureCollection",
+      features: [
+        {
+          type: "Feature",
+          properties: { name },
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                [0, 0],
+                [1, 0],
+                [1, 1],
+                [0, 1],
+                [0, 0],
+              ],
+            ],
+          },
+        },
+      ],
+    },
+  });
+}
+
 /** A minimal Cesium `Event` stand-in that records its listeners in `bag`. */
 function mkEvent(bag: (() => void)[]) {
   return {
@@ -2159,5 +2190,56 @@ describe("CesiumLayerSync", () => {
     sphereState = f.Cesium.BoundingSphereState.DONE;
     const settledStatus = sync.getRenderStatus();
     assert.deepEqual(settledStatus.pending, []);
+  });
+
+  it("reports pending until the data source has actually joined the scene", async () => {
+    const sync = newSync(f);
+    // `getBoundingSphere` answers DONE throughout: the only thing keeping the
+    // layer pending is that `viewer.dataSources.add` has not resolved yet.
+    f.viewer.dataSourceDisplay.getBoundingSphere = () => f.Cesium.BoundingSphereState.DONE;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalAdd = f.viewer.dataSources.add;
+    f.viewer.dataSources.add = async (ds: unknown) => {
+      await gate;
+      return originalAdd(ds);
+    };
+
+    sync.sync([mkPolygonLayer("late-add", "Countries")]);
+    await f.flush();
+    assert.deepEqual(
+      sync.getRenderStatus().pending,
+      ["Countries"],
+      "a data source outside viewer.dataSources cannot be reported as settled",
+    );
+
+    release();
+    await f.flush();
+    assert.deepEqual(sync.getRenderStatus().pending, []);
+  });
+
+  it("resumes entity events when the GeoJSON build throws", async () => {
+    const sync = newSync(f);
+    const originalFromCss = f.Cesium.Color.fromCssColorString;
+    f.Cesium.Color.fromCssColorString = (css: string) => {
+      if (css === "#boom") throw new Error("bad colour");
+      return originalFromCss(css);
+    };
+
+    const layer = mkPolygonLayer("throwing", "Broken");
+    sync.sync([
+      { ...layer, style: { ...layer.style, extrusionEnabled: true, extrusionColor: "#boom" } },
+    ]);
+    await f.flush();
+
+    assert.ok(f.calls.suspendEventsCount > 0, "the build must have suspended events");
+    assert.equal(
+      f.calls.resumeEventsCount,
+      f.calls.suspendEventsCount,
+      "a throw must not leave the entity collection suspended",
+    );
+    assert.equal(sync.getRenderStatus().errors.length, 1);
   });
 });
