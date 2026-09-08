@@ -10,6 +10,7 @@ import {
 } from "../apps/geolibre-desktop/src/lib/plugin-integrity";
 import { unloadRemovedUrlPlugins } from "../apps/geolibre-desktop/src/lib/external-plugins";
 import { PluginManager } from "../packages/plugins/src/plugin-manager";
+import type { GeoLibreAppAPI } from "../packages/plugins/src/types";
 
 // plugin-integrity reads/writes the bare `localStorage` global (=== window's in
 // the browser). Emulate just enough for Node's test runner.
@@ -100,8 +101,9 @@ describe("plugin bundle integrity pinning", () => {
     await verifyPluginBundleIntegrity(keptUrl, { entrySource: "v1", styleSource: null });
 
     const manager = new PluginManager();
+    const app = {} as GeoLibreAppAPI;
     // When the user uninstalls failedUrl (leaving only keptUrl in settings)
-    unloadRemovedUrlPlugins(manager, [keptUrl]);
+    unloadRemovedUrlPlugins(manager, [keptUrl], app);
 
     // The stale pin for failedUrl must be cleared even though it never successfully registered
     assert.equal(getPluginBundlePin(failedUrl), null);

@@ -66,6 +66,11 @@ export interface ExternalPluginLoadResult {
 // plugins until the app restarts.
 const externallyLoadedPluginSources = new Map<string, string>();
 
+// The most recent set of installed manifest URLs known to the loader.
+// Tracked so reloads can confirm that a manifest URL was not uninstalled
+// while an asynchronous bundle fetch was in flight (#2318).
+let lastKnownInstalledManifestUrls: Set<string> | null = null;
+
 // In-flight upgrade promises keyed by manifest URL. reloadExternalUrlPlugin is
 // otherwise not re-entrant-safe: concurrent calls for the same URL capture the
 // same existingId/wasActive snapshot and would double-register. Coalescing them
@@ -98,6 +103,7 @@ export async function loadExternalPlugins(
 ): Promise<ExternalPluginLoadResult> {
   const issues: ExternalPluginLoadIssue[] = [];
   const bundledUrls = new Set(options.bundledManifestUrls ?? []);
+  lastKnownInstalledManifestUrls = new Set(pluginManifestUrls.map((url) => url.trim()));
   // The filesystem scan (Tauri IPC + disk), the manifest URL fetches (network),
   // and the IndexedDB read (web-installed archives) are independent, so overlap
   // them. Web-installed archives are the browser counterpart of the desktop
@@ -639,7 +645,8 @@ export function unloadRemovedUrlPlugins(
   currentManifestUrls: string[],
   app: GeoLibreAppAPI,
 ): string[] {
-  const keep = new Set(currentManifestUrls);
+  const keep = new Set(currentManifestUrls.map((url) => url.trim()));
+  lastKnownInstalledManifestUrls = keep;
   // Collect first, then mutate: manager.unregister notifies subscribers
   // synchronously, so removing entries in a separate pass avoids mutating the
   // map while iterating it.
@@ -748,6 +755,16 @@ async function reloadExternalUrlPluginUncoalesced(
     plugin = await importExternalPlugin(bundle);
   } finally {
     clearTimeout(timeout);
+  }
+
+  // If the plugin was uninstalled while we were fetching (its URL was removed
+  // from installed settings by unloadRemovedUrlPlugins or its source dropped
+  // from the loaded map), don't resurrect it.
+  if (
+    lastKnownInstalledManifestUrls !== null &&
+    !lastKnownInstalledManifestUrls.has(manifestUrl.trim())
+  ) {
+    return plugin;
   }
 
   if (existingId !== null) {
