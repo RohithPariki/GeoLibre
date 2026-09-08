@@ -80,6 +80,14 @@ const NON_GEOJSON_TYPES = new Set([
 ]);
 
 /**
+ * Cesium's BoundingSphereState enum values (internal runtime enum in `@cesium/engine`,
+ * omitted from public TypeScript typings).
+ * BoundingSphereState.PENDING indicates that asynchronous geometry workers are still
+ * computing the visual representation / bounding volume.
+ */
+const BOUNDING_SPHERE_STATE_PENDING = 1;
+
+/**
  * `metadata.sourceKind` of the ArcGIS layers Cesium has a native provider for.
  * Must stay in sync with `ARCGIS_MAP_SERVICE_SOURCE_KIND` in
  * `packages/plugins/src/plugins/arcgis-layer.ts`, which writes it — `@geolibre/map`
@@ -583,7 +591,11 @@ export class CesiumLayerSync {
             ) => number | undefined;
           };
           if (typeof display.getBoundingSphere === "function") {
-            const pendingState = (this.Cesium.BoundingSphereState?.PENDING ?? 1) as number;
+            const cesiumAny = this.Cesium as unknown as {
+              BoundingSphereState?: { PENDING?: number };
+            };
+            const pendingState =
+              cesiumAny.BoundingSphereState?.PENDING ?? BOUNDING_SPHERE_STATE_PENDING;
             const scratch = (this.scratchBoundingSphere ??= new this.Cesium.BoundingSphere());
             for (const entity of ds.entities.values) {
               if (entity.show === false) continue;
