@@ -99,6 +99,13 @@ export function removePluginBundlePin(url: string): void {
   }
 }
 
+/**
+ * Return all plugin manifest URLs currently pinned in storage.
+ */
+export function listPinnedPluginUrls(): string[] {
+  return Object.keys(readPins());
+}
+
 export type PluginBundleIntegrity =
   /** No prior pin; pinned now and allowed (trust on first use). */
   | { status: "pinned-first-use" }

@@ -4,9 +4,12 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 import {
   computePluginBundleHash,
   getPluginBundlePin,
+  listPinnedPluginUrls,
   removePluginBundlePin,
   verifyPluginBundleIntegrity,
 } from "../apps/geolibre-desktop/src/lib/plugin-integrity";
+import { unloadRemovedUrlPlugins } from "../apps/geolibre-desktop/src/lib/external-plugins";
+import { PluginManager } from "../packages/plugins/src/plugin-manager";
 
 // plugin-integrity reads/writes the bare `localStorage` global (=== window's in
 // the browser). Emulate just enough for Node's test runner.
@@ -73,5 +76,35 @@ describe("plugin bundle integrity pinning", () => {
     assert.equal(getPluginBundlePin(url), null);
     const afterRemoval = await verifyPluginBundleIntegrity(url, tampered);
     assert.equal(afterRemoval.status, "pinned-first-use");
+  });
+
+  it("lists all pinned plugin manifest URLs", async () => {
+    const urlA = "https://plugins.example.com/a/plugin.json";
+    const urlB = "https://plugins.example.com/b/plugin.json";
+    assert.deepEqual(listPinnedPluginUrls(), []);
+
+    await verifyPluginBundleIntegrity(urlA, { entrySource: "a", styleSource: null });
+    assert.deepEqual(listPinnedPluginUrls(), [urlA]);
+
+    await verifyPluginBundleIntegrity(urlB, { entrySource: "b", styleSource: null });
+    assert.deepEqual(listPinnedPluginUrls().sort(), [urlA, urlB].sort());
+
+    removePluginBundlePin(urlA);
+    assert.deepEqual(listPinnedPluginUrls(), [urlB]);
+  });
+
+  it("unloadRemovedUrlPlugins drops pins for URLs that failed initial load and never registered (#2318)", async () => {
+    const failedUrl = "https://plugins.example.com/failed/plugin.json";
+    const keptUrl = "https://plugins.example.com/kept/plugin.json";
+    await verifyPluginBundleIntegrity(failedUrl, { entrySource: "v1", styleSource: null });
+    await verifyPluginBundleIntegrity(keptUrl, { entrySource: "v1", styleSource: null });
+
+    const manager = new PluginManager();
+    // When the user uninstalls failedUrl (leaving only keptUrl in settings)
+    unloadRemovedUrlPlugins(manager, [keptUrl]);
+
+    // The stale pin for failedUrl must be cleared even though it never successfully registered
+    assert.equal(getPluginBundlePin(failedUrl), null);
+    assert.notEqual(getPluginBundlePin(keptUrl), null);
   });
 });

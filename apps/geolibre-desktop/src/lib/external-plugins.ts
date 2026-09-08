@@ -27,6 +27,7 @@ import {
 } from "./plugin-asset-url";
 import {
   computePluginBundleHash,
+  listPinnedPluginUrls,
   pinPluginBundle,
   removePluginBundlePin,
   verifyPluginBundleIntegrity,
@@ -657,8 +658,13 @@ export function unloadRemovedUrlPlugins(
   }
   // Drop integrity pins for URLs no longer installed, so re-adding one later
   // re-pins from a fresh review rather than silently matching a stale hash.
-  for (const url of removedUrls) {
-    removePluginBundlePin(url);
+  // Check all stored pins against keep so plugins that failed initial verification
+  // on startup (and never entered externallyLoadedPluginSources) also clear their
+  // stale pin when uninstalled (#2318).
+  for (const url of listPinnedPluginUrls()) {
+    if (!keep.has(url)) {
+      removePluginBundlePin(url);
+    }
   }
   return toRemove;
 }
@@ -744,32 +750,24 @@ async function reloadExternalUrlPluginUncoalesced(
     clearTimeout(timeout);
   }
 
-  // Nothing was loaded for this URL (existingId null — e.g. the manifest is in
-  // settings but its initial load failed). Throw rather than registering the
-  // fetched plugin as a side effect, so the caller surfaces the inconsistency
-  // instead of the UI reporting a silent, invisible "success".
-  if (existingId === null) {
-    throw new Error(
-      `Cannot update plugin: no loaded version was found for '${manifestUrl}'. Try reloading the app.`,
-    );
+  if (existingId !== null) {
+    // If the plugin was uninstalled while we were fetching (its source was
+    // removed from the loaded map by unloadRemovedUrlPlugins), don't resurrect it.
+    if (!externallyLoadedPluginSources.has(existingId)) return plugin;
+
+    // A version that changes its plugin id (e.g. the author renamed it) would
+    // leave the marketplace's installed/version state pointing at the old id.
+    // Refuse rather than silently register a mismatched plugin.
+    if (existingId !== plugin.id) {
+      throw new Error(
+        `Cannot update plugin: the published version exports id '${plugin.id}' but the installed version has id '${existingId}'. Reinstall it manually.`,
+      );
+    }
+
+    manager.unregister(existingId, app);
+    removeExternalPluginStyle(existingId);
+    externallyLoadedPluginSources.delete(existingId);
   }
-
-  // If the plugin was uninstalled while we were fetching (its source was
-  // removed from the loaded map by unloadRemovedUrlPlugins), don't resurrect it.
-  if (!externallyLoadedPluginSources.has(existingId)) return plugin;
-
-  // A version that changes its plugin id (e.g. the author renamed it) would
-  // leave the marketplace's installed/version state pointing at the old id.
-  // Refuse rather than silently register a mismatched plugin.
-  if (existingId !== plugin.id) {
-    throw new Error(
-      `Cannot update plugin: the published version exports id '${plugin.id}' but the installed version has id '${existingId}'. Reinstall it manually.`,
-    );
-  }
-
-  manager.unregister(existingId, app);
-  removeExternalPluginStyle(existingId);
-  externallyLoadedPluginSources.delete(existingId);
   manager.register(plugin);
   externallyLoadedPluginSources.set(plugin.id, manifestUrl);
   // Explicit user reload: accept this version as the new trusted baseline so the

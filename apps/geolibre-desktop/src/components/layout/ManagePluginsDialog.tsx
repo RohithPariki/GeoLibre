@@ -215,18 +215,21 @@ export function ManagePluginsDialog({
   // An update is available only when the registry version is strictly newer
   // than the loaded one (directional, not any mismatch). isNewerVersion orders
   // a pre-release below its release, so an rc user is offered the GA build.
+  // A plugin blocked by a load failure (such as an integrity pin mismatch, #2318)
+  // also offers the Update action so users can re-fetch and re-trust it.
   const isUpgradeable = useCallback(
     (entry: PluginRegistryEntry) => {
+      if (!isInstalled(entry)) return false;
+      if (externalLoadIssues.has(entry.manifestUrl)) return true;
       const loaded = loadedVersions.get(entry.id);
       const ownsLoadedPlugin = pluginManifestUrlsForIds([entry.id]).includes(entry.manifestUrl);
       return (
-        isInstalled(entry) &&
         ownsLoadedPlugin &&
         loaded !== undefined &&
         isNewerVersion(entry.version, loaded)
       );
     },
-    [isInstalled, loadedVersions],
+    [isInstalled, loadedVersions, externalLoadIssues],
   );
 
   // True when the entry is in settings (so the badge reads "Installed") but the
@@ -637,7 +640,7 @@ export function ManagePluginsDialog({
                                 {category}
                               </span>
                             ))}
-                            {updateAvailable ? (
+                            {updateAvailable && !loadIssue ? (
                               <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-amber-600 dark:text-amber-400">
                                 {t("managePlugins.updateAvailable")}
                               </span>

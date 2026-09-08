@@ -343,6 +343,10 @@ export async function upgradeExternalPlugin(
   mapControllerRef: RefObject<MapEngine | null>,
 ): Promise<void> {
   await reloadExternalUrlPlugin(manager, manifestUrl, createAppAPI(mapControllerRef));
+  if (externalPluginLoadIssues.has(manifestUrl)) {
+    externalPluginLoadIssues.delete(manifestUrl);
+    notifyExternalPluginsListeners();
+  }
 }
 
 // Install a plugin from a local `.zip` archive (desktop only). The Rust backend
