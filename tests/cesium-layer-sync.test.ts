@@ -2067,7 +2067,9 @@ describe("CesiumLayerSync", () => {
     const originalAdd = f.viewer.dataSources.add;
     f.viewer.dataSources.add = (ds: unknown) => {
       eventsSuspendedAtAdd = f.calls.suspendEventsCount > 0;
-      const entities = (ds as { entities?: { values?: Array<{ polygon?: { material?: unknown } }> } })?.entities;
+      const entities = (
+        ds as { entities?: { values?: Array<{ polygon?: { material?: unknown } }> } }
+      )?.entities;
       materialStyledAtAdd = Boolean(entities?.values?.[0]?.polygon?.material);
       return originalAdd(ds);
     };

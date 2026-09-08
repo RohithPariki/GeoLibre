@@ -597,8 +597,7 @@ export class CesiumLayerSync {
             }
           }
         }
-      }
-      else if (entry.kind === "imagery" && !(entry.handle as ImageryLayer).ready)
+      } else if (entry.kind === "imagery" && !(entry.handle as ImageryLayer).ready)
         pending.push(layer.name);
     }
     return { pending, errors };
@@ -1519,8 +1518,12 @@ export class CesiumLayerSync {
           if (hasColorExpr) {
             // ColorMaterialProperty wraps its colour in a ConstantProperty, so
             // resolve the Property before re-alphaing the per-feature colour.
-            const colorProp = (feature.polygon.material as { color?: unknown } | undefined)?.color as
-              | { getValue?: (time: unknown) => Color | undefined; withAlpha?: (a: number) => Color }
+            const colorProp = (feature.polygon.material as { color?: unknown } | undefined)
+              ?.color as
+              | {
+                  getValue?: (time: unknown) => Color | undefined;
+                  withAlpha?: (a: number) => Color;
+                }
               | undefined;
             const current =
               typeof colorProp?.getValue === "function"
@@ -1532,7 +1535,9 @@ export class CesiumLayerSync {
               );
             }
           } else {
-            feature.polygon.material = new Cesium.ColorMaterialProperty(isExtruded ? extFill : fill);
+            feature.polygon.material = new Cesium.ColorMaterialProperty(
+              isExtruded ? extFill : fill,
+            );
           }
         }
         if (feature.polyline) {
