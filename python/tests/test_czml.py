@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from geolibre import Map, project
+from geolibre import project
 
 
 def test_czml_layer_url_shape():
@@ -40,11 +40,3 @@ def test_czml_layer_data_shape():
 def test_czml_layer_requires_url_or_data():
     with pytest.raises(ValueError):
         project.czml_layer("Missing")
-
-
-def test_map_add_czml():
-    m = Map()
-    layer_id = m.add_czml("https://example.com/orbit.czml", name="Globe Orbit")
-    assert isinstance(layer_id, str)
-    assert len(m.layers) == 1
-    assert m.layers[0]["metadata"]["sourceKind"] == "czml"

@@ -822,6 +822,12 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
           JSON.stringify(next.source.requestHeaders ?? null) ||
         prev.source.altitudeOffset !== next.source.altitudeOffset
       );
+    case "czml":
+      return (
+        czmlSource(prev)?.url !== czmlSource(next)?.url ||
+        czmlSource(prev)?.data !== czmlSource(next)?.data ||
+        str(prev.sourcePath) !== str(next.sourcePath)
+      );
   }
 }
 

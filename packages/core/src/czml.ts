@@ -16,6 +16,9 @@ export const CZML_SOURCE_KIND = "czml";
 /** One CZML packet in a document stream. */
 export type CzmlPacket = Record<string, unknown>;
 
+/** A CZML document represented as an array of packets. */
+export type CzmlDocument = CzmlPacket[];
+
 /** Minimal Point sample in CZML. */
 export const CZML_SAMPLE_POINT: CzmlPacket[] = [
   {

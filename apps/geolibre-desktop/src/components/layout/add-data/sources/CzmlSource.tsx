@@ -121,8 +121,8 @@ export function CzmlSource({ initialUrl }: { initialUrl?: string }) {
             value={czmlMode}
             onChange={(event) => handleModeChange(event.target.value as CzmlMode)}
           >
-            <option value="url">{t("addData.common.url")}</option>
-            <option value="file">{t("addData.common.localFile")}</option>
+            <option value="url">{t("addData.czml.sourceModeUrl")}</option>
+            <option value="file">{t("addData.czml.sourceModeFile")}</option>
           </Select>
         </div>
 
@@ -138,11 +138,11 @@ export function CzmlSource({ initialUrl }: { initialUrl?: string }) {
           </div>
         ) : (
           <div className="space-y-1.5">
-            <Label>{t("addData.common.localFile")}</Label>
+            <Label>{t("addData.czml.file")}</Label>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={handleChooseFile}>
                 <FileUp className="mr-1.5 h-4 w-4" />
-                {selectedFile ? t("addData.common.changeFile") : t("addData.common.chooseFile")}
+                {t("addData.common.chooseFile")}
               </Button>
               <span className="text-xs text-muted-foreground truncate">
                 {selectedFile?.path ?? t("addData.common.noFileSelected")}

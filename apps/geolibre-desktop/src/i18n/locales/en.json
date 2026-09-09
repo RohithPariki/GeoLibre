@@ -427,6 +427,9 @@
     "czml": {
       "defaultName": "CZML Dynamic Scene",
       "url": "CZML URL",
+      "sourceModeUrl": "URL",
+      "sourceModeFile": "Local file",
+      "file": "File",
       "quickPicks": "Sample dynamic scenes",
       "hint": "CZML streams or files define dynamic 3D positions, animations, and orbits synchronized with the globe clock.",
       "errorUrl": "Enter a valid CZML endpoint URL.",
