@@ -2700,6 +2700,36 @@ class Map(anywidget.AnyWidget):
             )
         )
 
+    def add_czml(
+        self,
+        url: str | None = None,
+        name: str = "CZML Dynamic Scene",
+        *,
+        data: list[dict[str, Any]] | dict[str, Any] | None = None,
+        source_path: str | None = None,
+        **style: Any,
+    ) -> str:
+        """Add a CZML (Cesium Language) dynamic 3D scene layer to the map.
+
+        The layer renders on the 3D globe only, animating orbits, trajectories,
+        models, and paths synchronized with the globe's clock.
+
+        Args:
+            url: URL endpoint serving the CZML document.
+            name: Layer display name.
+            data: Inline parsed CZML document packets or packet object.
+            source_path: Optional local file path when loaded from disk.
+            **style: Style overrides.
+
+        Returns:
+            The id of the added layer.
+        """
+        return self._add_layer(
+            _project.czml_layer(
+                name, url=url, data=data, source_path=source_path, **style
+            )
+        )
+
     def add_video(
         self,
         urls: str | list[str],
