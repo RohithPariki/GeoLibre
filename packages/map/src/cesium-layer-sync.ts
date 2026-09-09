@@ -2329,13 +2329,17 @@ export class CesiumLayerSync {
       entry.handle = dataSource;
       dataSource.show = entry.layer.visible;
 
-      const dsClock = (dataSource as unknown as { clock?: {
-        startTime?: unknown;
-        stopTime?: unknown;
-        currentTime?: unknown;
-        clockRange?: unknown;
-        multiplier?: unknown;
-      } }).clock;
+      const dsClock = (
+        dataSource as unknown as {
+          clock?: {
+            startTime?: unknown;
+            stopTime?: unknown;
+            currentTime?: unknown;
+            clockRange?: unknown;
+            multiplier?: unknown;
+          };
+        }
+      ).clock;
 
       if (dsClock && viewer.clock) {
         if (dsClock.startTime) viewer.clock.startTime = dsClock.startTime as never;

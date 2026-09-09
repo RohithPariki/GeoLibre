@@ -2725,9 +2725,7 @@ class Map(anywidget.AnyWidget):
             The id of the added layer.
         """
         return self._add_layer(
-            _project.czml_layer(
-                name, url=url, data=data, source_path=source_path, **style
-            )
+            _project.czml_layer(name, url=url, data=data, source_path=source_path, **style)
         )
 
     def add_video(

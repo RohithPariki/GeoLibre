@@ -74,11 +74,8 @@ export const CZML_SAMPLE_DYNAMIC: CzmlPacket[] = [
     position: {
       epoch: "2026-09-09T00:00:00Z",
       cartographicDegrees: [
-        0, -75, 40, 250000,
-        1800, -30, 20, 250000,
-        3600, 20, 0, 250000,
-        5400, 70, -20, 250000,
-        7200, 120, -40, 250000,
+        0, -75, 40, 250000, 1800, -30, 20, 250000, 3600, 20, 0, 250000, 5400, 70, -20, 250000, 7200,
+        120, -40, 250000,
       ],
     },
     point: {
@@ -142,9 +139,7 @@ export interface CzmlSource {
 /**
  * Extract the CZML content and/or URL from a layer, or null if not a CZML layer.
  */
-export function czmlSource(
-  layer: Pick<GeoLibreLayer, "source" | "metadata">,
-): CzmlSource | null {
+export function czmlSource(layer: Pick<GeoLibreLayer, "source" | "metadata">): CzmlSource | null {
   if (!isCzmlLayer(layer)) return null;
   const data = (layer.source?.czmlData ?? layer.source?.czml) as CzmlPacket[] | string | undefined;
   const rawUrl = layer.source?.url ?? layer.metadata?.czmlUrl;

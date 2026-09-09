@@ -1,8 +1,4 @@
-import {
-  CZML_QUICK_PICKS,
-  createCzmlLayer,
-  parseCzml,
-} from "@geolibre/core";
+import { CZML_QUICK_PICKS, createCzmlLayer, parseCzml } from "@geolibre/core";
 import { Button, Input, Label, Select } from "@geolibre/ui";
 import { FileUp } from "lucide-react";
 import { useState } from "react";

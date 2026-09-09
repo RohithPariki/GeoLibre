@@ -53,7 +53,6 @@ export function cesiumIonAssetKind(layer: Pick<GeoLibreLayer, "type">): CesiumIo
   return layer.type === "3d-tiles" ? "3d-tiles" : "imagery";
 }
 
-
 /**
  * Whether only the 3D globe can render `layer`: the mirror of the globe's
  * `isCesiumSupportedLayerType`, for the Layers panel to badge on the 2D map.
