@@ -144,9 +144,17 @@ export interface CzmlSource {
  */
 export function czmlSource(layer: Pick<GeoLibreLayer, "source" | "metadata">): CzmlSource | null {
   if (!isCzmlLayer(layer)) return null;
-  const raw = layer.source?.czmlData as CzmlPacket[] | string | undefined;
-  // An empty packet array is a document with nothing in it, not a document.
-  const data = Array.isArray(raw) ? (raw.length > 0 ? raw : undefined) : raw || undefined;
+  const raw = layer.source?.czmlData as CzmlPacket[] | CzmlPacket | string | undefined;
+  // An empty packet array is a document with nothing in it, not a document; a
+  // bare packet (the Python API accepts one) is wrapped the way `parseCzml`
+  // does, since Cesium indexes a document as an array.
+  const data = Array.isArray(raw)
+    ? raw.length > 0
+      ? raw
+      : undefined
+    : raw && typeof raw === "object"
+      ? [raw]
+      : raw || undefined;
   const rawUrl = layer.source?.url;
   const url = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : undefined;
   if (!data && !url) return null;

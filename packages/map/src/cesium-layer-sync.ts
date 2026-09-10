@@ -2386,7 +2386,9 @@ export class CesiumLayerSync {
    * instead of leaving the viewer on a stale interval. Nothing is written while
    * the owner stays the same, so a later CZML load never resets the Time
    * Slider's position, which keeps driving `currentTime` through
-   * {@link setTime}.
+   * {@link setTime}. When the last CZML layer leaves, the clock is left where
+   * that document set it: the Time Slider owns time from then on, and nothing
+   * else on the globe expects a particular interval.
    */
   private electCzmlClockOwner(): void {
     let owner: LayerEntry | undefined;

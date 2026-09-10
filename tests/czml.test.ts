@@ -247,6 +247,13 @@ describe("CesiumLayerSync with CZML", () => {
     sync.destroy();
   });
 
+  it("wraps a bare packet from the Python API into a document array", () => {
+    const packet = { id: "document", version: "1.0" };
+    const layer = createCzmlLayer({ id: "czml-one", name: "One", data: [packet] });
+    layer.source.czmlData = packet;
+    assert.deepEqual(czmlSource(layer)?.data, [packet]);
+  });
+
   it("treats an empty packet array as no document", () => {
     const layer = createCzmlLayer({ id: "czml-empty", name: "Empty", data: [] });
     assert.equal(czmlSource(layer), null);
