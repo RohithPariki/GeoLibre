@@ -1735,7 +1735,7 @@ def czml_layer(
     }
     if url:
         source["url"] = url
-    if data is not None:
+    if data:
         source["czmlData"] = data
     if source_path:
         source["sourcePath"] = source_path

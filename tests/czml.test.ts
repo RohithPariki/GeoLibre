@@ -307,6 +307,19 @@ describe("CesiumLayerSync with CZML", () => {
     sync.destroy();
   });
 
+  it("does not hand the clock to a document that never reached the scene", async () => {
+    const { Cesium, viewer } = makeGlobe();
+    viewer.dataSources.add = async () => {
+      throw new Error("scene rejected the data source");
+    };
+    const sync = new CesiumLayerSync(Cesium as never, viewer as never, () => 10);
+    sync.sync([createCzmlLayer({ id: "czml-x", name: "X", url: "https://example.com/x.czml" })]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, null);
+    assert.match(sync.getRenderStatus().errors[0], /scene rejected/);
+    sync.destroy();
+  });
+
   it("handles load errors gracefully and reports in getRenderStatus", async () => {
     const { Cesium, viewer } = makeGlobe();
     Cesium.CzmlDataSource.load = async () => {

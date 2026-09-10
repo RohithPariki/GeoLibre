@@ -2359,7 +2359,6 @@ export class CesiumLayerSync {
 
       entry.handle = dataSource;
       dataSource.show = entry.layer.visible;
-      this.electCzmlClockOwner();
 
       await viewer.dataSources.add(dataSource);
       if (entry.cancelled) {
@@ -2367,6 +2366,8 @@ export class CesiumLayerSync {
         return;
       }
       entry.added = true;
+      // Only a document that reached the scene may drive the clock.
+      this.electCzmlClockOwner();
       viewer.scene?.requestRender?.();
     } catch (error) {
       if (entry.cancelled) return;
@@ -2389,7 +2390,8 @@ export class CesiumLayerSync {
     let owner: LayerEntry | undefined;
     for (const layer of this.currentLayers) {
       const entry = this.entries.get(layer.id);
-      if (entry?.kind !== "czml" || entry.cancelled || !czmlDocumentClock(entry.handle)) continue;
+      if (entry?.kind !== "czml" || entry.cancelled || !entry.added) continue;
+      if (!czmlDocumentClock(entry.handle)) continue;
       owner = entry;
       break;
     }
