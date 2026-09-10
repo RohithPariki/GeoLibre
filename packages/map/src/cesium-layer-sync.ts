@@ -7,6 +7,7 @@ import {
   geojsonHasZCoordinates,
   getCesiumIonToken,
   isCzmlLayer,
+  parseCzml,
   resolveThreeDTilesRequestHeaders,
   ruleBasedVisibilityFilter,
   transformGeojsonElevation,
@@ -68,7 +69,6 @@ import type {
   Cesium3DTileset,
   CesiumWidget,
   Color,
-  CzmlDataSource,
   DataSource,
   DistanceDisplayCondition,
   Entity,
@@ -2316,8 +2316,16 @@ export class CesiumLayerSync {
 
   /**
    * Load a CZML (Cesium Language) document as a dynamic 3D scene (issue #2290).
-   * Supports URL endpoints or inline parsed CZML document packets with dynamic
-   * time-tagged positions, orbits, models, paths, and clock synchronization.
+   * Supports URL endpoints or inline packets (an array, or the same serialized
+   * as a JSON string) with dynamic time-tagged positions, orbits, models, paths,
+   * and clock synchronization.
+   *
+   * The globe has a single clock, so only the first CZML layer whose document
+   * carries a `clock` packet adopts it (start/stop/current time, range,
+   * multiplier). Later CZML layers render against that clock without resetting
+   * it, and ownership is released when the owning layer is removed so the next
+   * loaded document can take over. The Time Slider keeps driving `currentTime`
+   * through {@link setTime} either way.
    *
    * @param entry The synchronizer entry tracking this CZML layer.
    */
@@ -2325,11 +2333,18 @@ export class CesiumLayerSync {
     const { Cesium, viewer } = this;
     const source = czmlSource(entry.layer);
     if (!source) return;
-    const target = source.data ?? source.url;
+    // `CzmlDataSource.load` treats a string as a URL to fetch, so a serialized
+    // inline document has to be parsed before it reaches Cesium.
+    const inline = typeof source.data === "string" ? parseCzml(source.data) : source.data;
+    if (typeof source.data === "string" && !inline) {
+      entry.loadError = "Invalid CZML document";
+      return;
+    }
+    const target = inline ?? source.url;
     if (!target) return;
 
     try {
-      const dataSource = await Cesium.CzmlDataSource.load(target as string | object);
+      const dataSource = await Cesium.CzmlDataSource.load(target);
       if (entry.cancelled) return;
 
       entry.handle = dataSource;
@@ -2347,7 +2362,9 @@ export class CesiumLayerSync {
         }
       ).clock;
 
-      if (dsClock && viewer.clock) {
+      const ownsClock = this.czmlClockOwner === undefined || this.czmlClockOwner === entry.layer.id;
+      if (dsClock && viewer.clock && ownsClock) {
+        this.czmlClockOwner = entry.layer.id;
         if (dsClock.startTime) viewer.clock.startTime = dsClock.startTime as never;
         if (dsClock.stopTime) viewer.clock.stopTime = dsClock.stopTime as never;
         if (dsClock.currentTime) viewer.clock.currentTime = dsClock.currentTime as never;
@@ -2994,6 +3011,12 @@ export class CesiumLayerSync {
   private readonly patternRepeats = new WeakMap<Entity, Cartesian2>();
 
   /**
+   * Id of the CZML layer whose document `clock` the viewer clock follows; see
+   * {@link createCzml}. Cleared when that layer is destroyed.
+   */
+  private czmlClockOwner: string | undefined;
+
+  /**
    * Tear down an entry and release its Cesium resources from the scene.
    *
    * @param entry The layer entry being destroyed.
@@ -3016,6 +3039,7 @@ export class CesiumLayerSync {
       this.viewer.imageryLayers.remove(imagery, true);
       if (provider instanceof ProtocolImageryProvider) provider.destroy();
     } else if (entry.kind === "geojson" || entry.kind === "czml") {
+      if (this.czmlClockOwner === entry.layer.id) this.czmlClockOwner = undefined;
       entry.cluster?.dispose();
       entry.cluster = undefined;
       // A cancelled entry can hold a data source that never reached the scene;

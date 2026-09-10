@@ -69,6 +69,8 @@ describe("czml layer builder & parser", () => {
     });
     assert.equal(layer.type, "3d-tiles");
     assert.deepEqual(layer.source.czmlData, packets);
+    // The document is stored once; `czml` is only read as a legacy fallback.
+    assert.equal("czml" in layer.source, false);
     assert.equal(layer.source.sourcePath, "/local/data/point.czml");
     assert.equal(layer.sourcePath, "/local/data/point.czml");
     assert.equal(isCzmlLayer(layer), true);
@@ -221,6 +223,56 @@ describe("CesiumLayerSync with CZML", () => {
     for (let i = 0; i < 4; i++) await flush();
     assert.equal(calls.dataSourcesRemoved.length, 1);
     assert.equal(calls.dataSourcesRemoved[0], ds);
+    sync.destroy();
+  });
+
+  it("parses a serialized inline document instead of handing Cesium a URL", async () => {
+    const { calls, Cesium, viewer } = makeGlobe();
+    const sync = new CesiumLayerSync(Cesium as never, viewer as never, () => 10);
+    const packets = [
+      { id: "document", name: "Serialized", version: "1.0" },
+      { id: "p", point: { pixelSize: 4 } },
+    ];
+
+    sync.sync([createCzmlLayer({ id: "czml-str", name: "Text", data: JSON.stringify(packets) })]);
+    for (let i = 0; i < 4; i++) await flush();
+
+    assert.deepEqual(calls.czmlLoads, [packets]);
+    assert.equal(calls.dataSourcesAdded.length, 1);
+
+    sync.sync([createCzmlLayer({ id: "czml-bad", name: "Garbage", data: "not json" })]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(calls.czmlLoads.length, 1);
+    assert.match(sync.getRenderStatus().errors[0], /Garbage: Invalid CZML document/);
+    sync.destroy();
+  });
+
+  it("lets the first CZML document own the viewer clock until it is removed", async () => {
+    const { Cesium, viewer } = makeGlobe();
+    const sync = new CesiumLayerSync(Cesium as never, viewer as never, () => 10);
+    const a = createCzmlLayer({ id: "czml-a", name: "A", url: "https://example.com/a.czml" });
+    const b = createCzmlLayer({ id: "czml-b", name: "B", url: "https://example.com/b.czml" });
+
+    sync.sync([a]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, 60);
+
+    // The user (or the Time Slider) moved the clock; a second document must
+    // not stomp it.
+    viewer.clock.multiplier = 5;
+    viewer.clock.currentTime = "scrubbed";
+    sync.sync([a, b]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, 5);
+    assert.equal(viewer.clock.currentTime, "scrubbed");
+
+    // Removing the owner releases the clock to the next document that loads.
+    sync.sync([b]);
+    for (let i = 0; i < 4; i++) await flush();
+    const c = createCzmlLayer({ id: "czml-c", name: "C", url: "https://example.com/c.czml" });
+    sync.sync([b, c]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, 60);
     sync.destroy();
   });
 

@@ -141,7 +141,7 @@ export function CzmlSource({ initialUrl }: { initialUrl?: string }) {
             <Label>{t("addData.czml.file")}</Label>
             <div className="flex items-center gap-2">
               <Button type="button" variant="outline" size="sm" onClick={handleChooseFile}>
-                <FileUp className="mr-1.5 h-4 w-4" />
+                <FileUp className="me-2 h-4 w-4" />
                 {t("addData.common.chooseFile")}
               </Button>
               <span className="text-xs text-muted-foreground truncate">

@@ -193,7 +193,7 @@ export function createCzmlLayer(options: CzmlLayerOptions): GeoLibreLayer {
     source: {
       type: "3d-tiles",
       sourceId: id,
-      ...(data !== undefined ? { czmlData: data, czml: data } : {}),
+      ...(data !== undefined ? { czmlData: data } : {}),
       ...(url ? { url } : {}),
       ...(sourcePath ? { sourcePath } : {}),
     },
