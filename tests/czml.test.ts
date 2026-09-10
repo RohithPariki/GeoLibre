@@ -247,11 +247,22 @@ describe("CesiumLayerSync with CZML", () => {
     sync.destroy();
   });
 
-  it("wraps a bare packet from the Python API into a document array", () => {
+  it("wraps a bare packet from the Python API into a document array", async () => {
     const packet = { id: "document", version: "1.0" };
     const layer = createCzmlLayer({ id: "czml-one", name: "One", data: [packet] });
     layer.source.czmlData = packet;
     assert.deepEqual(czmlSource(layer)?.data, [packet]);
+
+    // The wrap is a fresh array per call, so an unrelated store update must
+    // not read as a data change and reload the document.
+    const { calls, Cesium, viewer } = makeGlobe();
+    const sync = new CesiumLayerSync(Cesium as never, viewer as never, () => 10);
+    sync.sync([layer]);
+    for (let i = 0; i < 4; i++) await flush();
+    sync.sync([{ ...layer, opacity: 0.5 }]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(calls.czmlLoads.length, 1);
+    sync.destroy();
   });
 
   it("treats an empty packet array as no document", () => {

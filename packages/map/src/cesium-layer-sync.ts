@@ -839,7 +839,9 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
     case "czml":
       return (
         czmlSource(prev)?.url !== czmlSource(next)?.url ||
-        czmlSource(prev)?.data !== czmlSource(next)?.data ||
+        // The raw store value, not `czmlSource().data`: that wraps a bare
+        // packet in a fresh array per call, which would read as a change.
+        prev.source.czmlData !== next.source.czmlData ||
         str(prev.sourcePath) !== str(next.sourcePath)
       );
   }
