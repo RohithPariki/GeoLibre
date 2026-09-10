@@ -39,6 +39,8 @@ def test_czml_layer_data_shape():
     assert layer["metadata"]["sourceKind"] == "czml"
 
 
-def test_czml_layer_requires_url_or_data():
-    with pytest.raises(ValueError):
-        project.czml_layer("Missing")
+@pytest.mark.parametrize("kwargs", [{}, {"data": []}, {"data": {}}])
+def test_czml_layer_requires_url_or_packets(kwargs):
+    """An empty document has nothing to render, so it is rejected like a missing one."""
+    with pytest.raises(ValueError, match="url or non-empty data"):
+        project.czml_layer("Missing", **kwargs)

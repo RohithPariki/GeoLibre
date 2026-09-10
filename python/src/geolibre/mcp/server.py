@@ -727,7 +727,7 @@ def build_server(workspace: Workspace) -> MCPServer:
         path: str,
         name: str,
         url: str | None = None,
-        data: list[dict[str, Any]] | None = None,
+        data: list[dict[str, Any]] | dict[str, Any] | None = None,
         index: int | None = None,
     ) -> dict[str, Any]:
         """Add a CZML (Cesium Language) dynamic 3D scene: orbits, tracks, moving models.
@@ -740,8 +740,9 @@ def build_server(workspace: Workspace) -> MCPServer:
             path: Path to the `.geolibre.json` file.
             name: The layer's display name.
             url: An `http(s)://` URL of a `.czml` document.
-            data: The CZML packet array to inline instead of a URL; the first
-                packet is normally `{"id": "document", "version": "1.0"}`.
+            data: The CZML packet array (or a single packet) to inline instead
+                of a URL; the first packet is normally
+                `{"id": "document", "version": "1.0"}`.
             index: Draw-order position; appended on top when omitted.
 
         Returns:

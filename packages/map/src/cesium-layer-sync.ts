@@ -180,6 +180,20 @@ const ARCGIS_MAP_SERVICE_KIND = "arcgis-map-service";
 
 type EntryKind = "imagery" | "geojson" | "3dtiles" | "points" | "pointcloud" | "czml";
 
+/** The `clock` packet a loaded CZML data source carries, as Cesium exposes it. */
+interface CzmlDocumentClock {
+  startTime?: unknown;
+  stopTime?: unknown;
+  currentTime?: unknown;
+  clockRange?: unknown;
+  multiplier?: unknown;
+}
+
+/** The document clock of a loaded CZML data source, or undefined without one. */
+function czmlDocumentClock(handle: unknown): CzmlDocumentClock | undefined {
+  return (handle as { clock?: CzmlDocumentClock } | null | undefined)?.clock ?? undefined;
+}
+
 /** The slice of a rendered tile's content the attribute-name discovery reads. */
 interface TileContentLike {
   featuresLength?: number;
@@ -1239,6 +1253,8 @@ export class CesiumLayerSync {
   destroy(): void {
     this.restoreHighlight();
     this.selection = null;
+    // Nothing to hand the clock to while everything is torn down.
+    this.czmlClockOwner = undefined;
     for (const entry of this.entries.values()) this.destroyEntry(entry);
     this.entries.clear();
     this.removeDrapeLayer();
@@ -2318,14 +2334,8 @@ export class CesiumLayerSync {
    * Load a CZML (Cesium Language) document as a dynamic 3D scene (issue #2290).
    * Supports URL endpoints or inline packets (an array, or the same serialized
    * as a JSON string) with dynamic time-tagged positions, orbits, models, paths,
-   * and clock synchronization.
-   *
-   * The globe has a single clock, so only the first CZML layer whose document
-   * carries a `clock` packet adopts it (start/stop/current time, range,
-   * multiplier). Later CZML layers render against that clock without resetting
-   * it, and ownership is released when the owning layer is removed so the next
-   * loaded document can take over. The Time Slider keeps driving `currentTime`
-   * through {@link setTime} either way.
+   * and clock synchronization. Which document drives the viewer clock is
+   * decided by {@link electCzmlClockOwner}.
    *
    * @param entry The synchronizer entry tracking this CZML layer.
    */
@@ -2349,28 +2359,7 @@ export class CesiumLayerSync {
 
       entry.handle = dataSource;
       dataSource.show = entry.layer.visible;
-
-      const dsClock = (
-        dataSource as unknown as {
-          clock?: {
-            startTime?: unknown;
-            stopTime?: unknown;
-            currentTime?: unknown;
-            clockRange?: unknown;
-            multiplier?: unknown;
-          };
-        }
-      ).clock;
-
-      const ownsClock = this.czmlClockOwner === undefined || this.czmlClockOwner === entry.layer.id;
-      if (dsClock && viewer.clock && ownsClock) {
-        this.czmlClockOwner = entry.layer.id;
-        if (dsClock.startTime) viewer.clock.startTime = dsClock.startTime as never;
-        if (dsClock.stopTime) viewer.clock.stopTime = dsClock.stopTime as never;
-        if (dsClock.currentTime) viewer.clock.currentTime = dsClock.currentTime as never;
-        if (dsClock.clockRange !== undefined) viewer.clock.clockRange = dsClock.clockRange as never;
-        if (dsClock.multiplier !== undefined) viewer.clock.multiplier = dsClock.multiplier as never;
-      }
+      this.electCzmlClockOwner();
 
       await viewer.dataSources.add(dataSource);
       if (entry.cancelled) {
@@ -2383,6 +2372,37 @@ export class CesiumLayerSync {
       if (entry.cancelled) return;
       entry.loadError = error instanceof Error ? error.message : String(error);
     }
+  }
+
+  /**
+   * Re-elect the CZML layer that drives the viewer clock: the first layer in
+   * the synced layer order whose loaded document carries a `clock` packet. The
+   * globe has a single clock, so election goes by layer order rather than by
+   * load completion — two documents loading in parallel settle the same way
+   * every time — and removing the owner hands the clock to the next document
+   * instead of leaving the viewer on a stale interval. Nothing is written while
+   * the owner stays the same, so a later CZML load never resets the Time
+   * Slider's position, which keeps driving `currentTime` through
+   * {@link setTime}.
+   */
+  private electCzmlClockOwner(): void {
+    let owner: LayerEntry | undefined;
+    for (const layer of this.currentLayers) {
+      const entry = this.entries.get(layer.id);
+      if (entry?.kind !== "czml" || entry.cancelled || !czmlDocumentClock(entry.handle)) continue;
+      owner = entry;
+      break;
+    }
+    if (owner?.layer.id === this.czmlClockOwner) return;
+    this.czmlClockOwner = owner?.layer.id;
+    const clock = owner ? czmlDocumentClock(owner.handle) : undefined;
+    const viewerClock = this.viewer.clock;
+    if (!clock || !viewerClock) return;
+    if (clock.startTime) viewerClock.startTime = clock.startTime as never;
+    if (clock.stopTime) viewerClock.stopTime = clock.stopTime as never;
+    if (clock.currentTime) viewerClock.currentTime = clock.currentTime as never;
+    if (clock.clockRange !== undefined) viewerClock.clockRange = clock.clockRange as never;
+    if (clock.multiplier !== undefined) viewerClock.multiplier = clock.multiplier as never;
   }
 
   private async createTileset(entry: LayerEntry): Promise<void> {
@@ -3012,7 +3032,7 @@ export class CesiumLayerSync {
 
   /**
    * Id of the CZML layer whose document `clock` the viewer clock follows; see
-   * {@link createCzml}. Cleared when that layer is destroyed.
+   * {@link electCzmlClockOwner}. Re-elected when that layer is destroyed.
    */
   private czmlClockOwner: string | undefined;
 
@@ -3039,7 +3059,8 @@ export class CesiumLayerSync {
       this.viewer.imageryLayers.remove(imagery, true);
       if (provider instanceof ProtocolImageryProvider) provider.destroy();
     } else if (entry.kind === "geojson" || entry.kind === "czml") {
-      if (this.czmlClockOwner === entry.layer.id) this.czmlClockOwner = undefined;
+      // `cancelled` is already set, so the election skips this entry.
+      if (this.czmlClockOwner === entry.layer.id) this.electCzmlClockOwner();
       entry.cluster?.dispose();
       entry.cluster = undefined;
       // A cancelled entry can hold a data source that never reached the scene;

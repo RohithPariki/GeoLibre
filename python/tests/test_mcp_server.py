@@ -446,6 +446,7 @@ def test_add_raster_layer_records_its_source(server, project_path):
         ("add_cesium_ion_layer", {"asset_id": 2, "kind": "imagery"}, "raster"),
         ("add_czml_layer", {"url": "https://example.com/sat.czml"}, "3d-tiles"),
         ("add_czml_layer", {"data": [{"id": "document", "version": "1.0"}]}, "3d-tiles"),
+        ("add_czml_layer", {"data": {"id": "document", "version": "1.0"}}, "3d-tiles"),
         (
             "add_tiles_layer",
             {"url": "https://example.com/a.pmtiles", "kind": "pmtiles"},
@@ -499,7 +500,9 @@ def test_czml_tool_persists_the_document(server, project_path, tmp_path):
     assert saved["layers"][0]["source"]["url"] == "https://example.com/a.czml"
     assert saved["layers"][1]["source"]["czmlData"] == packets
     assert {layer["metadata"]["sourceKind"] for layer in saved["layers"]} == {"czml"}
-    assert "url or data" in call_error(server, "add_czml_layer", path=project_path, name="C")
+    assert "url or non-empty data" in call_error(
+        server, "add_czml_layer", path=project_path, name="C"
+    )
 
 
 def test_add_vector_layer_rejects_an_undocumented_render_mode(server, project_path):

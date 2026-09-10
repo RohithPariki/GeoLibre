@@ -1723,10 +1723,10 @@ def czml_layer(
         A layer dict for the project's ``layers`` array.
 
     Raises:
-        ValueError: If neither ``url`` nor ``data`` is provided.
+        ValueError: If neither ``url`` nor a non-empty ``data`` is provided.
     """
-    if not url and data is None:
-        raise ValueError("Either url or data must be provided for a CZML layer")
+    if not url and not data:
+        raise ValueError("Either url or non-empty data must be provided for a CZML layer")
     layer = _layer_base(name, "3d-tiles", **style)
     source_id = layer["id"]
     source: dict[str, Any] = {

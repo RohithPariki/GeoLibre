@@ -247,32 +247,63 @@ describe("CesiumLayerSync with CZML", () => {
     sync.destroy();
   });
 
-  it("lets the first CZML document own the viewer clock until it is removed", async () => {
-    const { Cesium, viewer } = makeGlobe();
+  it("treats an empty packet array as no document", () => {
+    const layer = createCzmlLayer({ id: "czml-empty", name: "Empty", data: [] });
+    assert.equal(czmlSource(layer), null);
+    assert.equal(isCesiumSupportedLayerType(layer), true);
+  });
+
+  it("elects the clock owner by layer order and re-elects when the owner leaves", async () => {
+    const { calls, Cesium, viewer } = makeGlobe();
+    const multipliers: Record<string, number> = {
+      "https://example.com/a.czml": 10,
+      "https://example.com/b.czml": 20,
+      "https://example.com/c.czml": 30,
+    };
+    Cesium.CzmlDataSource.load = async (czml: unknown) => {
+      calls.czmlLoads.push(czml);
+      // `a` resolves after `b` even though it comes first in layer order.
+      if (czml === "https://example.com/a.czml") await new Promise((r) => setTimeout(r, 20));
+      return {
+        kind: "czml-data-source",
+        show: true,
+        clock: { multiplier: multipliers[czml as string], currentTime: `t-${czml}` },
+        isLoading: false,
+        entities: { values: [] },
+      };
+    };
     const sync = new CesiumLayerSync(Cesium as never, viewer as never, () => 10);
     const a = createCzmlLayer({ id: "czml-a", name: "A", url: "https://example.com/a.czml" });
     const b = createCzmlLayer({ id: "czml-b", name: "B", url: "https://example.com/b.czml" });
+    const c = createCzmlLayer({ id: "czml-c", name: "C", url: "https://example.com/c.czml" });
 
-    sync.sync([a]);
+    sync.sync([a, b]);
+    await new Promise((r) => setTimeout(r, 40));
     for (let i = 0; i < 4; i++) await flush();
-    assert.equal(viewer.clock.multiplier, 60);
+    // Out-of-order loads still settle on the first layer.
+    assert.equal(viewer.clock.multiplier, 10);
+    assert.equal(viewer.clock.currentTime, "t-https://example.com/a.czml");
 
-    // The user (or the Time Slider) moved the clock; a second document must
-    // not stomp it.
+    // The user (or the Time Slider) moved the clock; a later document must not
+    // stomp it while the owner is unchanged.
     viewer.clock.multiplier = 5;
     viewer.clock.currentTime = "scrubbed";
-    sync.sync([a, b]);
+    sync.sync([a, b, c]);
     for (let i = 0; i < 4; i++) await flush();
     assert.equal(viewer.clock.multiplier, 5);
     assert.equal(viewer.clock.currentTime, "scrubbed");
 
-    // Removing the owner releases the clock to the next document that loads.
-    sync.sync([b]);
-    for (let i = 0; i < 4; i++) await flush();
-    const c = createCzmlLayer({ id: "czml-c", name: "C", url: "https://example.com/c.czml" });
+    // Removing the owner hands the clock to the next loaded document, without
+    // reloading it.
     sync.sync([b, c]);
     for (let i = 0; i < 4; i++) await flush();
-    assert.equal(viewer.clock.multiplier, 60);
+    assert.equal(viewer.clock.multiplier, 20);
+    assert.equal(viewer.clock.currentTime, "t-https://example.com/b.czml");
+    assert.equal(calls.czmlLoads.length, 3);
+
+    sync.sync([c]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, 30);
     sync.destroy();
   });
 

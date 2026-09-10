@@ -92,15 +92,22 @@ export function CzmlSource({ initialUrl }: { initialUrl?: string }) {
     );
   });
 
+  // A quick pick adds straight from a button, so it cannot go through the
+  // form's `runSubmit`; mirror its error handling here. The sample is cloned so
+  // every layer owns its packets rather than sharing the exported constant.
   const handleSelectQuickPick = (pick: (typeof CZML_QUICK_PICKS)[number]) => {
     source.setLayerName(pick.name);
     source.setError(null);
-    source.addAndClose(
-      createCzmlLayer({
-        name: pick.name,
-        data: pick.data,
-      }),
-    );
+    try {
+      source.addAndClose(
+        createCzmlLayer({
+          name: pick.name,
+          data: structuredClone(pick.data),
+        }),
+      );
+    } catch (err) {
+      source.setError(errorMessage(err, t("addData.shared.addError")));
+    }
   };
 
   return (

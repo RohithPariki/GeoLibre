@@ -144,7 +144,10 @@ export interface CzmlSource {
  */
 export function czmlSource(layer: Pick<GeoLibreLayer, "source" | "metadata">): CzmlSource | null {
   if (!isCzmlLayer(layer)) return null;
-  const data = (layer.source?.czmlData ?? layer.source?.czml) as CzmlPacket[] | string | undefined;
+  // `czml` is a legacy key read for hand-authored projects; only `czmlData` is written.
+  const raw = (layer.source?.czmlData ?? layer.source?.czml) as CzmlPacket[] | string | undefined;
+  // An empty packet array is a document with nothing in it, not a document.
+  const data = Array.isArray(raw) ? (raw.length > 0 ? raw : undefined) : raw || undefined;
   const rawUrl = layer.source?.url ?? layer.metadata?.czmlUrl;
   const url = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : undefined;
   if (!data && !url) return null;
@@ -167,8 +170,6 @@ export interface CzmlLayerOptions {
   /** Display name of the layer in the Layers panel. */
   name: string;
   /** Inlined CZML packet array or serialized JSON string. */
-  czml?: CzmlPacket[] | string;
-  /** Inlined CZML packet array or serialized JSON string (alias for czml). */
   data?: CzmlPacket[] | string;
   /** Remote URL pointing to a .czml document. */
   url?: string;
@@ -181,7 +182,7 @@ export interface CzmlLayerOptions {
  */
 export function createCzmlLayer(options: CzmlLayerOptions): GeoLibreLayer {
   const id = options.id ?? newLayerId();
-  const data = options.data ?? options.czml;
+  const data = options.data;
   const url = options.url?.trim() || undefined;
   const sourcePath = options.sourcePath?.trim() || undefined;
 
