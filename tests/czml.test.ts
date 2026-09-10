@@ -301,6 +301,12 @@ describe("CesiumLayerSync with CZML", () => {
     assert.equal(viewer.clock.currentTime, "t-https://example.com/b.czml");
     assert.equal(calls.czmlLoads.length, 3);
 
+    // Reordering already-loaded documents re-elects without a reload.
+    sync.sync([c, b]);
+    for (let i = 0; i < 4; i++) await flush();
+    assert.equal(viewer.clock.multiplier, 30);
+    assert.equal(calls.czmlLoads.length, 3);
+
     sync.sync([c]);
     for (let i = 0; i < 4; i++) await flush();
     assert.equal(viewer.clock.multiplier, 30);

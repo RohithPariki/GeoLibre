@@ -1248,6 +1248,8 @@ export class CesiumLayerSync {
     }
     this.applyHighlight();
     this.watchCameraZoom();
+    // Reordering two loaded CZML layers changes which one comes first.
+    this.electCzmlClockOwner();
   }
 
   destroy(): void {

@@ -144,11 +144,10 @@ export interface CzmlSource {
  */
 export function czmlSource(layer: Pick<GeoLibreLayer, "source" | "metadata">): CzmlSource | null {
   if (!isCzmlLayer(layer)) return null;
-  // `czml` is a legacy key read for hand-authored projects; only `czmlData` is written.
-  const raw = (layer.source?.czmlData ?? layer.source?.czml) as CzmlPacket[] | string | undefined;
+  const raw = layer.source?.czmlData as CzmlPacket[] | string | undefined;
   // An empty packet array is a document with nothing in it, not a document.
   const data = Array.isArray(raw) ? (raw.length > 0 ? raw : undefined) : raw || undefined;
-  const rawUrl = layer.source?.url ?? layer.metadata?.czmlUrl;
+  const rawUrl = layer.source?.url;
   const url = typeof rawUrl === "string" && rawUrl.trim() ? rawUrl.trim() : undefined;
   if (!data && !url) return null;
   return { url, data };
@@ -207,7 +206,6 @@ export function createCzmlLayer(options: CzmlLayerOptions): GeoLibreLayer {
       identifiable: false,
       sourceId: id,
       nativeLayerIds: [id],
-      ...(url ? { czmlUrl: url } : {}),
     },
   };
 }
