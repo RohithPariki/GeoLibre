@@ -19,7 +19,9 @@ def test_czml_layer_url_shape():
     assert md["sourceKind"] == "czml"
     assert md["externalNativeLayer"] is True
     assert md["identifiable"] is False
-    assert md["customLayerType"] == "3d-tiles"
+    # No customLayerType, like createCzmlLayer: the globe sync renders it, so
+    # the Layer Library needs no restore pass to re-add it.
+    assert "customLayerType" not in md
     assert md["nativeLayerIds"] == [layer["id"]]
     assert "sourcePath" not in layer
 

@@ -1747,7 +1747,6 @@ def czml_layer(
         "identifiable": False,
         "sourceId": source_id,
         "nativeLayerIds": [source_id],
-        "customLayerType": "3d-tiles",
     }
     layer["source"] = source
     layer["metadata"] = metadata
