@@ -94,9 +94,15 @@ async function waitForDeckLayer(page: Page, layerName: string) {
 }
 
 async function switchRenderer(page: Page, name: "MapLibre" | "Mapbox") {
+  await page.waitForFunction(() => {
+    const engine = (window as any).mapboxDeckTestRef?.current;
+    if (!engine) return false;
+    const map = engine.kind === "mapbox" ? engine.getMapboxMap?.() : engine.getMap?.();
+    return map ? map.loaded() : false;
+  });
   await page.getByRole("button", { name: "View", exact: true }).click();
   await page.getByRole("menuitem", { name: "Rendering engine", exact: true }).hover();
-  await page.getByRole("menuitemradio", { name, exact: true }).click();
+  await page.getByRole("menuitemradio", { name, exact: true }).click({ force: true });
   await expect(
     page.locator(name === "Mapbox" ? ".mapboxgl-canvas" : ".maplibregl-canvas"),
   ).toBeVisible();
