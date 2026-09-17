@@ -4672,6 +4672,10 @@
                 "inside": "İç (küçült)",
                 "both": "Her iki taraf"
               }
+            },
+            "dissolve": {
+              "label": "Sonucu erit",
+              "description": "Tampon bölgeleri tek bir öğede birleştirir ve aralarındaki örtüşmeleri eritir. Birleştirilen şekil hiçbir girdi öğesine ait olmadığından öznitelikler atılır; bir özniteliğe göre eritmek için sonuç üzerinde Eritme aracını çalıştırın."
             }
           }
         },
@@ -7246,6 +7250,7 @@
     "saveEditsSuccess": "{{count}} öğe kaynak dosyaya kaydedildi.",
     "saveEditsNoFeatures": "Bu katmanda kaydedilecek öğe yok.",
     "saveEditsError": "Düzenlemeler kaynak dosyaya kaydedilemedi.",
+    "pendingTableDraftsBlocked": "Öznitelik tablosunda uygulanamayan kaydedilmemiş düzenlemeler var. Bunları düzeltin veya iptal edin, ardından yeniden deneyin.",
     "saveEditsToArcgis": "Düzenlemeleri ArcGIS servisine kaydet",
     "saveEditsArcgisSuccess": "ArcGIS hizmetine kaydedildi: {{inserted}} eklendi, {{updated}} güncellendi, {{deleted}} silindi.",
     "saveEditsToPostgis": "Düzenlemeleri PostGIS tablosuna kaydet",

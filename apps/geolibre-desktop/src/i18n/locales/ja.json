@@ -4599,6 +4599,10 @@
                 "inside": "内側 (縮小)",
                 "both": "両側"
               }
+            },
+            "dissolve": {
+              "label": "結果をディゾルブ",
+              "description": "バッファを 1 つのフィーチャに統合し、重なりをディゾルブします。統合後の形状はどの入力フィーチャにも属さないため、属性は破棄されます。属性ごとにディゾルブする場合は、結果に対してディゾルブツールを実行してください。"
             }
           }
         },
@@ -7165,6 +7169,7 @@
     "saveEditsSuccess": "{{count}}件のフィーチャを元ファイルに保存しました。",
     "saveEditsNoFeatures": "このレイヤーには保存するフィーチャがありません。",
     "saveEditsError": "編集内容を元ファイルに保存できませんでした。",
+    "pendingTableDraftsBlocked": "属性テーブルに適用できない未保存の編集があります。修正またはキャンセルしてから、もう一度お試しください。",
     "saveEditsToArcgis": "編集内容をArcGISサービスに保存",
     "saveEditsArcgisSuccess": "ArcGISに保存しました: 挿入{{inserted}}件、更新{{updated}}件、削除{{deleted}}件。",
     "saveEditsToPostgis": "編集内容をPostGISテーブルに保存",

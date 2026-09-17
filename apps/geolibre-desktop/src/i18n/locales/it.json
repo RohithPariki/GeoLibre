@@ -4672,6 +4672,10 @@
                 "inside": "Interno (riduci)",
                 "both": "Entrambi i lati"
               }
+            },
+            "dissolve": {
+              "label": "Dissolvi il risultato",
+              "description": "Unisce i buffer in un unico elemento dissolvendo le sovrapposizioni tra loro. La forma unita non appartiene ad alcun elemento di input, quindi gli attributi vengono eliminati; per dissolvere in base a un attributo, esegui lo strumento Dissolvi sul risultato."
             }
           }
         },
@@ -7246,6 +7250,7 @@
     "saveEditsSuccess": "Salvati {{count}} elemento/i nel file sorgente.",
     "saveEditsNoFeatures": "Questo layer non contiene elementi da salvare.",
     "saveEditsError": "Impossibile salvare le modifiche nel file sorgente.",
+    "pendingTableDraftsBlocked": "La tabella degli attributi contiene modifiche non salvate che non possono essere applicate. Correggile o annullale, quindi riprova.",
     "saveEditsToArcgis": "Salva modifiche nel servizio ArcGIS",
     "saveEditsArcgisSuccess": "Salvato in ArcGIS: {{inserted}} inseriti, {{updated}} aggiornati, {{deleted}} eliminati.",
     "saveEditsToPostgis": "Salva modifiche nella tabella PostGIS",

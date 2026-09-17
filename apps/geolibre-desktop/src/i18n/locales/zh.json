@@ -4599,6 +4599,10 @@
                 "inside": "内侧（收缩）",
                 "both": "两侧"
               }
+            },
+            "dissolve": {
+              "label": "融合结果",
+              "description": "将各缓冲区合并为单个要素，并融合它们之间的重叠部分。合并后的图形不属于任何输入要素，因此属性会被丢弃；若要按属性融合，请对结果运行“融合”工具。"
             }
           }
         },
@@ -7165,6 +7169,7 @@
     "saveEditsSuccess": "已将 {{count}} 个要素保存到源文件。",
     "saveEditsNoFeatures": "此图层没有可保存的要素。",
     "saveEditsError": "无法将编辑保存到源文件。",
+    "pendingTableDraftsBlocked": "属性表中有无法应用的未保存编辑。请修正或取消这些编辑后重试。",
     "saveEditsToArcgis": "保存编辑到 ArcGIS 服务",
     "saveEditsArcgisSuccess": "已保存到 ArcGIS：新增 {{inserted}} 个，更新 {{updated}} 个，删除 {{deleted}} 个。",
     "saveEditsToPostgis": "保存编辑到 PostGIS 表",

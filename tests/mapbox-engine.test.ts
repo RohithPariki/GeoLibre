@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { parseHTML } from "linkedom";
 import type * as mapboxgl from "mapbox-gl";
+import type { Geometry } from "geojson";
 import { useAppStore, type MapPreferences } from "@geolibre/core";
 import { MapboxEngine } from "../packages/map/src/mapbox-engine";
 import { isMapboxSupportedLayer } from "../packages/map/src/mapbox-layers";
@@ -741,17 +742,32 @@ describe("MapboxEngine.syncLayers", () => {
 describe("MapboxEngine.identifyFeatures", () => {
   it("maps Mapbox's generated ids back to the layer's own feature identity", () => {
     const { engine, map } = makeEngine();
-    const feature = (id: string | undefined, name: string) => ({
+    // A polygon and a point, so the engine compiles the fill, line and circle
+    // layers the hits below come from; it only adds the ones the data can draw.
+    const feature = (id: string | undefined, name: string, geometry: Geometry) => ({
       type: "Feature" as const,
       ...(id === undefined ? {} : { id }),
       properties: { name },
-      geometry: { type: "Point" as const, coordinates: [0, 0] },
+      geometry,
     });
     engine.syncLayers([
       geojsonLayer({
         geojson: {
           type: "FeatureCollection",
-          features: [feature("ca", "California"), feature(undefined, "Nevada")],
+          features: [
+            feature("ca", "California", {
+              type: "Polygon",
+              coordinates: [
+                [
+                  [0, 0],
+                  [1, 0],
+                  [1, 1],
+                  [0, 0],
+                ],
+              ],
+            }),
+            feature(undefined, "Nevada", { type: "Point", coordinates: [0, 0] }),
+          ],
         },
       }),
     ]);
@@ -1442,5 +1458,89 @@ describe("MapboxEngine layer control", () => {
       if (previous.window === undefined) delete globals.window;
       else globals.window = previous.window;
     }
+  });
+});
+
+describe("MapboxEngine search result lifecycle", () => {
+  it("uses native markers and removes each result exactly once, including on engine teardown", () => {
+    const map = makeMap();
+    const markers: { center?: [number, number]; removals: number; color?: string }[] = [];
+    class Marker {
+      center?: [number, number];
+      removals = 0;
+      color?: string;
+      constructor(options: { color?: string }) {
+        this.color = options.color;
+        markers.push(this);
+      }
+      setLngLat(center: [number, number]) {
+        this.center = center;
+        return this;
+      }
+      addTo(target: unknown) {
+        assert.equal(target, map);
+        return this;
+      }
+      remove() {
+        this.removals++;
+      }
+    }
+    const engine = new MapboxEngine(
+      map as unknown as mapboxgl.Map,
+      { ...gl, Marker } as unknown as typeof mapboxgl.default,
+    );
+    const clearFirst = engine.showSearchResult({ type: "Point", coordinates: [-77.0365, 38.8977] });
+    const clearSecond = engine.showSearchResult({ type: "Point", coordinates: [10, 20] });
+    assert.deepEqual(markers[0].center, [-77.0365, 38.8977]);
+    assert.equal(markers[0].color, "#ef4444");
+    clearFirst();
+    clearFirst();
+    assert.deepEqual(
+      markers.map((m) => m.removals),
+      [1, 0],
+    );
+    engine.destroy();
+    clearSecond();
+    assert.deepEqual(
+      markers.map((m) => m.removals),
+      [1, 1],
+    );
+    engine.showSearchResult({ type: "Point", coordinates: [0, 0] })();
+    assert.equal(markers.length, 2);
+  });
+
+  it("cleans up cell sources without disturbing other results, even after a style reload", () => {
+    const { engine, map } = makeEngine();
+    const cell: import("geojson").Polygon = {
+      type: "Polygon",
+      coordinates: [
+        [
+          [179, 0],
+          [181, 0],
+          [181, 1],
+          [179, 0],
+        ],
+      ],
+    };
+    map.setStyleLoaded(false);
+    engine.showSearchResult(cell)();
+    assert.equal(map.sources.size, 0);
+    map.setStyleLoaded(true);
+    const clearFirst = engine.showSearchResult(cell);
+    const clearSecond = engine.showSearchResult(cell);
+    assert.equal(map.sources.size, 2);
+    assert.equal(map.layers.length, 4);
+    clearFirst();
+    clearFirst();
+    assert.equal(map.sources.size, 1);
+    assert.equal(map.layers.length, 2);
+    map.sources.clear();
+    map.layers.length = 0;
+    assert.doesNotThrow(clearSecond);
+    const clearLast = engine.showSearchResult(cell);
+    engine.destroy();
+    assert.equal(map.sources.size, 0);
+    assert.equal(map.layers.length, 0);
+    assert.doesNotThrow(clearLast);
   });
 });
