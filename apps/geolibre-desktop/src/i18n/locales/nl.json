@@ -4672,6 +4672,10 @@
                 "inside": "Binnen (verkleinen)",
                 "both": "Beide zijden"
               }
+            },
+            "dissolve": {
+              "label": "Resultaat samenvoegen",
+              "description": "Voeg de buffers samen tot één object en los de overlappingen daartussen op. De samengevoegde vorm hoort bij geen enkel invoerobject, dus attributen vervallen; om op een attribuut samen te voegen, voer je het gereedschap Samenvoegen uit op het resultaat."
             }
           }
         },
@@ -7246,6 +7250,7 @@
     "saveEditsSuccess": "{{count}} object(en) opgeslagen naar het bronbestand.",
     "saveEditsNoFeatures": "Deze laag heeft geen objecten om op te slaan.",
     "saveEditsError": "Bewerkingen konden niet worden opgeslagen naar het bronbestand.",
+    "pendingTableDraftsBlocked": "De attributentabel bevat niet-opgeslagen bewerkingen die niet kunnen worden toegepast. Corrigeer of annuleer ze en probeer het opnieuw.",
     "saveEditsToArcgis": "Bewerkingen opslaan naar ArcGIS-service",
     "saveEditsArcgisSuccess": "Opgeslagen naar ArcGIS: {{inserted}} ingevoegd, {{updated}} bijgewerkt, {{deleted}} verwijderd.",
     "saveEditsToPostgis": "Bewerkingen opslaan naar PostGIS-tabel",
