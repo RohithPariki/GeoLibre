@@ -612,7 +612,6 @@ export async function runSqlQuery(sql: string, layers: GeoLibreLayer[]): Promise
   }
 }
 
-
 /**
  * The native reader calls with an http(s) URL argument in a statement, ignoring
  * any that appear inside a string literal or comment. Matches against the masked
@@ -626,7 +625,6 @@ function matchRemoteReaderCalls(statement: string): RegExpMatchArray[] {
     (match) => masked[match.index ?? 0] !== " ",
   );
 }
-
 
 /**
  * Runs one attempt of a prepared SQL statement against a DuckDB instance. Split
@@ -650,12 +648,7 @@ async function runSqlStatementOnce(
     // Register remote URLs as DuckDB file handles so they stream over HTTP
     // range requests instead of the unreliable in-WASM httpfs path. Done before
     // loading spatial so the handles can warm up the HTTP read path first.
-    const { statement } = await registerRemoteSources(
-      db,
-      filePrefix,
-      rewritten,
-      registeredFiles,
-    );
+    const { statement } = await registerRemoteSources(db, filePrefix, rewritten, registeredFiles);
     await ensureSpatialExtension(db, connection);
     await registerLayerTables(db, connection, layers, filePrefix, registeredFiles);
 

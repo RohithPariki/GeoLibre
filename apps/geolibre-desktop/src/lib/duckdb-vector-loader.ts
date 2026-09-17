@@ -374,8 +374,6 @@ function sourceSql(fileName: string, extension: string, layer?: string): string 
   return `SELECT * FROM ST_Read(${quotedName}${layerArgSql(layer)})`;
 }
 
-
-
 function crsSql(fileName: string, includeWkt: boolean): string {
   // WKT is the reprojection fallback for a CRS that GDAL could not resolve to an
   // EPSG code (e.g. an ESRI .prj carrying a custom State Plane definition):
