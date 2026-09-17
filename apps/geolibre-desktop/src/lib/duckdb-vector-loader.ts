@@ -1083,15 +1083,7 @@ export async function convertDuckDbVectorToGeoParquet(
 
   try {
     await registerVectorFileBuffers(db, file);
-    // Warm up the Parquet read path before LOAD spatial (see `parquetWarmUp`).
-    // CSV input uses `read_csv_auto` and non-Parquet vector files use `ST_Read`,
-    // neither affected by the bug; `parquetWarmUp` returns undefined for both,
-    // and the `options.csv` guard short-circuits the CSV branch before calling it.
-    await ensureSpatialExtension(
-      db,
-      connection,
-      options.csv ? undefined : parquetWarmUp(connection, file.extension, file.name),
-    );
+    await ensureSpatialExtension(db, connection);
 
     let geometryColumn: string;
     let source: string;
