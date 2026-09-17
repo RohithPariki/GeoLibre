@@ -43,9 +43,9 @@ index 5c7e999..6093064 100644
 -  basemapLayerIds: basemapLayers.map((layer) => layer.id),
 -});
 -```
- 
+
  #### Methods
- 
+
 diff --git a/node_modules/maplibre-gl-swipe/dist/SwipeControl-BHZKX8C3.cjs.map b/node_modules/maplibre-gl-swipe/dist/SwipeControl-BHZKX8C3.cjs.map
 deleted file mode 100644
 index 61b4d94..0000000
