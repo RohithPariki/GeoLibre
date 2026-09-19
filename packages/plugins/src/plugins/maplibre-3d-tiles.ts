@@ -327,7 +327,8 @@ function createThreeDTilesControl(): ThreeDTilesControl {
 }
 
 function syncThreeDTilesStoreFromControl(control: ThreeDTilesControl): void {
-  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
+  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? ""))
+    return;
   const store = useAppStore.getState();
   const state = control.getState();
   const tilesetIds = new Set(state.tilesets.map((tileset) => tileset.id));
@@ -359,7 +360,8 @@ function hydrateThreeDTilesControlFromStore(
   control: ThreeDTilesControl,
   options: { replaceExisting?: boolean } = {},
 ): void {
-  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
+  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? ""))
+    return;
   const layers = useAppStore.getState().layers.filter(isThreeDTilesControlLayer);
   if (layers.length === 0) return;
 
@@ -755,7 +757,9 @@ function installGooglePhotorealisticTilesPanelHandlers(
           panel.querySelector<HTMLInputElement>('input[aria-label="Fly to tileset after load"]')
             ?.checked ?? true;
         if (!isCesium) {
-          void restoreMapboxTiles(activeThreeDTilesApp, flyTo ? id : undefined).catch(console.error);
+          void restoreMapboxTiles(activeThreeDTilesApp, flyTo ? id : undefined).catch(
+            console.error,
+          );
         }
         control.collapse();
         return;

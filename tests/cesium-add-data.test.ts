@@ -21,7 +21,11 @@ describe("Cesium Add Data Reachability and Support Gating (#2476)", () => {
       "duckdb",
     ];
     for (const id of unsupported) {
-      assert.equal(supportsAddDataRenderer(id, "cesium"), false, `expected ${id} to be unsupported on cesium`);
+      assert.equal(
+        supportsAddDataRenderer(id, "cesium"),
+        false,
+        `expected ${id} to be unsupported on cesium`,
+      );
     }
 
     // Supported sources on the 3D globe
@@ -54,7 +58,11 @@ describe("Cesium Add Data Reachability and Support Gating (#2476)", () => {
       "raster",
     ];
     for (const id of supported) {
-      assert.equal(supportsAddDataRenderer(id, "cesium"), true, `expected ${id} to be supported on cesium`);
+      assert.equal(
+        supportsAddDataRenderer(id, "cesium"),
+        true,
+        `expected ${id} to be supported on cesium`,
+      );
     }
   });
 
