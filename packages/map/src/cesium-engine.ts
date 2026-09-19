@@ -383,6 +383,9 @@ export class CesiumEngine implements MapEngine {
     return new Promise((resolve) => {
       const remove = viewer.scene.postRender.addEventListener(() => {
         remove();
+        if (this.isPrimary) {
+          useAppStore.getState().setCameraAltitude(this.readCameraAltitude());
+        }
         resolve();
       });
       viewer.scene.requestRender();
@@ -537,6 +540,25 @@ export class CesiumEngine implements MapEngine {
   applyMapPreferences(preferences: MapPreferences): void {
     const viewer = this.live();
     if (!viewer) return;
+
+    if (preferences.projection === "mercator") {
+      if (viewer.scene.mode === this.Cesium.SceneMode.SCENE3D) {
+        if (typeof (viewer.scene as { morphTo2D?: (d: number) => void }).morphTo2D === "function") {
+          (viewer.scene as { morphTo2D: (d: number) => void }).morphTo2D(0);
+        } else {
+          viewer.scene.mode = this.Cesium.SceneMode.SCENE2D;
+        }
+      }
+    } else if (preferences.projection === "globe") {
+      if (viewer.scene.mode !== this.Cesium.SceneMode.SCENE3D) {
+        if (typeof (viewer.scene as { morphTo3D?: (d: number) => void }).morphTo3D === "function") {
+          (viewer.scene as { morphTo3D: (d: number) => void }).morphTo3D(0);
+        } else {
+          viewer.scene.mode = this.Cesium.SceneMode.SCENE3D;
+        }
+      }
+    }
+
     // MapLibre's min/max zoom become camera distance limits, which is the
     // closest Cesium analogue. The latitude the conversion needs is the camera's
     // own, so the limits track the scale the user actually sees. Bounds and
@@ -1434,6 +1456,7 @@ export class CesiumEngine implements MapEngine {
     const userDriven = this.userMoved;
     this.userMoved = false;
     const store = useAppStore.getState();
+    if (store.ui.storymapPresenting) return;
     // Write only when the view actually differs from the stored camera:
     // `setMapView` has no same-camera guard in the store, and
     // `setSecondaryMapView`'s guard uses exact equality (which Cesium's lossy
@@ -1444,6 +1467,7 @@ export class CesiumEngine implements MapEngine {
       // toggle governs the secondary panes, and the primary map is the camera
       // they follow.
       if (!isSameView(view, store.mapView)) store.setMapView(view, userDriven);
+      store.setCameraAltitude(this.readCameraAltitude());
       return;
     }
     if (store.mapLayout.syncView && !isSameView(view, store.mapView)) {

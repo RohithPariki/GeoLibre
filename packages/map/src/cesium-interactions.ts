@@ -91,6 +91,7 @@ export function installCesiumInteractions(
       hover?.remove();
       hover = null;
       if (!point || moving || state.identifyLayerId) return;
+      if (!state.layers.some((layer) => isPopupHoverEnabled(layer.popup))) return;
       for (const hit of engine.identifyAtScreen(point)) {
         const layer = state.layers.find((item) => item.id === hit.layerId);
         if (!layer || !isPopupHoverEnabled(layer.popup)) continue;
@@ -139,13 +140,25 @@ export function installCesiumInteractions(
       }
       if (target !== IDENTIFY_ALL_LAYERS_ID) break;
     }
+    if (!selected && target) {
+      state.selectFeature(null);
+    }
     if (content.childElementCount) popup = place(content, event.position, false);
   }, C.ScreenSpaceEventType.LEFT_CLICK);
+  let selectionKey: string | null = null;
   const selection = () => {
     const state = useAppStore.getState();
+    const ids = state.selectedFeatureIds.length ? state.selectedFeatureIds : state.selectedFeatureId;
+    const key =
+      state.selectedLayerId && ids !== null && (Array.isArray(ids) ? ids.length : true)
+        ? `${state.selectedLayerId}:${Array.isArray(ids) ? ids.join("\u0000") : ids}`
+        : null;
+    const fit = Boolean(state.ui.zoomToSelectedFeature && key && key !== selectionKey);
+    selectionKey = key;
     engine.highlightFeature(
       state.layers.find((layer) => layer.id === state.selectedLayerId),
-      state.selectedFeatureIds.length ? state.selectedFeatureIds : state.selectedFeatureId,
+      ids,
+      { fit },
     );
   };
   const unsubscribe = useAppStore.subscribe((state, prev) => {
@@ -164,8 +177,8 @@ export function installCesiumInteractions(
       selection();
     if (
       state.identifyLayerId !== prev.identifyLayerId ||
-      state.layers !== prev.layers ||
-      state.layerGroups !== prev.layerGroups
+      (state.identifyLayerId &&
+        !state.layers.some((layer) => layer.id === state.identifyLayerId))
     ) {
       clearHover();
       clearPopup();

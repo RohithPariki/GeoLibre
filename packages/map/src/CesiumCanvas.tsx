@@ -239,6 +239,7 @@ export const CesiumCanvas = memo(function CesiumCanvas({
   const basemapStyleUrl = useAppStore((s) => s.basemapStyleUrl);
   const cesiumBasemap = useAppStore((s) => s.preferences.map.cesiumBasemap);
   const terrainEnabled = useAppStore((s) => s.preferences.map.terrainEnabled);
+  const mapPreferences = useAppStore((s) => s.preferences.map);
   const basemapImagery = useMemo(
     () =>
       basemapToCesiumImagery(
@@ -468,6 +469,7 @@ export const CesiumCanvas = memo(function CesiumCanvas({
         // first frame. Basemap first so it lands at the bottom of an empty
         // imagery stack rather than having to be lowered past the data layers.
         applyBasemap();
+        engine.applyMapPreferences(state.preferences.map);
         engine.syncLayers(paneLayersRef.current);
         if (isPrimaryRef.current)
           interactionCleanup.current = installCesiumInteractions(
@@ -500,8 +502,11 @@ export const CesiumCanvas = memo(function CesiumCanvas({
       // Clear the published ref before the engine is torn down, so nothing can
       // reach a destroyed engine through it. Only ours is cleared: a pane never
       // published one.
-      if (isPrimaryRef.current && engineRefProp.current?.current === engineInstanceRef.current) {
-        engineRefProp.current.current = null;
+      if (isPrimaryRef.current) {
+        useAppStore.getState().setCameraAltitude(null);
+        if (engineRefProp.current?.current === engineInstanceRef.current) {
+          engineRefProp.current.current = null;
+        }
       }
       engineInstanceRef.current = null;
       // The viewer's destroy() below tears the imagery down with it; just drop
@@ -563,6 +568,12 @@ export const CesiumCanvas = memo(function CesiumCanvas({
     const enabled = terrainEnabled;
     if (engine.isTerrainEnabled() !== enabled) engine.setTerrainEnabled(enabled);
   }, [ready, terrainEnabled, ionToken]);
+
+  // Push project map preferences (min/max zoom, projection, scale unit) onto the engine.
+  useEffect(() => {
+    if (!ready) return;
+    engineInstanceRef.current?.applyMapPreferences(mapPreferences);
+  }, [ready, mapPreferences]);
 
   // Hiding or fading the background is a live appearance change, so it re-styles
   // the existing layers rather than rebuilding them.

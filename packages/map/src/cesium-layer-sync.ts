@@ -6,6 +6,7 @@ import {
   compileLayerFilters,
   czmlSource,
   DEFAULT_LAYER_STYLE,
+  extrusionColorValue,
   geojsonHasZCoordinates,
   getCesiumIonToken,
   isCzmlLayer,
@@ -50,8 +51,10 @@ import {
 } from "./cesium-points";
 import {
   hasRegisteredProtocol,
+  mercatorBbox,
   ProtocolImageryProvider,
   protocolScheme,
+  quadkey,
   webMercatorRectangle,
 } from "./cesium-protocol-imagery";
 import {
@@ -1895,6 +1898,7 @@ export class CesiumLayerSync {
             styles: str(layer.source.styles) ?? "",
             version: str(layer.source.version) ?? "1.1.1",
           },
+          credit: str(layer.source.attribution),
         });
       } else if (wmtsCaps) {
         const url = wmtsCaps.url;
@@ -1939,6 +1943,7 @@ export class CesiumLayerSync {
           minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
           tilingScheme,
           tileMatrixLabels,
+          credit: str(layer.source.attribution),
         });
       } else if (isCogLayer(layer)) {
         // The WASM tiler renders the tiles itself (issue #2283), so neither
@@ -2009,11 +2014,37 @@ export class CesiumLayerSync {
             credit: str(layer.source.attribution),
           });
         } else {
-          const resource = makeResource(url);
+          const bounds = layer.source.bounds;
+          const rectangle =
+            Array.isArray(bounds) &&
+            bounds.length === 4 &&
+            bounds.every((v) => typeof v === "number" && Number.isFinite(v))
+              ? webMercatorRectangle(Cesium, bounds as [number, number, number, number])
+              : undefined;
+          const tileSize = Number(layer.source.tileSize);
+          const tileWidth = Number.isFinite(tileSize) && tileSize > 0 ? tileSize : undefined;
+          let finalUrl = url;
+          if (layer.source.scheme === "tms") {
+            finalUrl = finalUrl.replace(/\{y\}/g, "{-y}");
+          }
+          const resource = makeResource(finalUrl);
           provider = new Cesium.UrlTemplateImageryProvider({
             url: resource,
+            tileWidth,
+            tileHeight: tileWidth,
+            rectangle,
             maximumLevel: Number.isFinite(maxLevel) ? maxLevel : undefined,
             minimumLevel: Number.isFinite(minLevel) ? minLevel : undefined,
+            credit: str(layer.source.attribution),
+            customTags: {
+              "bbox-epsg-3857": (_p: unknown, x: number, y: number, level: number) =>
+                mercatorBbox(level, x, y),
+              quadkey: (_p: unknown, x: number, y: number, level: number) =>
+                quadkey(level, x, y),
+              "-y": (_p: unknown, _x: number, y: number, level: number) =>
+                String(2 ** level - 1 - y),
+              ratio: () => "",
+            },
           });
         }
       }
@@ -2239,7 +2270,11 @@ export class CesiumLayerSync {
             ? (style.extrusionHeightScale as number)
             : 1;
           const base = Number.isFinite(style.extrusionBase) ? (style.extrusionBase as number) : 0;
-          const extColorStr = style.extrusionColor || style.fillColor || "#3b82f6";
+          const extColorVal = extrusionColorValue(style);
+          const extColorStr =
+            typeof extColorVal === "string"
+              ? extColorVal
+              : style.extrusionColor || style.fillColor || "#3b82f6";
 
           let heightEvaluator: ((f: Feature) => unknown) | undefined;
           if (style.extrusionAdvancedStyleEnabled && style.extrusionHeightExpression) {
@@ -2250,8 +2285,14 @@ export class CesiumLayerSync {
           }
 
           let colorEvaluator: ((f: Feature) => unknown) | undefined;
-          if (style.extrusionAdvancedStyleEnabled && style.extrusionColorExpression) {
-            const res = compileFeatureExpression(style.extrusionColorExpression, {
+          let colorExprStr: string | null = null;
+          if (typeof extColorVal !== "string") {
+            colorExprStr = JSON.stringify(extColorVal);
+          } else if (style.extrusionAdvancedStyleEnabled && style.extrusionColorExpression) {
+            colorExprStr = style.extrusionColorExpression;
+          }
+          if (colorExprStr) {
+            const res = compileFeatureExpression(colorExprStr, {
               expectedType: "color",
             });
             if (res.ok && res.evaluate) colorEvaluator = res.evaluate;
@@ -2975,10 +3016,16 @@ export class CesiumLayerSync {
     // white+alpha only fades them.
     const marker = Cesium.Color.WHITE.withAlpha(opacity);
     const isExtruded = Boolean(style.extrusionEnabled);
-    const extColorStr = style.extrusionColor || style.fillColor || "#3b82f6";
+    const extColorVal = isExtruded ? extrusionColorValue(style) : null;
+    const extColorStr =
+      typeof extColorVal === "string"
+        ? extColorVal
+        : style.extrusionColor || style.fillColor || "#3b82f6";
     const extFill = Cesium.Color.fromCssColorString(extColorStr).withAlpha(extOpacity);
     const hasColorExpr =
-      isExtruded && style.extrusionAdvancedStyleEnabled && Boolean(style.extrusionColorExpression);
+      isExtruded &&
+      (typeof extColorVal !== "string" ||
+        (style.extrusionAdvancedStyleEnabled && Boolean(style.extrusionColorExpression)));
     const arrow =
       style.lineDecoration === "arrow" &&
       Boolean(
