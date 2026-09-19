@@ -1834,9 +1834,9 @@ export async function addPMTilesLayerFromUrl(
     );
   }
   const normalizedUrl = address.href;
-  if (app.getMapRenderer?.() === "arcgis") {
+  if (app.getMapRenderer?.() === "arcgis" || app.getMapRenderer?.() === "cesium") {
     const info = await readRemotePMTilesInfo(normalizedUrl);
-    if (info.encoding === "mlt")
+    if (info.encoding === "mlt" && app.getMapRenderer?.() === "arcgis")
       throw new Error(
         app.translate?.("addData.pmtiles.errorMlt", "ArcGIS requires MVT vector tiles, not MLT") ??
           "ArcGIS requires MVT vector tiles, not MLT",

@@ -15,6 +15,16 @@ const ARCGIS_UNSUPPORTED_SOURCES = new Set([
 
 const ARCGIS_DECK_SOURCES = new Set(["deckgl-viz", "gltf-model", "lidar", "duckdb", "3d-tiles"]);
 
+const CESIUM_UNSUPPORTED_SOURCES = new Set([
+  "stac",
+  "video",
+  "zarr",
+  "splatting",
+  "deckgl-viz",
+  "gltf-model",
+  "duckdb",
+]);
+
 export function requiresArcgisDeckOverlay(id: string): boolean {
   return ARCGIS_DECK_SOURCES.has(id);
 }
@@ -27,5 +37,6 @@ export function supportsAddDataRenderer(
   if (renderer === "mapbox") return !MAPBOX_UNSUPPORTED_SOURCES.has(id);
   if (renderer === "arcgis")
     return !ARCGIS_UNSUPPORTED_SOURCES.has(id) && (deckOverlay || !requiresArcgisDeckOverlay(id));
+  if (renderer === "cesium") return !CESIUM_UNSUPPORTED_SOURCES.has(id);
   return true;
 }

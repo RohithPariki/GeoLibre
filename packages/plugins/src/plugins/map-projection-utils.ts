@@ -75,7 +75,8 @@ export function acquireMercatorProjectionLock(
   mapOverride?: ProjectionMap | null,
 ): void {
   // ArcGIS local scenes already use Web Mercator without changing view mode.
-  if (app.getMapRenderer?.() === "arcgis") return;
+  // Cesium renders 3D overlays natively on the globe.
+  if (app.getMapRenderer?.() === "arcgis" || app.getMapRenderer?.() === "cesium") return;
   if (mercatorProjectionHolders.size === 0 && capturedProjectionToRestore === null) {
     // Only remember "globe" as worth restoring. Never capture "mercator": it may
     // be a value WE forced and persisted into the project file, so a reopened
@@ -100,6 +101,7 @@ export function releaseMercatorProjectionLock(key: string, app: MercatorProjecti
   if (!mercatorProjectionHolders.delete(key)) return;
   if (mercatorProjectionHolders.size > 0) return;
   if (capturedProjectionToRestore === null) return;
-  if (app.getMapRenderer?.() !== "arcgis") app.setMapProjection?.(capturedProjectionToRestore);
+  if (app.getMapRenderer?.() !== "arcgis" && app.getMapRenderer?.() !== "cesium")
+    app.setMapProjection?.(capturedProjectionToRestore);
   capturedProjectionToRestore = null;
 }

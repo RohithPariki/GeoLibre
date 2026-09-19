@@ -327,7 +327,7 @@ function createThreeDTilesControl(): ThreeDTilesControl {
 }
 
 function syncThreeDTilesStoreFromControl(control: ThreeDTilesControl): void {
-  if (["mapbox", "arcgis"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
+  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
   const store = useAppStore.getState();
   const state = control.getState();
   const tilesetIds = new Set(state.tilesets.map((tileset) => tileset.id));
@@ -359,7 +359,7 @@ function hydrateThreeDTilesControlFromStore(
   control: ThreeDTilesControl,
   options: { replaceExisting?: boolean } = {},
 ): void {
-  if (["mapbox", "arcgis"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
+  if (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "")) return;
   const layers = useAppStore.getState().layers.filter(isThreeDTilesControlLayer);
   if (layers.length === 0) return;
 
@@ -717,13 +717,14 @@ function installGooglePhotorealisticTilesPanelHandlers(
       if (
         url &&
         activeThreeDTilesApp &&
-        ["mapbox", "arcgis"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "") &&
-        !isGooglePhotorealisticTilesetUrl(url) &&
-        !isArcgisI3sSceneLayerUrl(url)
+        ["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "") &&
+        (activeThreeDTilesApp?.getMapRenderer?.() === "cesium" ||
+          (!isGooglePhotorealisticTilesetUrl(url) && !isArcgisI3sSceneLayerUrl(url)))
       ) {
         event.preventDefault();
         event.stopImmediatePropagation();
         const id = `tiles-${crypto.randomUUID()}`;
+        const isCesium = activeThreeDTilesApp?.getMapRenderer?.() === "cesium";
         const layer = createThreeDTilesStoreLayer(
           {
             id,
@@ -745,7 +746,7 @@ function installGooglePhotorealisticTilesPanelHandlers(
               panel.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request headers"]')
                 ?.value ?? "",
             ),
-            status: "loading",
+            status: isCesium ? "ready" : "loading",
           },
           control.getState().opacity,
         );
@@ -753,7 +754,9 @@ function installGooglePhotorealisticTilesPanelHandlers(
         const flyTo =
           panel.querySelector<HTMLInputElement>('input[aria-label="Fly to tileset after load"]')
             ?.checked ?? true;
-        void restoreMapboxTiles(activeThreeDTilesApp, flyTo ? id : undefined).catch(console.error);
+        if (!isCesium) {
+          void restoreMapboxTiles(activeThreeDTilesApp, flyTo ? id : undefined).catch(console.error);
+        }
         control.collapse();
         return;
       }
@@ -1096,7 +1099,7 @@ function updateDeckTilesPanelList(control: ThreeDTilesControl | null): void {
     .layers.filter(
       (layer) =>
         isGooglePhotorealisticTilesLayer(layer) ||
-        (["mapbox", "arcgis"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "") &&
+        (["mapbox", "arcgis", "cesium"].includes(activeThreeDTilesApp?.getMapRenderer?.() ?? "") &&
           isMapboxTilesLayer(layer)),
     );
   const nativeStatus = panel.querySelector<HTMLElement>(".three-d-tiles-status");

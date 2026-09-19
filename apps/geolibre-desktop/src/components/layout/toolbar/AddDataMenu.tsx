@@ -43,6 +43,7 @@ interface AddDataItem {
 }
 
 function unsupportedTitleKey(renderer: MapRendererKind, id: string) {
+  if (renderer === "cesium") return "renderer.layerUnsupported";
   if (renderer !== "arcgis") return "renderer.layerMapboxUnsupported";
   return requiresArcgisDeckOverlay(id)
     ? "renderer.layerArcgisViewUnsupported"
