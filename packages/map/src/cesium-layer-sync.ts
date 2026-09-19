@@ -2039,8 +2039,7 @@ export class CesiumLayerSync {
             customTags: {
               "bbox-epsg-3857": (_p: unknown, x: number, y: number, level: number) =>
                 mercatorBbox(level, x, y),
-              quadkey: (_p: unknown, x: number, y: number, level: number) =>
-                quadkey(level, x, y),
+              quadkey: (_p: unknown, x: number, y: number, level: number) => quadkey(level, x, y),
               "-y": (_p: unknown, _x: number, y: number, level: number) =>
                 String(2 ** level - 1 - y),
               ratio: () => "",

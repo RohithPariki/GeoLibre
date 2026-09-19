@@ -148,7 +148,9 @@ export function installCesiumInteractions(
   let selectionKey: string | null = null;
   const selection = () => {
     const state = useAppStore.getState();
-    const ids = state.selectedFeatureIds.length ? state.selectedFeatureIds : state.selectedFeatureId;
+    const ids = state.selectedFeatureIds.length
+      ? state.selectedFeatureIds
+      : state.selectedFeatureId;
     const key =
       state.selectedLayerId && ids !== null && (Array.isArray(ids) ? ids.length : true)
         ? `${state.selectedLayerId}:${Array.isArray(ids) ? ids.join("\u0000") : ids}`
@@ -177,8 +179,7 @@ export function installCesiumInteractions(
       selection();
     if (
       state.identifyLayerId !== prev.identifyLayerId ||
-      (state.identifyLayerId &&
-        !state.layers.some((layer) => layer.id === state.identifyLayerId))
+      (state.identifyLayerId && !state.layers.some((layer) => layer.id === state.identifyLayerId))
     ) {
       clearHover();
       clearPopup();

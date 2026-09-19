@@ -167,8 +167,10 @@ function makeFakes() {
     Matrix4: { IDENTITY: {} },
     Cartesian3: {
       fromDegrees: (x: number, y: number, z = 0) => ({ x, y, z }),
-      distance: (a: { x?: number; y?: number; z?: number }, b: { x?: number; y?: number; z?: number }) =>
-        Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0), (a.z ?? 0) - (b.z ?? 0)),
+      distance: (
+        a: { x?: number; y?: number; z?: number },
+        b: { x?: number; y?: number; z?: number },
+      ) => Math.hypot((a.x ?? 0) - (b.x ?? 0), (a.y ?? 0) - (b.y ?? 0), (a.z ?? 0) - (b.z ?? 0)),
     },
     Cartographic: {
       fromDegrees: (lng: number, lat: number, height = 0) => ({
@@ -254,7 +256,10 @@ describe("Cesium Parity Fixes (#2476)", () => {
     assert.ok(opts.rectangle);
 
     // Custom tags expansion
-    const tags = opts.customTags as Record<string, (p: unknown, x: number, y: number, level: number) => string>;
+    const tags = opts.customTags as Record<
+      string,
+      (p: unknown, x: number, y: number, level: number) => string
+    >;
     assert.ok(tags["bbox-epsg-3857"]);
     assert.ok(tags["quadkey"]);
     assert.ok(tags["-y"]);
@@ -309,11 +314,66 @@ describe("Cesium Parity Fixes (#2476)", () => {
   });
 
   it("isCesiumSupportedLayerType correctly identifies supported vs unsupported layer kinds", () => {
-    assert.equal(isCesiumSupportedLayerType({ id: "1", name: "1", type: "geojson", visible: true, opacity: 1, source: {}, style: { ...DEFAULT_LAYER_STYLE } }), true);
-    assert.equal(isCesiumSupportedLayerType({ id: "2", name: "2", type: "xyz", visible: true, opacity: 1, source: {}, style: { ...DEFAULT_LAYER_STYLE } }), true);
-    assert.equal(isCesiumSupportedLayerType({ id: "3", name: "3", type: "raster", visible: true, opacity: 1, source: {}, style: { ...DEFAULT_LAYER_STYLE } }), true);
-    assert.equal(isCesiumSupportedLayerType({ id: "4", name: "4", type: "deckgl-viz", visible: true, opacity: 1, source: {}, style: { ...DEFAULT_LAYER_STYLE } }), false);
-    assert.equal(isCesiumSupportedLayerType({ id: "5", name: "5", type: "zarr", visible: true, opacity: 1, source: {}, style: { ...DEFAULT_LAYER_STYLE } }), false);
+    assert.equal(
+      isCesiumSupportedLayerType({
+        id: "1",
+        name: "1",
+        type: "geojson",
+        visible: true,
+        opacity: 1,
+        source: {},
+        style: { ...DEFAULT_LAYER_STYLE },
+      }),
+      true,
+    );
+    assert.equal(
+      isCesiumSupportedLayerType({
+        id: "2",
+        name: "2",
+        type: "xyz",
+        visible: true,
+        opacity: 1,
+        source: {},
+        style: { ...DEFAULT_LAYER_STYLE },
+      }),
+      true,
+    );
+    assert.equal(
+      isCesiumSupportedLayerType({
+        id: "3",
+        name: "3",
+        type: "raster",
+        visible: true,
+        opacity: 1,
+        source: {},
+        style: { ...DEFAULT_LAYER_STYLE },
+      }),
+      true,
+    );
+    assert.equal(
+      isCesiumSupportedLayerType({
+        id: "4",
+        name: "4",
+        type: "deckgl-viz",
+        visible: true,
+        opacity: 1,
+        source: {},
+        style: { ...DEFAULT_LAYER_STYLE },
+      }),
+      false,
+    );
+    assert.equal(
+      isCesiumSupportedLayerType({
+        id: "5",
+        name: "5",
+        type: "zarr",
+        visible: true,
+        opacity: 1,
+        source: {},
+        style: { ...DEFAULT_LAYER_STYLE },
+      }),
+      false,
+    );
   });
 
   it("CesiumEngine.applyMapPreferences updates projection between mercator and globe", () => {
