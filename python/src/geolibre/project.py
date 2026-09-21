@@ -1744,7 +1744,10 @@ def czml_layer(
     metadata: dict[str, Any] = {
         "sourceKind": CZML_SOURCE_KIND,
         "externalNativeLayer": True,
-        "identifiable": False,
+        # Cesium builds real entities from the document and the globe's layer
+        # sync answers for them, so a click can read a packet's name and custom
+        # properties. Mirrors ``createCzmlLayer`` in ``@geolibre/core``.
+        "identifiable": True,
         "sourceId": source_id,
         "nativeLayerIds": [source_id],
     }
@@ -1952,6 +1955,12 @@ PUBLISHABLE_PLUGIN_SETTINGS: dict[str, tuple[str, ...] | None] = {
     # shared Time Slider layers impossible to reconstruct. The retained value
     # is still recursively credential-scrubbed by the caller.
     "maplibre-gl-time-slider": None,
+    # Feed toggles (one boolean per feed) plus a numeric clock speed — no URLs,
+    # no keys, nothing user-authored. Listed as a whole blob rather than by key
+    # because the feed set grows with every new feed; an enumerated list would
+    # silently start counting each new toggle as a credential. The retained
+    # value is still recursively credential-scrubbed by the caller.
+    "gods-eye-view": None,
 }
 
 # Plugins the app activates by default (``activeByDefault: true`` in
