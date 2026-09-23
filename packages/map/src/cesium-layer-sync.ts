@@ -847,6 +847,8 @@ function needsRebuild(prev: GeoLibreLayer, next: GeoLibreLayer): boolean {
         prev.source.maxzoom !== next.source.maxzoom ||
         prev.source.minzoom !== next.source.minzoom ||
         str(prev.source.url) !== str(next.source.url) ||
+        // Provider credits are fixed at construction.
+        str(prev.source.attribution) !== str(next.source.attribution) ||
         str(prev.metadata?.sourceKind) !== str(next.metadata?.sourceKind) ||
         str(prev.sourcePath) !== str(next.sourcePath) ||
         str(prev.metadata?.arcgisSublayers) !== str(next.metadata?.arcgisSublayers) ||

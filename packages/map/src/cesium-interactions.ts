@@ -9,7 +9,6 @@ import {
 import type { Cartesian2, CesiumWidget } from "@cesium/engine";
 import type { CesiumEngine } from "./cesium-engine";
 import { createHoverTooltipElement, createIdentifyPopupElement } from "./feature-popup";
-import { applySelectionHighlight } from "./map-selection";
 
 /** Globe input uses the same popup field, expression and sanitization path as 2D. */
 export function installCesiumInteractions(
@@ -213,18 +212,13 @@ export function installCesiumInteractions(
     if (content.childElementCount) popup = place(content, event.position, false, widest);
     else state.selectFeature(null);
   }, C.ScreenSpaceEventType.LEFT_CLICK);
-  let selectionKey: string | null = null;
+  // Highlight only: CesiumCanvas owns the zoom-to-selection fit, including
+  // suppressing it when an Identify restore reselects a feature.
   const selection = () => {
     const state = useAppStore.getState();
-    selectionKey = applySelectionHighlight(
-      engine,
-      state.layers,
-      state.selectedLayerId,
-      state.selectedFeatureId,
-      state.selectedFeatureIds,
-      state.ui.zoomToSelectedFeature,
-      selectionKey,
-      false,
+    engine.highlightFeature(
+      state.layers.find((layer) => layer.id === state.selectedLayerId),
+      state.selectedFeatureIds.length ? state.selectedFeatureIds : state.selectedFeatureId,
     );
   };
   const popupLayerHidden = (state: ReturnType<typeof useAppStore.getState>) =>
@@ -243,8 +237,7 @@ export function installCesiumInteractions(
     if (
       state.selectedLayerId !== prev.selectedLayerId ||
       state.selectedFeatureIds !== prev.selectedFeatureIds ||
-      state.selectedFeatureId !== prev.selectedFeatureId ||
-      state.ui.zoomToSelectedFeature !== prev.ui.zoomToSelectedFeature
+      state.selectedFeatureId !== prev.selectedFeatureId
     )
       selection();
     if (

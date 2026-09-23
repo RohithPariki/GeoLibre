@@ -578,7 +578,7 @@ export const CesiumCanvas = memo(function CesiumCanvas({
     if (engine.isTerrainEnabled() !== enabled) engine.setTerrainEnabled(enabled);
   }, [ready, terrainEnabled, ionToken]);
 
-  // Push project map preferences (min/max zoom, projection, scale unit) onto the engine.
+  // Push project map preferences (min/max zoom, projection) onto the engine.
   useEffect(() => {
     if (!ready) return;
     engineInstanceRef.current?.applyMapPreferences(useAppStore.getState().preferences.map);

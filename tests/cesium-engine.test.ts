@@ -764,6 +764,20 @@ describe("CesiumEngine zoom bounds", () => {
     engine.destroy();
   });
 
+  it("pulls a camera already past a lowered maxZoom back inside the range", () => {
+    // The controller limits bound only user input, so a saved view or a newly
+    // lowered maxZoom would otherwise leave the globe outside the range.
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.applyView({ ...VIEW, zoom: 12 });
+    engine.applyMapPreferences(prefs(0, 6));
+    assert.ok(
+      engine.readView().zoom <= 6.001,
+      `camera stayed past maxZoom: ${engine.readView().zoom}`,
+    );
+    engine.destroy();
+  });
+
   it("keeps MapLibre's full range until preferences arrive", () => {
     const fakes = makeViewer();
     const engine = new CesiumEngine(makeCesium(), fakes.viewer);

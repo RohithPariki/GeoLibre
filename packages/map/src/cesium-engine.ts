@@ -651,6 +651,12 @@ export class CesiumEngine implements MapEngine {
         1,
       );
     }
+    // The controller limits only bound user input, so pull a camera already
+    // outside the new range (a saved view, or a lowered maxZoom) back inside.
+    if (this.isMorphing()) return;
+    const view = this.readView();
+    const zoom = Math.min(this.maxZoom, Math.max(this.minZoom, view.zoom));
+    if (zoom !== view.zoom) void this.applyView({ ...view, zoom });
   }
 
   // ------------------------------------------------------------------- layers
