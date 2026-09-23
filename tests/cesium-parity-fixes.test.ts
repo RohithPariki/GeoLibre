@@ -237,7 +237,7 @@ describe("Cesium Parity Fixes (#2476)", () => {
       source: {
         type: "raster",
         tiles: ["https://example.com/{z}/{x}/{y}?bbox={bbox-epsg-3857}&q={quadkey}&ratio={ratio}"],
-        attribution: "OpenStreetMap contributors",
+        attribution: "<b>OpenStreetMap</b> contributors",
         tileSize: 512,
         scheme: "tms",
         bounds: [-120, 30, -110, 40],
@@ -251,7 +251,8 @@ describe("Cesium Parity Fixes (#2476)", () => {
 
     // TMS flips {y} to {-y}
     assert.ok(String(opts.url).includes("{-y}"));
-    assert.equal(opts.credit, "OpenStreetMap contributors");
+    // Attribution is text, escaped before Cesium renders credits as HTML.
+    assert.equal(opts.credit, "&lt;b&gt;OpenStreetMap&lt;/b&gt; contributors");
     assert.equal(opts.tileWidth, 512);
     assert.ok(opts.rectangle);
 

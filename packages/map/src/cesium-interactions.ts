@@ -244,7 +244,8 @@ export function installCesiumInteractions(
       state.identifyLayerId !== prev.identifyLayerId ||
       ((state.layers !== prev.layers || state.layerGroups !== prev.layerGroups) &&
         popupLayerHidden(state)) ||
-      (state.identifyLayerId &&
+      (state.layers !== prev.layers &&
+        state.identifyLayerId &&
         state.identifyLayerId !== IDENTIFY_ALL_LAYERS_ID &&
         !state.layers.some((layer) => layer.id === state.identifyLayerId))
     ) {

@@ -1082,6 +1082,26 @@ describe("CesiumEngine scene-mode morphs", () => {
     engine.destroy();
   });
 
+  it("clamps the camera into the zoom range once a projection morph lands", () => {
+    const fakes = makeViewer();
+    const engine = new CesiumEngine(makeCesium(), fakes.viewer);
+    engine.applyView({ ...VIEW, zoom: 12 });
+    fakes.setSceneMode(MORPHING);
+    engine.applyMapPreferences({
+      minZoom: 0,
+      maxZoom: 6,
+      maxPitch: 85,
+      renderWorldCopies: true,
+    } as never);
+    fakes.setSceneMode(SCENE2D);
+    fakes.morphComplete.emit();
+    assert.ok(
+      engine.readView().zoom <= 6.001,
+      `camera stayed past maxZoom: ${engine.readView().zoom}`,
+    );
+    engine.destroy();
+  });
+
   it("stops publishing morphs once destroyed", () => {
     const fakes = makeViewer();
     const engine = new CesiumEngine(makeCesium(), fakes.viewer);

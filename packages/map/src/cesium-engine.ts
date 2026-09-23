@@ -651,9 +651,16 @@ export class CesiumEngine implements MapEngine {
         1,
       );
     }
-    // The controller limits only bound user input, so pull a camera already
-    // outside the new range (a saved view, or a lowered maxZoom) back inside.
-    if (this.isMorphing()) return;
+    // A projection morph is still running; `installMorphHandling` clamps once
+    // it lands.
+    if (!this.isMorphing()) this.clampCameraToZoomRange();
+  }
+
+  /**
+   * The controller limits only bound user input, so pull a camera already
+   * outside the zoom range (a saved view, or a lowered maxZoom) back inside.
+   */
+  private clampCameraToZoomRange(): void {
     const view = this.readView();
     const zoom = Math.min(this.maxZoom, Math.max(this.minZoom, view.zoom));
     if (zoom !== view.zoom) void this.applyView({ ...view, zoom });
@@ -1505,6 +1512,7 @@ export class CesiumEngine implements MapEngine {
     const onMorphComplete = () => {
       // The native animation owns this camera, including any terrain settling.
       this.userOwnsCamera = true;
+      this.clampCameraToZoomRange();
       this.publishCameraView();
     };
     viewer.scene.morphComplete.addEventListener(onMorphComplete);
