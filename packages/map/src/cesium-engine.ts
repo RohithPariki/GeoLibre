@@ -604,7 +604,8 @@ export class CesiumEngine implements MapEngine {
     if (!viewer) return;
 
     if (preferences.projection === "mercator") {
-      if (viewer.scene.mode === this.Cesium.SceneMode.SCENE3D) {
+      // Any settled non-2D mode (3D or Columbus view) morphs to 2D.
+      if (viewer.scene.mode !== this.Cesium.SceneMode.SCENE2D && !this.isMorphing()) {
         if (typeof (viewer.scene as { morphTo2D?: (d: number) => void }).morphTo2D === "function") {
           (viewer.scene as { morphTo2D: (d: number) => void }).morphTo2D(0);
         } else {

@@ -399,6 +399,15 @@ describe("Cesium Parity Fixes (#2476)", () => {
     } as MapPreferences);
     assert.equal(viewer.scene.mode, 3); // 3D
 
+    // Columbus view (e.g. from the scene-mode picker) also returns to 2D.
+    viewer.scene.mode = 1;
+    engine.applyMapPreferences({
+      projection: "mercator",
+      minZoom: 0,
+      maxZoom: 22,
+    } as MapPreferences);
+    assert.equal(viewer.scene.mode, 2); // 2D
+
     engine.destroy();
   });
 
