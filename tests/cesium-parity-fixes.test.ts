@@ -32,6 +32,7 @@ function makeFakes() {
     wmtsProviders: [] as Record<string, unknown>[],
     cameraListeners: [] as (() => void)[],
     postRenderListeners: [] as (() => void)[],
+    morphListeners: [] as (() => void)[],
   };
 
   const canvas = {
@@ -70,7 +71,7 @@ function makeFakes() {
       morphTo3D: (d: number) => {
         viewer.scene.mode = 3; // SCENE3D
       },
-      morphComplete: mkEvent([]),
+      morphComplete: mkEvent(calls.morphListeners),
       primitives: { add: () => {}, remove: () => {} },
       postRender: mkEvent(calls.postRenderListeners),
       requestRender: () => {
@@ -407,6 +408,29 @@ describe("Cesium Parity Fixes (#2476)", () => {
       maxZoom: 22,
     } as MapPreferences);
     assert.equal(viewer.scene.mode, 2); // 2D
+
+    engine.destroy();
+  });
+
+  it("CesiumEngine.applyMapPreferences defers a projection change that lands mid-morph", () => {
+    const { viewer, Cesium, calls } = makeFakes();
+    const engine = new CesiumEngine(Cesium as never, viewer as never);
+    const prefs = (projection: "mercator" | "globe") =>
+      ({ projection, minZoom: 0, maxZoom: 22 }) as MapPreferences;
+
+    viewer.scene.mode = 0; // MORPHING (e.g. a scene-mode picker morph)
+    engine.applyMapPreferences(prefs("mercator"));
+    assert.equal(viewer.scene.mode, 0, "no morph starts over a running one");
+
+    // The running morph lands in 3D; the deferred preference is applied then.
+    viewer.scene.mode = 3;
+    for (const listener of [...calls.morphListeners]) listener();
+    assert.equal(viewer.scene.mode, 2);
+
+    // A picker morph with no deferred preference is left where it landed.
+    viewer.scene.mode = 3;
+    for (const listener of [...calls.morphListeners]) listener();
+    assert.equal(viewer.scene.mode, 3);
 
     engine.destroy();
   });

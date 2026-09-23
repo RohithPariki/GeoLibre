@@ -362,3 +362,22 @@ it("cancels queued hover and detaches handlers and subscriptions on teardown", (
   useAppStore.getState().selectFeature("after-destroy");
   assert.equal(f.highlights, before);
 });
+
+it("clears the hover tooltip when the layer it shows is hidden", () => {
+  const f = setup();
+  useAppStore.setState({ identifyLayerId: null });
+  f.hover();
+  f.flush();
+  assert.ok(f.document.querySelector(".geolibre-hover-tooltip"));
+  const hide = (id: string) =>
+    useAppStore.setState({
+      layers: useAppStore
+        .getState()
+        .layers.map((layer) => (layer.id === id ? { ...layer, visible: false } : layer)),
+    });
+  // Hiding a layer the tooltip does not show leaves it in place.
+  hide("1");
+  assert.ok(f.document.querySelector(".geolibre-hover-tooltip"));
+  hide("0");
+  assert.equal(f.document.querySelector(".geolibre-hover-tooltip"), null);
+});

@@ -341,6 +341,12 @@ export class CesiumEngine implements MapEngine {
    */
   private minZoom = 0;
   private maxZoom = 24;
+  /**
+   * A projection preference that arrived mid-morph. It is applied once that
+   * morph lands; only a deferred change is replayed, so a scene-mode picker
+   * morph is never undone by the (unchanged) stored preference.
+   */
+  private pendingProjection: MapProjection | null = null;
 
   private readonly worldTerrainAvailable: boolean;
   private terrainEnabled = false;
@@ -591,6 +597,37 @@ export class CesiumEngine implements MapEngine {
     return carto.height - ground;
   }
 
+  /**
+   * Morph the scene to a projection preference, deferring it while another
+   * morph is running (Cesium would otherwise cut that one short).
+   *
+   * Args:
+   *   projection: The preferred projection, if any.
+   */
+  private applyProjection(projection: MapProjection | undefined): void {
+    const viewer = this.live();
+    if (!viewer || !projection) return;
+    if (this.isMorphing()) {
+      this.pendingProjection = projection;
+      return;
+    }
+    this.pendingProjection = null;
+    const scene = viewer.scene as {
+      morphTo2D?: (duration: number) => void;
+      morphTo3D?: (duration: number) => void;
+    };
+    if (projection === "mercator") {
+      // Any settled non-2D mode (3D or Columbus view) morphs to 2D.
+      if (viewer.scene.mode === this.Cesium.SceneMode.SCENE2D) return;
+      if (typeof scene.morphTo2D === "function") scene.morphTo2D(0);
+      else viewer.scene.mode = this.Cesium.SceneMode.SCENE2D;
+    } else if (projection === "globe") {
+      if (viewer.scene.mode === this.Cesium.SceneMode.SCENE3D) return;
+      if (typeof scene.morphTo3D === "function") scene.morphTo3D(0);
+      else viewer.scene.mode = this.Cesium.SceneMode.SCENE3D;
+    }
+  }
+
   /** Both flat scene modes use the projected map instead of the 3D ellipsoid. */
   readProjection(): MapProjection {
     const mode = this.live()?.scene.mode;
@@ -603,24 +640,7 @@ export class CesiumEngine implements MapEngine {
     const viewer = this.live();
     if (!viewer) return;
 
-    if (preferences.projection === "mercator") {
-      // Any settled non-2D mode (3D or Columbus view) morphs to 2D.
-      if (viewer.scene.mode !== this.Cesium.SceneMode.SCENE2D && !this.isMorphing()) {
-        if (typeof (viewer.scene as { morphTo2D?: (d: number) => void }).morphTo2D === "function") {
-          (viewer.scene as { morphTo2D: (d: number) => void }).morphTo2D(0);
-        } else {
-          viewer.scene.mode = this.Cesium.SceneMode.SCENE2D;
-        }
-      }
-    } else if (preferences.projection === "globe") {
-      if (viewer.scene.mode !== this.Cesium.SceneMode.SCENE3D) {
-        if (typeof (viewer.scene as { morphTo3D?: (d: number) => void }).morphTo3D === "function") {
-          (viewer.scene as { morphTo3D: (d: number) => void }).morphTo3D(0);
-        } else {
-          viewer.scene.mode = this.Cesium.SceneMode.SCENE3D;
-        }
-      }
-    }
+    this.applyProjection(preferences.projection);
 
     // MapLibre's min/max zoom become camera distance limits, which is the
     // closest Cesium analogue. The latitude the conversion needs is the camera's
@@ -1515,6 +1535,8 @@ export class CesiumEngine implements MapEngine {
       this.userOwnsCamera = true;
       this.clampCameraToZoomRange();
       this.publishCameraView();
+      // A projection preference that landed mid-morph is applied now.
+      if (this.pendingProjection) this.applyProjection(this.pendingProjection);
     };
     viewer.scene.morphComplete.addEventListener(onMorphComplete);
     this.disposers.push(() => {
