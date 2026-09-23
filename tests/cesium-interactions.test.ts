@@ -218,6 +218,36 @@ it("replaces the selection and popup on a second successful Identify click", () 
   assert.equal(f.document.querySelectorAll(".geolibre-identify-popup-root").length, 2);
 });
 
+it("keeps an identify-all popup open across unrelated store updates", () => {
+  const f = setup();
+  f.click();
+  useAppStore.setState({ selectedFeatureIds: [] });
+  useAppStore.getState().setPointerCoords([1, 2]);
+  assert.ok(f.document.querySelector(".geolibre-identify-popup"));
+});
+
+it("closes the identify popup when a layer or group it shows is hidden", () => {
+  const f = setup();
+  f.click();
+  const rename = useAppStore.getState().layers.map((layer) => ({ ...layer, name: "renamed" }));
+  useAppStore.setState({ layers: rename });
+  assert.ok(f.document.querySelector(".geolibre-identify-popup"));
+  useAppStore.setState({
+    layers: rename.map((layer) => (layer.id === "2" ? { ...layer, visible: false } : layer)),
+  });
+  assert.equal(f.document.querySelector(".geolibre-identify-popup"), null);
+
+  f.click();
+  useAppStore.setState({
+    layers: rename.map((layer) => (layer.id === "1" ? { ...layer, groupId: "g" } : layer)),
+    layerGroups: [{ id: "g", name: "G", collapsed: false, visible: true, opacity: 1 }],
+  });
+  assert.ok(f.document.querySelector(".geolibre-identify-popup"));
+  useAppStore.getState().setLayerGroupVisibility("g", false);
+  assert.equal(f.document.querySelector(".geolibre-identify-popup"), null);
+  useAppStore.setState({ layerGroups: [] });
+});
+
 it("flips a wide identify popup away from a point near the canvas edge", () => {
   const f = setup();
   f.clickAt(450, 250);

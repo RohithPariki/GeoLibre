@@ -1,4 +1,5 @@
 import {
+  effectiveLayerRenderState,
   IDENTIFY_ALL_LAYERS_ID,
   isPopupClickEnabled,
   isPopupHoverEnabled,
@@ -8,6 +9,7 @@ import {
 import type { Cartesian2, CesiumWidget } from "@cesium/engine";
 import type { CesiumEngine } from "./cesium-engine";
 import { createHoverTooltipElement, createIdentifyPopupElement } from "./feature-popup";
+import { applySelectionHighlight } from "./map-selection";
 
 /** Globe input uses the same popup field, expression and sanitization path as 2D. */
 export function installCesiumInteractions(
@@ -19,6 +21,8 @@ export function installCesiumInteractions(
   const handler = new C.ScreenSpaceEventHandler(viewer.canvas);
   const host = viewer.canvas.parentElement!;
   let popup: HTMLElement | null = null;
+  // Layers whose features the open click popup shows, so hiding one closes it.
+  let popupLayerIds: string[] = [];
   let popupResizeObserver: ResizeObserver | null = null;
   let hover: HTMLElement | null = null;
   let pending: Cartesian2 | null = null;
@@ -51,6 +55,7 @@ export function installCesiumInteractions(
     popupResizeObserver = null;
     popup?.remove();
     popup = null;
+    popupLayerIds = [];
   };
   const place = (
     content: HTMLElement,
@@ -187,6 +192,7 @@ export function installCesiumInteractions(
       if (!layer || !isPopupClickEnabled(layer.popup)) continue;
       const configured = resolvePopupMaxWidth(layer.popup);
       if (configured !== undefined) widest = Math.max(widest ?? configured, configured);
+      popupLayerIds.push(layer.id);
       content.append(
         createIdentifyPopupElement(layer.name, hit.properties, hit.featureId ?? undefined, {
           popup: layer.popup,
@@ -210,21 +216,22 @@ export function installCesiumInteractions(
   let selectionKey: string | null = null;
   const selection = () => {
     const state = useAppStore.getState();
-    const ids = state.selectedFeatureIds.length
-      ? state.selectedFeatureIds
-      : state.selectedFeatureId;
-    const key =
-      state.selectedLayerId && ids !== null && (Array.isArray(ids) ? ids.length : true)
-        ? `${state.selectedLayerId}:${Array.isArray(ids) ? ids.join("\u0000") : ids}`
-        : null;
-    const fit = Boolean(state.ui.zoomToSelectedFeature && key && key !== selectionKey);
-    selectionKey = key;
-    engine.highlightFeature(
-      state.layers.find((layer) => layer.id === state.selectedLayerId),
-      ids,
-      { fit },
+    selectionKey = applySelectionHighlight(
+      engine,
+      state.layers,
+      state.selectedLayerId,
+      state.selectedFeatureId,
+      state.selectedFeatureIds,
+      state.ui.zoomToSelectedFeature,
+      selectionKey,
+      false,
     );
   };
+  const popupLayerHidden = (state: ReturnType<typeof useAppStore.getState>) =>
+    popupLayerIds.some((id) => {
+      const layer = state.layers.find((item) => item.id === id);
+      return !layer || !effectiveLayerRenderState(layer, state.layerGroups).visible;
+    });
   const unsubscribe = useAppStore.subscribe((state, prev) => {
     if (state.preferences.map.showPointerElevation !== prev.preferences.map.showPointerElevation) {
       state.setPointerElevation(
@@ -236,12 +243,17 @@ export function installCesiumInteractions(
     if (
       state.selectedLayerId !== prev.selectedLayerId ||
       state.selectedFeatureIds !== prev.selectedFeatureIds ||
-      state.selectedFeatureId !== prev.selectedFeatureId
+      state.selectedFeatureId !== prev.selectedFeatureId ||
+      state.ui.zoomToSelectedFeature !== prev.ui.zoomToSelectedFeature
     )
       selection();
     if (
       state.identifyLayerId !== prev.identifyLayerId ||
-      (state.identifyLayerId && !state.layers.some((layer) => layer.id === state.identifyLayerId))
+      ((state.layers !== prev.layers || state.layerGroups !== prev.layerGroups) &&
+        popupLayerHidden(state)) ||
+      (state.identifyLayerId &&
+        state.identifyLayerId !== IDENTIFY_ALL_LAYERS_ID &&
+        !state.layers.some((layer) => layer.id === state.identifyLayerId))
     ) {
       clearHover();
       clearPopup();

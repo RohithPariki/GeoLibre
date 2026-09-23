@@ -437,7 +437,7 @@ export class CesiumEngine implements MapEngine {
     return new Promise((resolve) => {
       const remove = viewer.scene.postRender.addEventListener(() => {
         remove();
-        if (this.isPrimary) {
+        if (this.isPrimary && !useAppStore.getState().ui.storymapPresenting) {
           useAppStore.getState().setCameraAltitude(this.readCameraAltitude());
         }
         resolve();

@@ -255,7 +255,11 @@ export const CesiumCanvas = memo(function CesiumCanvas({
   const basemapStyleUrl = useAppStore((s) => s.basemapStyleUrl);
   const cesiumBasemap = useAppStore((s) => s.preferences.map.cesiumBasemap);
   const terrainEnabled = useAppStore((s) => s.preferences.map.terrainEnabled);
-  const mapPreferences = useAppStore((s) => s.preferences.map);
+  // Select only the fields the globe applies: setPreferences replaces the whole
+  // preferences tree, so the `map` object changes on unrelated saves too.
+  const mapProjection = useAppStore((s) => s.preferences.map.projection);
+  const mapMinZoom = useAppStore((s) => s.preferences.map.minZoom);
+  const mapMaxZoom = useAppStore((s) => s.preferences.map.maxZoom);
   const basemapImagery = useMemo(
     () =>
       basemapToCesiumImagery(
@@ -577,8 +581,8 @@ export const CesiumCanvas = memo(function CesiumCanvas({
   // Push project map preferences (min/max zoom, projection, scale unit) onto the engine.
   useEffect(() => {
     if (!ready) return;
-    engineInstanceRef.current?.applyMapPreferences(mapPreferences);
-  }, [ready, mapPreferences]);
+    engineInstanceRef.current?.applyMapPreferences(useAppStore.getState().preferences.map);
+  }, [ready, mapProjection, mapMinZoom, mapMaxZoom]);
 
   // Hiding or fading the background is a live appearance change, so it re-styles
   // the existing layers rather than rebuilding them.
