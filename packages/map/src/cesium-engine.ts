@@ -8,7 +8,12 @@ import {
   type StoryChapterAnimation,
   type StoryChapterLocation,
 } from "@geolibre/core";
-import type { Cartesian2, CesiumWidget, PointPrimitiveCollection } from "@cesium/engine";
+import type {
+  Cartesian2,
+  CesiumTerrainProvider,
+  CesiumWidget,
+  PointPrimitiveCollection,
+} from "@cesium/engine";
 import type { FeatureCollection, Point, Polygon } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import {
@@ -204,6 +209,10 @@ export interface CesiumSceneHandle {
 export interface CesiumEngineOptions {
   /** Whether this canvas has credentials for Cesium World Terrain. */
   worldTerrainAvailable?: boolean;
+  /** Runtime Ion token used for the selected terrain asset. */
+  ionToken?: string;
+  /** Project-selected Ion terrain asset, if any. */
+  terrainIonAssetId?: number | null;
   /**
    * Id of the `secondaryMapViews` record this globe draws, or `undefined` when
    * it *is* the primary map area. Decides which camera the engine publishes to
@@ -349,10 +358,12 @@ export class CesiumEngine implements MapEngine {
   private pendingProjection: MapProjection | null = null;
 
   private readonly worldTerrainAvailable: boolean;
+  private readonly ionToken: string | undefined;
   private terrainEnabled = false;
   private terrainRequest = 0;
   private terrainExaggeration = 1;
   private terrainProvider: TerrariumTerrainProvider | null = null;
+  private terrainIonAssetId: number | null;
   private cogTerrain: CogDemSourceRegistration | null = null;
   private cogTerrainUrl: string | null = null;
   private cogTerrainRequest = 0;
@@ -368,6 +379,8 @@ export class CesiumEngine implements MapEngine {
     this.viewer = viewer;
     this.viewId = options.viewId;
     this.worldTerrainAvailable = options.worldTerrainAvailable ?? true;
+    this.ionToken = options.ionToken?.trim() || undefined;
+    this.terrainIonAssetId = options.terrainIonAssetId ?? null;
     this.capabilities =
       options.viewId === undefined ? CESIUM_CAPABILITIES : CESIUM_PANE_CAPABILITIES;
     const onDiagnostic = options.onDiagnostic;
@@ -1289,6 +1302,8 @@ export class CesiumEngine implements MapEngine {
               this.cogTerrain?.renderTile,
               this.cogTerrain ? 22 : 15,
             ))
+          : this.terrainIonAssetId !== null
+            ? await this.loadIonTerrain(this.terrainIonAssetId)
           : await this.Cesium.createWorldTerrainAsync();
       const viewer = this.live();
       // The toggle may have been reversed, or the viewer destroyed, while the
@@ -1301,6 +1316,32 @@ export class CesiumEngine implements MapEngine {
       // Allow a subsequent enable to retry, without resetting a newer request.
       if (request === this.terrainRequest) this.terrainEnabled = false;
     }
+  }
+
+  /** Resolve the project-selected Ion terrain asset, using the configured token explicitly. */
+  private async loadIonTerrain(assetId: number): Promise<CesiumTerrainProvider> {
+    if (!this.ionToken) throw new Error("A Cesium Ion token is required for Ion terrain.");
+    const resource = await this.Cesium.IonResource.fromAssetId(assetId, {
+      accessToken: this.ionToken,
+    });
+    return this.Cesium.CesiumTerrainProvider.fromUrl(resource);
+  }
+
+  getTerrainIonAssetId(): number | null {
+    return this.terrainIonAssetId;
+  }
+
+  async setTerrainIonAssetId(assetId: number | null): Promise<boolean> {
+    if (
+      assetId !== null &&
+      (!Number.isSafeInteger(assetId) || assetId <= 0 || !this.ionToken)
+    )
+      return false;
+    if (this.terrainIonAssetId === assetId) return true;
+    this.terrainIonAssetId = assetId;
+    this.terrainRequest++;
+    if (this.terrainEnabled) await this.enableWorldTerrain();
+    return true;
   }
 
   getTerrainExaggeration(): number {
