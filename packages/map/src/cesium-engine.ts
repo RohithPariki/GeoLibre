@@ -1304,7 +1304,7 @@ export class CesiumEngine implements MapEngine {
             ))
           : this.terrainIonAssetId !== null
             ? await this.loadIonTerrain(this.terrainIonAssetId)
-          : await this.Cesium.createWorldTerrainAsync();
+            : await this.Cesium.createWorldTerrainAsync();
       const viewer = this.live();
       // The toggle may have been reversed, or the viewer destroyed, while the
       // provider loaded; applying it then would resurrect terrain the user just
@@ -1332,10 +1332,7 @@ export class CesiumEngine implements MapEngine {
   }
 
   async setTerrainIonAssetId(assetId: number | null): Promise<boolean> {
-    if (
-      assetId !== null &&
-      (!Number.isSafeInteger(assetId) || assetId <= 0 || !this.ionToken)
-    )
+    if (assetId !== null && (!Number.isSafeInteger(assetId) || assetId <= 0 || !this.ionToken))
       return false;
     if (this.terrainIonAssetId === assetId) return true;
     this.terrainIonAssetId = assetId;

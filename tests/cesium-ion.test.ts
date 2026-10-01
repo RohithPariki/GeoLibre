@@ -391,4 +391,3 @@ describe("Cesium Ion terrain asset project persistence", () => {
     assert.equal(parsed.preferences.map.terrainIonAssetId, undefined);
   });
 });
-

@@ -1366,9 +1366,8 @@ function normalizeProjectPreferences(preferences: unknown): ProjectPreferences {
         DEFAULT_PROJECT_PREFERENCES.map.terrainEnabled,
       ),
       terrainIonAssetId:
-        parseCesiumIonAssetId(
-          (map as Partial<ProjectPreferences["map"]>).terrainIonAssetId,
-        ) ?? undefined,
+        parseCesiumIonAssetId((map as Partial<ProjectPreferences["map"]>).terrainIonAssetId) ??
+        undefined,
       // Kept as a free string here; the app coerces an unknown notation to
       // decimal degrees when it renders, so a hand-edited project cannot break
       // the readout.

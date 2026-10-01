@@ -427,8 +427,9 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                     type="button"
                     variant="ghost"
                     disabled={
-                      !!sourceLoading || !mapControllerRef.current?.hasCustomTerrainSource()
-                        && useAppStore.getState().preferences.map.terrainIonAssetId === undefined
+                      !!sourceLoading ||
+                      (!mapControllerRef.current?.hasCustomTerrainSource() &&
+                        useAppStore.getState().preferences.map.terrainIonAssetId === undefined)
                     }
                     onClick={() => void restoreDefaultSource()}
                   >
@@ -442,7 +443,9 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                       {t("terrainSettings.ionAssetDescription")}
                     </p>
                     {!ionToken ? (
-                      <p className="text-amber-600 text-xs">{t("terrainSettings.ionTokenMissing")}</p>
+                      <p className="text-amber-600 text-xs">
+                        {t("terrainSettings.ionTokenMissing")}
+                      </p>
                     ) : null}
                     <div className="flex gap-2">
                       <Input
