@@ -1291,7 +1291,7 @@ export class CesiumEngine implements MapEngine {
    * returns `boolean`), so the mount path calls this and the interface delegates
    * to it fire-and-forget.
    */
-  async enableWorldTerrain(): Promise<void> {
+  async enableWorldTerrain(): Promise<boolean> {
     this.terrainEnabled = true;
     const request = ++this.terrainRequest;
     try {
@@ -1311,10 +1311,13 @@ export class CesiumEngine implements MapEngine {
       // turned off.
       if (viewer && this.terrainEnabled && request === this.terrainRequest) {
         viewer.terrainProvider = provider;
+        return true;
       }
+      return false;
     } catch {
       // Allow a subsequent enable to retry, without resetting a newer request.
       if (request === this.terrainRequest) this.terrainEnabled = false;
+      return false;
     }
   }
 
@@ -1335,9 +1338,18 @@ export class CesiumEngine implements MapEngine {
     if (assetId !== null && (!Number.isSafeInteger(assetId) || assetId <= 0 || !this.ionToken))
       return false;
     if (this.terrainIonAssetId === assetId) return true;
+    const previous = this.terrainIonAssetId;
     this.terrainIonAssetId = assetId;
-    this.terrainRequest++;
-    if (this.terrainEnabled) await this.enableWorldTerrain();
+    if (!this.terrainEnabled) {
+      this.terrainRequest++;
+      return true;
+    }
+    const applied = await this.enableWorldTerrain();
+    if (!applied) {
+      this.terrainIonAssetId = previous;
+      await this.enableWorldTerrain();
+      return false;
+    }
     return true;
   }
 
@@ -1362,6 +1374,10 @@ export class CesiumEngine implements MapEngine {
   async setTerrainCogSource(source: string | Blob | null, band = 1): Promise<boolean> {
     if (!this.live()) return false;
     const normalized = typeof source === "string" ? source.trim() || null : source;
+    if (this.cogTerrain === null && normalized === null) {
+      this.cogTerrainUrl = null;
+      return true;
+    }
     const request = ++this.cogTerrainRequest;
     let registration: CogDemSourceRegistration | null;
     try {

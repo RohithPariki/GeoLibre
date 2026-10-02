@@ -196,21 +196,23 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
     setSourceLoading(action);
     setSourceError(null);
     try {
+      if (isCesiumPrimary && controller.setTerrainIonAssetId) {
+        if (controller.getTerrainIonAssetId?.() !== null) {
+          const clearIon = await controller.setTerrainIonAssetId(null);
+          if (!clearIon || !isCurrent()) return;
+        }
+        const preferences = useAppStore.getState().preferences;
+        if (preferences.map.terrainIonAssetId !== undefined) {
+          useAppStore.getState().setPreferences({
+            ...preferences,
+            map: { ...preferences.map, terrainIonAssetId: undefined },
+          });
+        }
+        setIonAssetId("");
+      }
       // False means another caller's newer selection won, so this request must
       // not clear the field or otherwise report itself as the applied source.
       if (!(await controller.setTerrainCogSource(source)) || !isCurrent()) return;
-      const clearIon = controller.setTerrainIonAssetId
-        ? await controller.setTerrainIonAssetId(null)
-        : true;
-      if (!clearIon || !isCurrent()) return;
-      const preferences = useAppStore.getState().preferences;
-      if (preferences.map.terrainIonAssetId !== undefined) {
-        useAppStore.getState().setPreferences({
-          ...preferences,
-          map: { ...preferences.map, terrainIonAssetId: undefined },
-        });
-      }
-      setIonAssetId("");
       onApplied?.();
     } catch (error) {
       if (isCurrent()) setSourceError(translateSourceError(error));
@@ -268,7 +270,9 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
     setSourceLoading("ion");
     setSourceError(null);
     try {
-      if (!(await controller.setTerrainCogSource(null)) || !isCurrent()) return;
+      if (controller.hasCustomTerrainSource()) {
+        if (!(await controller.setTerrainCogSource(null)) || !isCurrent()) return;
+      }
       if (!(await controller.setTerrainIonAssetId(assetId)) || !isCurrent()) {
         throw new Error(t("terrainSettings.ionError"));
       }
@@ -280,7 +284,10 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
       setTerrainUrl("");
       setRasterLayerId("");
     } catch (error) {
-      if (isCurrent()) setSourceError(translateSourceError(error));
+      if (isCurrent()) {
+        const detail = error instanceof Error ? error.message.trim() : "";
+        setSourceError(detail || t("terrainSettings.ionError"));
+      }
     } finally {
       if (isCurrent()) setSourceLoading(null);
     }
@@ -463,7 +470,7 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                         onClick={() => void applyIonTerrainSource()}
                       >
                         {sourceLoading === "ion"
-                          ? t("terrainSettings.sourceLoading")
+                          ? t("terrainSettings.ionLoading")
                           : t("terrainSettings.useIonTerrain")}
                       </Button>
                     </div>

@@ -1982,6 +1982,7 @@
     "ionAssetDescription": "Use a quantized-mesh terrain asset from Cesium Ion on the globe. The asset must be available to the configured Ion account.",
     "ionTokenMissing": "Add a Cesium Ion token in Settings to use Ion terrain.",
     "useIonTerrain": "Use Ion terrain",
+    "ionLoading": "Loading Ion terrain…",
     "ionErrorAssetId": "Enter a positive Cesium Ion terrain asset id.",
     "ionErrorToken": "A Cesium Ion token is required for Ion terrain.",
     "ionError": "Could not apply the Cesium Ion terrain asset.",
