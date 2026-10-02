@@ -21,7 +21,8 @@ export function terrariumHeightmap(
   for (let row = 0; row < GRID; row++) {
     for (let col = 0; col < GRID; col++) {
       const x = Math.min(Math.round(col * step), tileSize);
-      const y = clampSouth && row === GRID - 1 ? tileSize - 1 : Math.min(Math.round(row * step), tileSize);
+      const y =
+        clampSouth && row === GRID - 1 ? tileSize - 1 : Math.min(Math.round(row * step), tileSize);
       const tile = tiles[(y === tileSize ? 2 : 0) + (x === tileSize ? 1 : 0)];
       const offset = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
       heights[row * GRID + col] = tile[offset + 3]

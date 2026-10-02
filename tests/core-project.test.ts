@@ -328,7 +328,6 @@ describe("project parsing", () => {
       parseProject(JSON.stringify(invalid)).preferences.map.terrainProvider,
       "mapterhorn",
     );
-
   });
 
   it("round-trips the scale unit preference and defaults unknown values to metric", () => {

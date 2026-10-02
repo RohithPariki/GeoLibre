@@ -62,9 +62,7 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
   // quietly; the exaggeration slider above still applies.
   const { terrainSource: terrainSourceSupported } = useMapCapabilities(mapControllerRef);
   const [open, setOpen] = useState(false);
-  const terrainProvider = useAppStore(
-    (s) => s.preferences.map.terrainProvider ?? "mapterhorn",
-  );
+  const terrainProvider = useAppStore((s) => s.preferences.map.terrainProvider ?? "mapterhorn");
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [terrainUrl, setTerrainUrl] = useState("");
   const [rasterLayerId, setRasterLayerId] = useState("");
@@ -284,16 +282,11 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
             {terrainSourceSupported && (
               <>
                 <div className="space-y-1">
-                  <Label htmlFor="terrain-provider">
-                    {t("terrainSettings.providerLabel")}
-                  </Label>
+                  <Label htmlFor="terrain-provider">{t("terrainSettings.providerLabel")}</Label>
                   <Select
                     id="terrain-provider"
                     value={terrainProvider}
-                    disabled={
-                      !!sourceLoading ||
-                      !mapControllerRef.current
-                    }
+                    disabled={!!sourceLoading || !mapControllerRef.current}
                     onChange={(event) => {
                       const nextProvider = event.target.value as GlobalTerrainProvider;
                       const store = useAppStore.getState();
@@ -305,7 +298,9 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                     }}
                   >
                     <option value="mapterhorn">{t("terrainSettings.providerMapterhorn")}</option>
-                    <option value="aws-terrarium">{t("terrainSettings.providerAwsTerrarium")}</option>
+                    <option value="aws-terrarium">
+                      {t("terrainSettings.providerAwsTerrarium")}
+                    </option>
                   </Select>
                   <p className="text-muted-foreground text-xs">
                     {t("terrainSettings.providerDescription")}
