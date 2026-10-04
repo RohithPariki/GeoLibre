@@ -64,6 +64,7 @@ import { DEFAULT_LAYER_GROUP_OPACITY, normalizeGroupContiguity } from "./layer-g
 import { normalizeStyleLibraryEntries } from "./style-library";
 import { normalizeLayerCapabilities } from "./capabilities";
 import { validateMapExpression } from "./expressions";
+import { normalizeLayerDescriptiveMetadata } from "./layer-descriptive-metadata";
 import {
   createDefaultPrintLayout,
   isDefaultPrintLayout,
@@ -1651,8 +1652,16 @@ function normalizeLayer(layer: GeoLibreLayer): GeoLibreLayer {
   // that normalizes to nothing (`{}`, an array, a string, an object with no
   // boolean flag) must not survive into the normalized layer and be written
   // back out on the next save.
-  const { capabilities: rawCapabilities, filterExpression: rawFilterExpression, ...rest } = layer;
+  const {
+    capabilities: rawCapabilities,
+    filterExpression: rawFilterExpression,
+    descriptiveMetadata: rawDescriptiveMetadata,
+    ...rest
+  } = layer;
   const capabilities = normalizeLayerCapabilities(rawCapabilities);
+  // Same split for the user-authored catalog metadata: a block that cleans to
+  // nothing (every field blank) is dropped rather than round-tripped.
+  const descriptiveMetadata = normalizeLayerDescriptiveMetadata(rawDescriptiveMetadata);
   const filterExpression =
     Array.isArray(rawFilterExpression) &&
     rawFilterExpression.length > 0 &&
@@ -1668,6 +1677,7 @@ function normalizeLayer(layer: GeoLibreLayer): GeoLibreLayer {
     source: layer.source ?? {},
     ...(capabilities ? { capabilities } : {}),
     ...(filterExpression ? { filterExpression } : {}),
+    ...(descriptiveMetadata ? { descriptiveMetadata } : {}),
   };
 }
 
@@ -1956,6 +1966,14 @@ function prepareLayerForSave(layer: GeoLibreLayer): GeoLibreLayer {
   if (layer.embedFilter !== undefined) {
     const { embedFilter: _embedFilter, ...rest } = layer;
     layer = rest;
+  }
+  // Catalog metadata is written only when it says something: a record a
+  // plugin (or an older build) left blank, or with blank fields, is cleaned or
+  // dropped so an empty `descriptiveMetadata` block never reaches the file.
+  if (layer.descriptiveMetadata !== undefined) {
+    const { descriptiveMetadata: rawDescriptiveMetadata, ...rest } = layer;
+    const descriptiveMetadata = normalizeLayerDescriptiveMetadata(rawDescriptiveMetadata);
+    layer = descriptiveMetadata ? { ...rest, descriptiveMetadata } : rest;
   }
 
   // Some live plugin layers publish a large in-memory row model solely for
