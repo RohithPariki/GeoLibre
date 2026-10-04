@@ -83,6 +83,9 @@ function nodeIcon(node: BrowserNode, isExpanded: boolean): LucideIcon {
       return File;
     case "library-layer":
       return Layers;
+    case "arcgis-sublayer":
+      // A MapServer group layer expands like a folder; a leaf is a layer.
+      return node.children ? (isExpanded ? FolderOpen : Folder) : Layers;
     default:
       return isExpanded ? FolderOpen : Folder;
   }
@@ -287,9 +290,9 @@ export function BrowserTreeNode({
               <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             )}
             <span className="truncate">{node.label}</span>
-            {node.builtin ? (
+            {node.deployment || node.builtin ? (
               <span className="ms-1 shrink-0 rounded border px-1 text-[10px] uppercase leading-tight text-muted-foreground">
-                {t("browser.builtinBadge")}
+                {node.deployment ? t("browser.configBadge") : t("browser.builtinBadge")}
               </span>
             ) : null}
             {node.needsLocalFile ? (

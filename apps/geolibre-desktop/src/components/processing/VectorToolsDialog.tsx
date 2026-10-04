@@ -1,9 +1,10 @@
-import { useAppStore } from "@geolibre/core";
+import { shouldZoomToNewLayers, useAppStore, useLayersWhen } from "@geolibre/core";
 import { detectGeometryProfile, type MapEngine } from "@geolibre/map";
 import {
   VECTOR_TOOLS,
   getVectorTool,
   resolveVectorRerun,
+  runAlgorithmInBackground,
   runVectorTool,
   fetchVectorStatus,
   maxResolutionForDggs,
@@ -67,7 +68,9 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
   const { t } = useTranslation();
   const openTool = useAppStore((s) => s.ui.vectorToolOpen);
   const setVectorToolOpen = useAppStore((s) => s.setVectorToolOpen);
-  const layers = useAppStore((s) => s.layers);
+  // Layers are only read while the dialog is open; closed, it stays mounted (to
+  // keep its form, log and in-flight run) without re-rendering on layer edits.
+  const layers = useLayersWhen(openTool !== null);
   const addGeoJsonLayer = useAppStore((s) => s.addGeoJsonLayer);
   const rerun = useAppStore((s) => s.ui.processingRerun);
   const setProcessingRerun = useAppStore((s) => s.setProcessingRerun);
@@ -123,7 +126,9 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
     if (!getVectorTool(resolved.toolId)) {
       setLog((prev) => [
         ...prev,
-        `Error: ${t("processing.history.toolUnavailable", { toolId: rerun.toolId })}`,
+        `Error: ${t("processing.history.toolUnavailable", {
+          toolId: rerun.toolId,
+        })}`,
       ]);
       setProcessingRerun(null);
       return;
@@ -157,16 +162,15 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
       params.north !== undefined
     )
       return;
-    const map = mapControllerRef.current?.getMap();
-    if (!map) return;
-    const b = map.getBounds();
+    const b = mapControllerRef.current?.getViewBounds();
+    if (!b) return;
     const round = (n: number) => Number(n.toFixed(6));
     setParams((prev) => ({
       ...prev,
-      west: round(b.getWest()),
-      south: round(b.getSouth()),
-      east: round(b.getEast()),
-      north: round(b.getNorth()),
+      west: round(b[0]),
+      south: round(b[1]),
+      east: round(b[2]),
+      north: round(b[3]),
     }));
     // params.west/south/east/north are read as a one-time guard; re-running only
     // when the source changes is intentional.
@@ -293,7 +297,7 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
       const layerId = addGeoJsonLayer(name, fc);
       runTrackerRef.current?.addOutputLayer(name);
       const layer = useAppStore.getState().layers.find((item) => item.id === layerId);
-      if (layer) mapControllerRef.current?.fitLayer(layer);
+      if (layer && shouldZoomToNewLayers()) mapControllerRef.current?.fitLayer(layer);
     },
     [addGeoJsonLayer, appendLog, mapControllerRef],
   );
@@ -333,7 +337,10 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
       for (const message of result.messages) appendLog(message);
       // The engine response is untyped JSON; verify it is a FeatureCollection
       // before handing it to the map.
-      const remoteResult = result.geojson as { type?: string; features?: unknown } | null;
+      const remoteResult = result.geojson as {
+        type?: string;
+        features?: unknown;
+      } | null;
       if (remoteResult?.type === "FeatureCollection" && Array.isArray(remoteResult.features)) {
         addResultLayer(tool.name, remoteResult as unknown as FeatureCollection);
         return null;
@@ -397,14 +404,11 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
           fitBounds: (bounds) => mapControllerRef.current?.fitBounds(bounds),
           addResultLayer,
           duckdb,
-          viewportBounds: () => {
-            const map = mapControllerRef.current?.getMap();
-            if (!map) return null;
-            const b = map.getBounds();
-            return [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
-          },
+          viewportBounds: () => mapControllerRef.current?.getViewBounds() ?? null,
         };
-        await tool.run(ctx);
+        // Turf tools run on a worker so a large layer does not freeze the UI
+        // (#2858); DuckDB-backed tools still run here.
+        await runAlgorithmInBackground(tool, ctx);
       }
       // A logged "Error: ..." line marks a soft failure (the client tools
       // bail out without throwing); don't record those as successes.
@@ -515,7 +519,9 @@ export function VectorToolsDialog({ mapControllerRef }: VectorToolsDialogProps):
                         return {
                           ...localized,
                           max,
-                          label: t("processing.vectorTools.resolutionRange", { max }),
+                          label: t("processing.vectorTools.resolutionRange", {
+                            max,
+                          }),
                         };
                       })()
                     : localized;

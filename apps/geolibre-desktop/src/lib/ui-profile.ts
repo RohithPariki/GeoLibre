@@ -12,7 +12,7 @@ import type { ExperienceLevel, UiProfileSettings } from "../hooks/useDesktopSett
 export type ComplexityTier = "basic" | "intermediate" | "advanced";
 
 /**
- * Plugins toggled from other menus (Effects/Directions/Reverse Geocode via the
+ * Plugins toggled from other menus (Effects/Directions/Reverse Geocode/Layer Control via the
  * Controls menu, deck.gl viz via Add Data), so they are excluded from the
  * Plugins menu and from the UI-profile plugin lists. Keep in sync with
  * `PluginsMenu`'s skip list. Literal ids (mirroring `EFFECTS_PLUGIN_ID` etc.
@@ -24,6 +24,7 @@ export const MENU_MANAGED_PLUGIN_IDS = new Set<string>([
   "maplibre-gl-directions", // DIRECTIONS_PLUGIN_ID
   "maplibre-reverse-geocode", // REVERSE_GEOCODE_PLUGIN_ID
   "maplibre-deckgl-viz", // DECK_VIZ_PLUGIN_ID
+  "maplibre-layer-control", // LAYER_CONTROL_PLUGIN_ID
 ]);
 
 /** The plugin ids that participate in the UI profile (excludes the menu-managed
@@ -83,6 +84,12 @@ export const DATA_SOURCE_CATALOG: readonly DataSourceCatalogEntry[] = [
   { id: "photos", section: "files", labelKey: "toolbar.layerType.photos", tier: "intermediate" },
   { id: "gpx", section: "files", labelKey: "toolbar.layerType.gpx", tier: "intermediate" },
   {
+    id: "landxml",
+    section: "files",
+    labelKey: "toolbar.layerType.landxml",
+    tier: "advanced",
+  },
+  {
     id: "polyline",
     section: "files",
     labelKey: "toolbar.layerType.polyline",
@@ -92,6 +99,7 @@ export const DATA_SOURCE_CATALOG: readonly DataSourceCatalogEntry[] = [
   { id: "osm-pbf", section: "files", labelKey: "toolbar.item.osmPbfLayer", tier: "advanced" },
   // Web services
   { id: "xyz", section: "webServices", labelKey: "toolbar.layerType.xyz", tier: "basic" },
+  { id: "wcs", section: "webServices", labelKey: "toolbar.layerType.wcs", tier: "basic" },
   { id: "wms", section: "webServices", labelKey: "toolbar.layerType.wms", tier: "basic" },
   { id: "csw", section: "webServices", labelKey: "toolbar.layerType.csw", tier: "intermediate" },
   { id: "wfs", section: "webServices", labelKey: "toolbar.layerType.wfs", tier: "intermediate" },
@@ -209,13 +217,20 @@ export const PLUGIN_TIERS: Record<string, ComplexityTier> = {
   "maplibre-gl-enviroatlas": "advanced",
   "maplibre-gl-national-map": "advanced",
   "maplibre-gl-arcgis-hub": "advanced",
+  "geolibre-tennessee-gis": "advanced",
+  "geolibre-us-federal-gis": "advanced",
+  "geolibre-us-state-gis": "advanced",
+  "geolibre-us-local-gis": "advanced",
   "maplibre-gl-source-coop": "advanced",
+  "geolibre-s3-browser": "advanced",
   "maplibre-gl-huggingface": "advanced",
   "maplibre-gl-vantor": "advanced",
+  "maplibre-gl-usgs-dem": "advanced",
   "maplibre-gl-esri-wayback": "advanced",
   "maplibre-gl-geoagent": "advanced",
   "maplibre-samgeo": "advanced",
   "maplibre-gl-usgs-lidar": "advanced",
+  "geolibre-point-cloud-annotation": "advanced",
   "maplibre-gl-overture-maps": "advanced",
   "maplibre-gl-time-slider": "advanced",
   "maplibre-gl-components": "advanced",
@@ -329,6 +344,12 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     tier: "intermediate",
   },
   {
+    id: "project.exportLayerStyles",
+    menuId: "project",
+    labelKey: "toolbar.item.exportLayerStylesEllipsis",
+    tier: "intermediate",
+  },
+  {
     id: "project.collaborate",
     menuId: "project",
     labelKey: "toolbar.item.collaborateEllipsis",
@@ -417,6 +438,12 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     id: "view.splitView",
     menuId: "view",
     labelKey: "toolbar.item.splitView",
+    tier: "intermediate",
+  },
+  {
+    id: "view.colorVision",
+    menuId: "view",
+    labelKey: "toolbar.item.colorVisionPreview",
     tier: "intermediate",
   },
   {
@@ -575,6 +602,12 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     tier: "advanced",
   },
   // Controls — built-in map controls
+  {
+    id: "controls.layerControl",
+    menuId: "controls",
+    labelKey: "toolbar.plugin.maplibre-layer-control",
+    tier: "basic",
+  },
   {
     id: "controls.mapControl.navigation",
     menuId: "controls",
@@ -783,6 +816,13 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     menuId: "settings",
     labelKey: "settings.menu.environmentVariables",
     tier: "intermediate",
+  },
+  // S3 connections; advanced like the S3 Browser that uses them.
+  {
+    id: "settings.cloudStorage",
+    menuId: "settings",
+    labelKey: "settings.menu.cloudStorage",
+    tier: "advanced",
   },
   {
     id: "settings.managePlugins",

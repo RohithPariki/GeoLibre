@@ -64,6 +64,8 @@ export interface ArcgisPoint {
   y: number;
   longitude: number;
   latitude: number;
+  /** Height of the point; a SceneView's `toMap` gives the ground's here. */
+  z?: number;
   spatialReference: ArcgisSpatialReference;
 }
 
@@ -90,6 +92,8 @@ export interface ArcgisGraphic {
   geometry: ArcgisGeometryJson | ArcgisPoint | ArcgisExtent | null;
   layer: ArcgisLayer | null;
   symbol?: unknown;
+  /** Whether the graphic is a cluster or bin summarizing several features. */
+  isAggregate?: boolean;
 }
 
 export interface ArcgisCollection<T> {
@@ -115,6 +119,14 @@ export interface ArcgisLayer {
   type: string;
   opacity: number;
   visible: boolean;
+  listMode?: "show" | "hide" | "hide-children";
+  /** CSS filter functions applied to the layer (a `MapView` only; a `SceneView` ignores it). */
+  effect?: string | null;
+  /**
+   * How the layer composites with the layers beneath it: every layer on a
+   * `MapView`, tiled and imagery layers only in a `SceneView`.
+   */
+  blendMode?: string;
   minScale: number;
   maxScale: number;
   loaded: boolean;
@@ -132,6 +144,10 @@ export interface ArcgisLayer {
   labelingInfo?: unknown[];
   /** `WebTileLayer` only. */
   urlTemplate?: string;
+  /** `FeatureLayer` only: query the service. */
+  queryFeatures?(
+    query: Record<string, unknown>,
+  ): Promise<{ features: ArcgisGraphic[]; exceededTransferLimit?: boolean }>;
 }
 
 export interface ArcgisBasemap {
@@ -185,6 +201,8 @@ export interface ArcgisViewEvent {
   /** `drag` events carry the phase; the rest do not. */
   action?: "start" | "update" | "end";
   origin?: ArcgisScreenPoint;
+  /** `mouse-wheel` events: positive scrolls down (zooms out). */
+  deltaY?: number;
 }
 
 export interface ArcgisGoToTarget {
@@ -293,6 +311,7 @@ interface ArcgisViewBase {
       | "pointer-move"
       | "pointer-leave"
       | "pointer-down"
+      | "pointer-up"
       | "mouse-wheel"
       | "key-down"
       | "layerview-create-error"
@@ -318,6 +337,8 @@ export interface ArcgisCamera {
   tilt: number;
   /** The camera's location; `z` is its height in metres. */
   position: ArcgisPoint & { z?: number };
+  /** The diagonal field of view in degrees. */
+  fov?: number;
 }
 
 export interface ArcgisSceneView extends ArcgisViewBase {
@@ -327,6 +348,8 @@ export interface ArcgisSceneView extends ArcgisViewBase {
   camera: ArcgisCamera | null;
   constraints: {
     tilt?: { max?: number; mode?: "auto" | "manual" };
+    /** Camera height limits in metres; a global scene only. */
+    altitude?: { min?: number; max?: number } | null;
   };
   environment: {
     background?: { type: "color"; color: unknown } | null;
@@ -372,14 +395,23 @@ export interface ArcgisConfig {
 export interface ArcgisWidget {
   view?: ArcgisView | null;
   destroy(): void;
-  /** `ScaleBar`. */
-  unit?: string;
   /** What to hand `view.ui.add`; the widget itself when absent. */
   uiComponent?: unknown;
 }
 
 /** Constructor of an autocasting SDK class: plain props in, an instance out. */
 export type ArcgisClass<T, P = Record<string, unknown>> = new (properties?: P) => T;
+
+/** Custom raster tile layer provided by the SDK. */
+export interface ArcgisRasterLayer extends ArcgisLayer {
+  addResolvingPromise(promise: Promise<unknown>): void;
+  fetchTile(
+    level: number,
+    row: number,
+    column: number,
+    options?: { signal?: AbortSignal },
+  ): Promise<HTMLCanvasElement>;
+}
 
 /**
  * The SDK surface the engine drives, loaded from the CDN by
@@ -397,6 +429,9 @@ export interface ArcgisSdk {
   layers: {
     GeoJSONLayer: ArcgisClass<ArcgisLayer>;
     GraphicsLayer: ArcgisClass<ArcgisLayer>;
+    BaseTileLayer: ArcgisClass<ArcgisRasterLayer> & {
+      createSubclass(definition: Record<string, unknown>): ArcgisClass<ArcgisRasterLayer>;
+    };
     WebTileLayer: ArcgisClass<ArcgisLayer>;
     WMSLayer: ArcgisClass<ArcgisLayer>;
     WMTSLayer: ArcgisClass<ArcgisLayer>;
@@ -416,9 +451,10 @@ export interface ArcgisSdk {
   widgets: {
     Zoom: ArcgisClass<ArcgisWidget>;
     Compass: ArcgisClass<ArcgisWidget>;
-    ScaleBar: ArcgisClass<ArcgisWidget>;
     Fullscreen: ArcgisClass<ArcgisWidget>;
     Locate: ArcgisClass<ArcgisWidget>;
+    LayerList: ArcgisClass<ArcgisWidget>;
+    Expand: ArcgisClass<ArcgisWidget>;
   };
   reactiveUtils: ArcgisReactiveUtils;
   webMercatorUtils: ArcgisWebMercatorUtils;
@@ -443,6 +479,7 @@ const SDK_MODULES = {
   Extent: "geometry/Extent",
   GeoJSONLayer: "layers/GeoJSONLayer",
   GraphicsLayer: "layers/GraphicsLayer",
+  BaseTileLayer: "layers/BaseTileLayer",
   WebTileLayer: "layers/WebTileLayer",
   WMSLayer: "layers/WMSLayer",
   WMTSLayer: "layers/WMTSLayer",
@@ -458,9 +495,10 @@ const SDK_MODULES = {
   ControlPointsGeoreference: "layers/support/ControlPointsGeoreference",
   Zoom: "widgets/Zoom",
   Compass: "widgets/Compass",
-  ScaleBar: "widgets/ScaleBar",
   Fullscreen: "widgets/Fullscreen",
   Locate: "widgets/Locate",
+  LayerList: "widgets/LayerList",
+  Expand: "widgets/Expand",
   reactiveUtils: "core/reactiveUtils",
   webMercatorUtils: "geometry/support/webMercatorUtils",
 } as const;
@@ -499,6 +537,7 @@ export function assembleArcgisSdk(modules: Record<ModuleKey, Record<string, unkn
     layers: {
       GeoJSONLayer: member("GeoJSONLayer"),
       GraphicsLayer: member("GraphicsLayer"),
+      BaseTileLayer: member("BaseTileLayer"),
       WebTileLayer: member("WebTileLayer"),
       WMSLayer: member("WMSLayer"),
       WMTSLayer: member("WMTSLayer"),
@@ -518,9 +557,10 @@ export function assembleArcgisSdk(modules: Record<ModuleKey, Record<string, unkn
     widgets: {
       Zoom: member("Zoom"),
       Compass: member("Compass"),
-      ScaleBar: member("ScaleBar"),
       Fullscreen: member("Fullscreen"),
       Locate: member("Locate"),
+      LayerList: member("LayerList"),
+      Expand: member("Expand"),
     },
     reactiveUtils: member("reactiveUtils"),
     webMercatorUtils: member("webMercatorUtils"),

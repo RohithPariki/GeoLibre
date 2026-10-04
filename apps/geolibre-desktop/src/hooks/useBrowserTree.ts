@@ -6,7 +6,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  BUILTIN_SERVICES,
+  listAllServices,
   readUserServices,
   type ServiceLibraryEntry,
 } from "../components/layout/add-data/service-library";
@@ -38,8 +38,8 @@ export interface BrowserTreeState {
 
 /**
  * Assembles the Browser panel's tree from live inputs: the saved-service
- * library (built-in presets + the user's localStorage entries), the store's
- * recent-projects list, and the store's Layer Library (My Data).
+ * library (built-in presets, deployment services, and the user's localStorage
+ * entries), the store's recent-projects list, and the store's Layer Library (My Data).
  *
  * The saved-service library is not a reactive store, so it is read when the
  * panel mounts (the panel is conditionally rendered, so it re-mounts each time
@@ -64,7 +64,8 @@ export function useBrowserTree(): BrowserTreeState {
   const favoritesLabel = t("browser.favorites");
   const myDataLabel = t("browser.myData");
 
-  // Saved connections live in localStorage (no reactive store), so re-read them
+  // Saved connections are not a reactive store (localStorage on the web, an
+  // in-memory cache over the OS credential store on desktop), so re-read them
   // when one is added/removed — otherwise a connection saved from the Add Data
   // dialog wouldn't appear until the (still-mounted) panel is reopened. The
   // pinned folders are the same story (see the Files section below).
@@ -86,7 +87,7 @@ export function useBrowserTree(): BrowserTreeState {
   }, []);
 
   return useMemo(() => {
-    const services = [...BUILTIN_SERVICES, ...readUserServices()];
+    const services = listAllServices(readUserServices());
     const byId = new Map(services.map((entry) => [entry.id, entry]));
     // Shown on every platform for discovery; the PostgreSQL add flow itself
     // reports when it needs GeoLibre Desktop (Martin has no mobile build).

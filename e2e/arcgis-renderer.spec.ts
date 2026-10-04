@@ -48,11 +48,11 @@ test("ArcGIS renderer draws the project basemap, a dropped GeoJSON layer and ide
   });
   await expect(page.locator(".esri-ui .esri-compass")).toBeVisible();
   // New projects use the globe projection, which the SDK draws as a 3D
-  // SceneView. Its toggle switches to a flat MapView, the only view the SDK's
-  // scale bar measures.
+  // SceneView; the scale bar measures at its centre. Its toggle switches to
+  // a flat MapView.
   const globe = page.locator(".geolibre-arcgis-globe button");
   await expect(globe).toHaveClass(/maplibregl-ctrl-globe-enabled/);
-  await expect(page.locator(".esri-ui .esri-scale-bar")).toHaveCount(0);
+  await expect(page.locator(".esri-ui .maplibregl-ctrl-scale")).toBeVisible({ timeout: 60_000 });
   await globe.click();
   // A view swap keeps the outgoing canvas until its replacement draws.
   await expect(globe).toHaveCount(1, { timeout: 60_000 });
@@ -62,12 +62,54 @@ test("ArcGIS renderer draws the project basemap, a dropped GeoJSON layer and ide
       timeout: 60_000,
     },
   );
-  await expect(page.locator(".esri-ui .esri-scale-bar")).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".esri-ui .maplibregl-ctrl-scale")).toHaveText(/\d+ (k?m)$/, {
+    timeout: 60_000,
+  });
+
+  // Esri choices persist separately from the shared basemap, with exactly one
+  // selected choice; choosing a shared style clears the native override.
+  await page.getByRole("button", { name: "Change background", exact: true }).click();
+  await expect(page.getByRole("button", { name: "ArcGIS Streets", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.getByRole("button", { name: "ArcGIS Imagery", exact: true }).click();
+  await page.getByRole("button", { name: "Change background", exact: true }).click();
+  await expect(page.getByRole("button", { name: "ArcGIS Imagery", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("dialog").locator('button[aria-pressed="true"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Liberty", exact: true }).click();
+  await page.getByRole("button", { name: "Change background", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Liberty", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(page.getByRole("button", { name: "ArcGIS Imagery", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await page.getByRole("button", { name: "ArcGIS Streets", exact: true }).click();
 
   // Sources without an SDK adapter are greyed out while ArcGIS is primary.
   await page.getByRole("button", { name: "Add Data", exact: true }).click();
-  for (const name of ["PMTiles Layer", "Deck.gl Layer", "MBTiles Layer"]) {
+  for (const name of ["Gaussian Splatting", "Cesium Ion Asset", "CZML Dynamic 3D Scene"]) {
     await expect(page.getByRole("menuitem", { name, exact: true })).toBeDisabled();
+  }
+  for (const name of [
+    "Vector Layer",
+    "Raster Layer",
+    "PMTiles Layer",
+    "Deck.gl Layer",
+    "MBTiles Layer",
+    "Zarr Layer",
+    "NetCDF / HDF",
+    "LiDAR Layer",
+    "DuckDB Layer",
+    "3D Tiles Layer",
+  ]) {
+    await expect(page.getByRole("menuitem", { name, exact: true })).toBeEnabled();
   }
   await expect(page.getByRole("menuitem", { name: "XYZ Layer", exact: true })).toBeEnabled();
   await page.keyboard.press("Escape");
@@ -87,6 +129,30 @@ test("ArcGIS renderer draws the project basemap, a dropped GeoJSON layer and ide
   }, geojson);
   await expect(layerRow(page, "smoke")).toBeVisible({ timeout: 30_000 });
   await expect(layerRow(page, "smoke")).not.toContainText("No ArcGIS");
+  await page
+    .getByTestId("arcgis-canvas")
+    .getByRole("button", { name: "Expand", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Hide smoke", exact: true }).click();
+  await expect(
+    layerRow(page, "smoke").getByRole("button", { name: "Show layer", exact: true }),
+  ).toBeVisible();
+  await layerRow(page, "smoke").getByRole("button", { name: "Show layer", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Hide smoke", exact: true })).toBeVisible();
+  await layerRow(page, "smoke")
+    .getByRole("button", { name: "Identify features", exact: true })
+    .click();
+  await expect(page.locator("[data-testid=arcgis-canvas] .esri-view-surface")).toHaveCSS(
+    "cursor",
+    "crosshair",
+  );
+  await layerRow(page, "smoke")
+    .getByRole("button", { name: "Deactivate identify", exact: true })
+    .click();
+  await expect(page.locator("[data-testid=arcgis-canvas] .esri-view-surface")).not.toHaveCSS(
+    "cursor",
+    "crosshair",
+  );
   await expect(page.locator("[data-testid=arcgis-canvas] [role=alert]")).toHaveCount(0);
 });
 

@@ -7,18 +7,23 @@ Capabilities are coarse on purpose. Each one names a whole class of action
 ("may add data at all"), not an individual menu item, so a locked-down
 deployment cannot be defeated by one item somebody forgot to list.
 
-!!! warning "This is a client-side gate, not an authorization boundary"
+!!! warning "Client gates are not a general authorization boundary"
     Withholding a capability removes the affordance: the menu is not rendered,
     the command palette does not list or run the action, the keyboard shortcut
-    does nothing, and the embed API refuses the command. It does **not** stop
-    someone with browser devtools, and it does not restrict the server.
+    does nothing, and the embed API refuses the command. These client gates do
+    **not** stop someone with browser devtools.
 
-    The sidecar (`/sidecar`) and AI proxy (`/ai`) endpoints answer the same
-    requests whatever capabilities are configured. For a deployment that must
-    hold up against its own users, keep the server-side protections in
-    [Self-Hosting](self-hosting.md) — Basic Auth or a real auth proxy,
-    `GEOLIBRE_CONVERSION_ROOTS`, `GEOLIBRE_DISABLE_SIDECAR` — and treat
-    capabilities as the interface half of the story.
+    The Docker container also enforces its final deployment policy at nginx:
+    selected `/sidecar/` route families require `processing:run` or `data:add`,
+    and `/ai` is disabled unless the final policy enables AI and the approved
+    proxy environment is configured. See the exact route table and startup
+    rules in [Self-Hosting](self-hosting.md#container-policy-enforcement).
+    This enforcement is **container-only**: it does not restrict browser WASM
+    engines, desktop processing, or a separately hosted sidecar.
+
+    Keep Basic Auth or a real auth proxy and `GEOLIBRE_CONVERSION_ROOTS` in
+    place. Container policy enforcement is not user authentication, and
+    capabilities remain the interface half of the story outside those routes.
 
 ## Not the same as UI Profiles
 
@@ -43,7 +48,7 @@ withheld is never on offer, whatever the profile says.
 | `data:add` | Bringing data in: the whole Add Data menu, dragging a file onto the map (browser and desktop), and the embed API's `addLayer` and `addData`. |
 | `processing:run` | The whole Processing menu — Whitebox, SQL, Python, the AI assistant, geocoding, Model Builder, conversion/vector/raster tools — and the embed API's `openTool`. |
 | `export:data` | Getting data or a rendering back out: Share, Export HTML, Print, Print Layout, Offline Basemap, and the embed API's `exportImage`. |
-| `plugins:install` | The Plugins menu, plugin-registered toolbar menus, activating or deactivating a plugin, and the plugin marketplace ("Manage plugins"). |
+| `plugins:install` | The Plugins menu, plugin-registered toolbar menus, plugin items in the built-in menus, activating or deactivating a plugin, and the plugin marketplace ("Manage plugins"). |
 | `settings:manage` | The Settings dialog and the Style Manager. |
 
 Anything not listed is unprivileged and stays available in every configuration:
@@ -67,14 +72,21 @@ docker build \
   -t geolibre-classroom .
 ```
 
-!!! note "Build time only, for now"
-    Unlike `GEOLIBRE_SHARE_URL`, `GEOLIBRE_EMBED_ORIGINS`, and the other
-    deployment settings, this cannot yet be set with `-e` on a **prebuilt**
-    image — `docker/entrypoint.sh` does not publish it into the runtime
-    configuration, so it has to be baked in. Configuring a published image with
-    `-e GEOLIBRE_MODE=kiosk`, and having nginx refuse the corresponding
-    requests, is tracked in
-    [#1673](https://github.com/opengeos/GeoLibre/issues/1673).
+!!! note "Runtime configuration"
+    A [`deployment.json`](deployment-policy.md) with a `capabilities` array,
+    served next to the app, restricts a **prebuilt** deployment without a
+    rebuild and takes precedence over `VITE_GEOLIBRE_CAPABILITIES`. On the
+    container image, `-e GEOLIBRE_CAPABILITIES=data:add,export:data` (or `none`)
+    writes that file for you; see [Docker](deployment-policy.md#docker).
+
+!!! warning "A late or blocked `deployment.json` fails open"
+    The browser waits at most 3 seconds for `deployment.json`. If the request
+    is dropped, blocked or slower than that, the session starts **without** the
+    policy, and the capabilities then come from `VITE_GEOLIBRE_CAPABILITIES` or,
+    absent that, the full default grant. This is the same client-side gate as
+    everything on this page: it limits what the interface offers and is not
+    access control. Do not rely on it where someone can interfere with the
+    request; enforce restrictions on the server instead.
 
 ### Defaults and parsing
 

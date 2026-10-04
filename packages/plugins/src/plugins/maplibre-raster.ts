@@ -1,4 +1,11 @@
-import { effectiveLayerRenderState, styleValue, useAppStore } from "@geolibre/core";
+import {
+  effectiveLayerRenderState,
+  explainS3ReadError,
+  resolveReadableUrl,
+  shouldZoomToNewLayers,
+  styleValue,
+  useAppStore,
+} from "@geolibre/core";
 import type { Layer } from "@deck.gl/core";
 import type { Map as MapboxMap } from "mapbox-gl";
 import type {
@@ -151,6 +158,12 @@ type RasterLayerManagerInternals = {
   };
   /** The currently selected raster id (read to restore it after inspect). */
   selectedId?: string | null;
+  /**
+   * The panel's Add data section calls this directly (not the control's
+   * `addRaster`), so it is wrapped to default `zoomTo` to the map preference.
+   */
+  addRaster?: (source: string | File, options?: { zoomTo?: boolean }) => Promise<string>;
+  geolibreZoomToPatched?: boolean;
   _device?: unknown;
   _deps?: {
     createOverlay?: (map: MapControlHost, options: OverlayFactoryOptions) => OverlayLike;
@@ -383,10 +396,22 @@ export async function addRasterToMap(
     state?: Partial<RasterLayerState>;
     /** Existing map style layer beneath which the raster is inserted. */
     beforeId?: string;
-    /** Whether to fit the map to the raster after loading. Defaults to true. */
+    /**
+     * Whether to fit the map to the raster after loading. Defaults to the
+     * project's "Zoom to newly added layers" map preference.
+     */
     zoomTo?: boolean;
   } = {},
 ): Promise<string> {
+  // eslint-disable-next-line local/no-renderer-kind-checks -- picks the engine's own adapter
+  if (app.getMapRenderer?.() === "arcgis") {
+    const { addArcgisRaster } = await import("./arcgis-raster-import");
+    return addArcgisRaster(app, source, options);
+  }
+  // `s3://` sources and private-bucket object URLs are read through a
+  // presigned URL; the store sync maps it back to `source`. Signed before the
+  // control is taken, so a control replaced while signing is never used.
+  const readable = typeof source === "string" ? await resolveReadableUrl(source) : source;
   const control = await ensureRasterControl(app);
   if (!control) {
     throw new Error("The raster control could not be initialized.");
@@ -400,9 +425,47 @@ export async function addRasterToMap(
   if (options.defaults?.engine && control.getEngine() !== options.defaults.engine) {
     control.setEngine(options.defaults.engine);
   }
-  const id = await control.addRaster(source, {
+  // Named here rather than by the control, so a failure below removes exactly
+  // this add's raster and never one a concurrent add created.
+  const rasterId = `raster-${crypto.randomUUID().slice(0, 8)}`;
+  let id: string;
+  try {
+    id = await addRasterSource(control, readable, { ...options, id: rasterId });
+  } catch (error) {
+    // The control lists a raster before its header is read, so an add that
+    // failed (a blocked or unreachable URL) would otherwise stay in the Layers
+    // panel as an empty layer. A striped GeoTIFF is the exception: the
+    // non-tiled conversion offer (see the control's "error" handler) owns that
+    // raster, and reads its bytes, until it dismisses it.
+    const failed = control.getRaster(rasterId);
+    if (failed && !isNonTiledRasterError(failed.error)) control.removeRaster(rasterId);
+    // A bucket whose CORS rules block this origin fails as "Failed to fetch";
+    // say so instead.
+    throw typeof source === "string"
+      ? await explainS3ReadError(source, error, app.translate)
+      : error;
+  }
+  applyRgbBandDefaults(control, id, options.defaults?.rgbBands);
+  if (options.localPath) {
+    // The id only exists once addRaster resolves, which is after the rasteradd
+    // sync has already written the store layer -- so record the path and re-run
+    // the (diffing, idempotent) sync to put it on the layer.
+    rememberLocalRasterPath(id, options.localPath);
+    syncRasterLayersToStoreForRuntime(control);
+  }
+  return id;
+}
+
+/** The control call {@link addRasterToMap} makes, split out so its errors can be explained. */
+function addRasterSource(
+  control: RasterControl,
+  source: string | File,
+  options: Parameters<typeof addRasterToMap>[2] & object & { id: string },
+): Promise<string> {
+  return control.addRaster(source, {
+    id: options.id,
     name: options.name,
-    zoomTo: options.zoomTo ?? true,
+    zoomTo: options.zoomTo ?? shouldZoomToNewLayers(),
     // Safe to pass before the band count is known: the renderer applies a
     // colormap only in single-band mode and ignores it otherwise.
     ...(options.state || options.defaults?.colormap
@@ -415,15 +478,6 @@ export async function addRasterToMap(
       : {}),
     ...(options.beforeId ? { beforeId: options.beforeId } : {}),
   });
-  applyRgbBandDefaults(control, id, options.defaults?.rgbBands);
-  if (options.localPath) {
-    // The id only exists once addRaster resolves, which is after the rasteradd
-    // sync has already written the store layer -- so record the path and re-run
-    // the (diffing, idempotent) sync to put it on the layer.
-    rememberLocalRasterPath(id, options.localPath);
-    syncRasterLayersToStoreForRuntime(control);
-  }
-  return id;
 }
 
 /** Switch the shared COG renderer, including rasters already on the map. */
@@ -434,6 +488,22 @@ export async function setRasterRenderEngine(
   const control = await ensureRasterControl(app);
   if (!control) throw new Error("The raster control could not be initialized.");
   if (control.getEngine() !== engine) control.setEngine(engine);
+}
+
+/**
+ * The engine the shared raster control renders COGs with, mounting the control
+ * first when needed (a fresh one starts on `cog-tiler-wasm`). Lets a built-in
+ * plugin choose a path that suits the active engine instead of switching it,
+ * since the engine is control-wide and a switch re-renders every raster.
+ *
+ * @param app - The GeoLibre app API for the current map.
+ * @returns The active engine, or null when the control cannot be initialized.
+ */
+export async function getRasterRenderEngine(
+  app: GeoLibreAppAPI,
+): Promise<RasterRenderEngine | null> {
+  const control = await ensureRasterControl(app);
+  return control ? control.getEngine() : null;
 }
 
 /**
@@ -657,6 +727,13 @@ export function readRasterWindow(
  * @param app - The GeoLibre app API.
  */
 export function restoreRasterLayers(app: GeoLibreAppAPI): void {
+  // eslint-disable-next-line local/no-renderer-kind-checks -- picks the engine's own adapter
+  if (app.getMapRenderer?.() === "arcgis") {
+    void import("./arcgis-raster-import")
+      .then(({ restoreArcgisRasterFiles }) => restoreArcgisRasterFiles(localRasterFileReader))
+      .catch(console.error);
+    return;
+  }
   const hasRasterLayers = useAppStore.getState().layers.some(isRasterControlStoreLayer);
   if (!hasRasterLayers && !rasterControl) return;
 
@@ -681,9 +758,19 @@ export function restoreRasterLayers(app: GeoLibreAppAPI): void {
                 : undefined;
             return url
               ? [
-                  readableStacLayerHref(layer, url).then(
-                    (href) => [layer.id, { sourceUrl: url, href }] as const,
-                  ),
+                  readableStacLayerHref(layer, url)
+                    // An `s3://` source (or a private bucket's object URL) is
+                    // signed afresh on every load; the saved URL holds no
+                    // signature.
+                    .then((href) =>
+                      resolveReadableUrl(href).catch((error: unknown) => {
+                        // One bucket's missing credentials must not stop the
+                        // other rasters from restoring.
+                        console.error(`[GeoLibre] Could not sign S3 raster "${layer.name}"`, error);
+                        return href;
+                      }),
+                    )
+                    .then((href) => [layer.id, { sourceUrl: url, href }] as const),
                 ]
               : [];
           }),
@@ -813,9 +900,9 @@ export function restoreRasterLayers(app: GeoLibreAppAPI): void {
  * already loaded in the control, keyed by layer id. Also re-registers each path
  * so the raster stays restorable when the project is saved again.
  *
- * Resolves to an empty map in the browser (no reader is registered) and skips
- * any file that has since been moved or deleted -- the caller then falls back
- * to dropping that layer with a notice.
+ * Reuses live browser blob URLs, or reopens saved paths through the registered
+ * desktop reader. Skips files that have moved or been deleted; the caller then
+ * falls back to dropping an unavailable layer with a notice.
  *
  * @param control - The mounted raster control.
  * @returns The re-read files, by store layer id.
@@ -823,14 +910,18 @@ export function restoreRasterLayers(app: GeoLibreAppAPI): void {
 async function readLocalRasterFiles(control: RasterControl): Promise<Map<string, File | string>> {
   const files = new Map<string, File | string>();
   const reader = localRasterFileReader;
-  if (!reader) return files;
 
   for (const layer of useAppStore.getState().layers) {
     if (!isRasterControlStoreLayer(layer)) continue;
     if (control.getRaster(layer.id)) continue;
     if (typeof layer.source.url === "string" && layer.source.url) continue;
+    const bytesUrl = layer.metadata.localBytesUrl;
+    if (typeof bytesUrl === "string" && bytesUrl.startsWith("blob:")) {
+      files.set(layer.id, bytesUrl);
+      continue;
+    }
     const path = layer.metadata.localFilePath;
-    if (typeof path !== "string" || !path) continue;
+    if (!reader || typeof path !== "string" || !path) continue;
 
     try {
       files.set(layer.id, await reader(path));
@@ -851,6 +942,8 @@ async function readLocalRasterFiles(control: RasterControl): Promise<Map<string,
 async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl | null> {
   const RasterControlClass = await getRasterControlClass();
 
+  // A Mapbox check: null on the other engines, ArcGIS included (whose COGs
+  // take addArcgisRaster and never mount this control). engine-audit-allow: arcgis-null-map
   rasterControl ??= createRasterControl(RasterControlClass, !!app.getMapboxMap?.());
 
   if (!rasterControlMounted) {
@@ -867,6 +960,7 @@ async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl |
     // button the user never asked for. openRasterLayerPanel shows it.
     await patchTauriRasterOverlayFactory(rasterControl);
     patchCogTilerJpegTables(rasterControl);
+    defaultRasterZoomToPreference(rasterControl);
     await warmTauriWasmEngine(rasterControl);
     // On web the control renders interleaved, which shares deck.gl's per-map
     // Deck with the other interleaved overlays; route it through the shared
@@ -881,6 +975,7 @@ async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl |
     wireRasterCloseButton(rasterControl);
     wireRasterBrowseButton(rasterControl);
     applyRasterPanelClass(rasterControl);
+    // engine-audit-allow: arcgis-null-map (a Mapbox check, as above)
     if (app.getMapboxMap?.()) {
       const panel = (rasterControl as unknown as RasterControlInternals)._panel;
       panel?.querySelector('option[value="cog-tiler-wasm"]')?.remove();
@@ -888,6 +983,23 @@ async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl |
   }
 
   return rasterControl;
+}
+
+/**
+ * Makes the raster control's "fit to the new raster" default follow the
+ * project's Map Preferences instead of the upstream `true`. A caller passing
+ * `zoomTo` explicitly (project restore passes `false`) is left alone. Must run
+ * after addMapControl, which is when the control creates its LayerManager.
+ *
+ * @param control - The mounted raster control.
+ */
+function defaultRasterZoomToPreference(control: RasterControl): void {
+  const manager = (control as unknown as RasterControlInternals)._layerManager;
+  if (!manager?.addRaster || manager.geolibreZoomToPatched) return;
+  const addRaster = manager.addRaster.bind(manager);
+  manager.addRaster = (source, options) =>
+    addRaster(source, { ...options, zoomTo: options?.zoomTo ?? shouldZoomToNewLayers() });
+  manager.geolibreZoomToPatched = true;
 }
 
 /**
@@ -960,7 +1072,9 @@ function patchJpegCogSource(source: unknown): unknown {
     let decoded = windowCache.get(key);
     if (!decoded) {
       decoded = cog._tiffImage!(level).then(async (image) => {
-        const rasters = await image.readRasters({ window: [x, y, x + width, y + height] });
+        const rasters = await image.readRasters({
+          window: [x, y, x + width, y + height],
+        });
         // geotiff.js expands the chroma subsampling but deliberately returns
         // the TIFF's native Y/Cb/Cr samples. The renderer expects RGB bands,
         // like the GPU engine, so perform the TIFF/JPEG color transform once

@@ -1,7 +1,9 @@
+import { setArcgisControlPicker } from "@geolibre/map/arcgis-control-adapters";
 import {
   DEFAULT_LAYER_STYLE,
   effectiveLayerRenderState,
   IDENTIFY_ALL_LAYERS_ID,
+  identifyAllIncludes,
   isDuckDBQueryLayer,
   isPopupClickEnabled,
   resolveLayerCapabilities,
@@ -365,6 +367,12 @@ export function identifyDuckDBLayerAtPoint(
 }
 
 async function openStandaloneDuckDBControl(app: GeoLibreAppAPI): Promise<boolean> {
+  if (
+    // eslint-disable-next-line local/no-renderer-kind-checks -- picks the engine's own adapter
+    app.getMapRenderer?.() === "arcgis" &&
+    !(await import("./arcgis-deck/control-adapter")).installArcgisDeckControls(app)
+  )
+    return false;
   // The control's deck overlay only aligns under Mercator on both 2D engines.
   ensureMercatorProjection(app.getMap?.() ?? app.getMapboxMap?.());
 
@@ -379,6 +387,35 @@ async function openStandaloneDuckDBControl(app: GeoLibreAppAPI): Promise<boolean
       return false;
     }
     duckdbControlMounted = true;
+    const arcgisView = app.getArcgisView?.();
+    if (arcgisView)
+      setArcgisControlPicker(arcgisView, (point, layerId) => {
+        const state = useAppStore.getState();
+        const groups = new Map(state.layerGroups.map((group) => [group.id, group]));
+        return state.layers.flatMap((layer) => {
+          if (
+            !isDuckDBQueryLayer(layer) ||
+            (layerId && layer.id !== layerId) ||
+            !effectiveLayerRenderState(layer, groups).visible ||
+            !resolveLayerCapabilities(layer).query ||
+            !isPopupClickEnabled(layer.popup)
+          )
+            return [];
+          const hit = identifyDuckDBLayerAtPoint(layer.id, point);
+          return hit
+            ? [
+                {
+                  layerId: layer.id,
+                  featureId: hit.featureId,
+                  properties: hit.properties,
+                  geometry: hit.coordinate
+                    ? { type: "Point" as const, coordinates: hit.coordinate }
+                    : null,
+                },
+              ]
+            : [];
+        });
+      });
     // A remount (after a renderer swap or map re-init removed the control)
     // starts without a renderer: the control drops it in onRemove and only
     // rebuilds it, against the new map, inside renderLayer(). Kick that, then
@@ -472,10 +509,16 @@ function createDuckDBControl(DuckDBControlClass: DuckDBControlConstructor): Duck
       previous.identifyLayerId === IDENTIFY_ALL_LAYERS_ID;
     if (
       state.identifyLayerId !== previous.identifyLayerId ||
+      state.identifyLayerIds !== previous.identifyLayerIds ||
       (identifyAllActive &&
         (state.layers !== previous.layers || state.layerGroups !== previous.layerGroups))
     ) {
-      syncDuckDBPickableFromStore(state.layers, state.identifyLayerId, state.layerGroups);
+      syncDuckDBPickableFromStore(
+        state.layers,
+        state.identifyLayerId,
+        state.layerGroups,
+        state.identifyLayerIds,
+      );
     }
 
     if (shouldSyncControl) {
@@ -636,18 +679,21 @@ function clearDuckDBRenderedLayers(): void {
  * @param layers Store layers.
  * @param identifyLayerId Identify target, or the all-layers sentinel.
  * @param layerGroups Group definitions, folded into each layer's visibility.
+ * @param identifyLayerIds Layers the all-layers mode is limited to, if any.
  * @returns True when the bridge owns the click.
  */
 function duckDBIdentifyModeActiveFor(
   layers: GeoLibreLayer[],
   identifyLayerId: string | null,
   layerGroups: LayerGroup[],
+  identifyLayerIds: readonly string[] | null = null,
 ): boolean {
   if (identifyLayerId === IDENTIFY_ALL_LAYERS_ID) {
     const groupById = new Map(layerGroups.map((group) => [group.id, group]));
     return layers.some(
       (layer) =>
         isDuckDBQueryLayer(layer) &&
+        identifyAllIncludes(layer.id, identifyLayerIds) &&
         effectiveLayerRenderState(layer, groupById).visible &&
         resolveLayerCapabilities(layer).query &&
         isPopupClickEnabled(layer.popup),
@@ -661,9 +707,10 @@ function syncDuckDBPickableFromStore(
   layers = useAppStore.getState().layers,
   identifyLayerId = useAppStore.getState().identifyLayerId,
   layerGroups = useAppStore.getState().layerGroups,
+  identifyLayerIds = useAppStore.getState().identifyLayerIds,
 ): void {
   getMutableDuckDBControl()?.setPickable?.(
-    duckDBIdentifyModeActiveFor(layers, identifyLayerId, layerGroups),
+    duckDBIdentifyModeActiveFor(layers, identifyLayerId, layerGroups, identifyLayerIds),
   );
 }
 
@@ -693,8 +740,8 @@ function patchDuckDBControlSelection(control: DuckDBControl): void {
 }
 
 function isDuckDBIdentifyModeActive(): boolean {
-  const { identifyLayerId, layerGroups, layers } = useAppStore.getState();
-  return duckDBIdentifyModeActiveFor(layers, identifyLayerId, layerGroups);
+  const { identifyLayerId, identifyLayerIds, layerGroups, layers } = useAppStore.getState();
+  return duckDBIdentifyModeActiveFor(layers, identifyLayerId, layerGroups, identifyLayerIds);
 }
 
 // Mirror the store-driven selection into the control's own attribute pane so

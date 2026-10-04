@@ -42,6 +42,7 @@ file contents do not change.
 | `dashboardColumns`| number  | Optional Dashboard widget-grid column count (1-6, default 2); omitted when default                          |
 | `styleLibrary`    | array   | Optional project-scoped Style Manager entries (name, tags, kind, `LayerStyle` subset); omitted when empty    |
 | `primaryRenderer` | string  | Optional engine for the primary map area: `"maplibre"` (2D, the default), `"mapbox"` (Mapbox GL JS), `"arcgis"` (ArcGIS Maps SDK for JavaScript) or `"cesium"` (3D globe); omitted when default |
+| `interaction`     | object  | Optional startup Identify target and control visibility (see below); omitted by default                      |
 | `metadata`        | object  | Free-form project metadata                                                                                   |
 
 ## Plugin state
@@ -205,6 +206,29 @@ Unused keys are ignored. The Dashboard panel (Tools → Dashboard, or the
 widget-grid column count (1-6, default 2), at the top level of the project.
 Charts read from GeoJSON-backed vector layers and DuckDB query layers; widgets
 bound to a missing or non-attribute layer are shown as empty.
+
+## Interaction
+
+```json
+{
+  "interaction": {
+    "identify": ["layer-a", "layer-b"],
+    "controls": { "search": true, "globe": false }
+  }
+}
+```
+
+Applied when the project opens, so a map shared from a notebook starts the way
+it was set up there. The Python package writes it from `Map.set_identify` and
+`Map.show_control` / `Map.hide_control` in `save_project`, `to_project` and
+`to_html`. `identify` is a layer id, `"all"` for every visible queryable layer,
+a list of layer ids to identify only those, or `null` for off; ids that name no
+layer are skipped. `controls` maps a toolbar panel (`bookmark`, `search`,
+`measure`, `minimap`, `print`) or built-in map control (`navigation`,
+`fullscreen`, `compass`, `geolocate`, `globe`, `scale`, `attribution`, `logo`)
+to whether it starts shown; other names are ignored. The app writes the block
+back unchanged when it saves the project; turning Identify or a control on or
+off in the app does not edit it.
 
 ## Layer object
 
@@ -455,6 +479,8 @@ popup, and whether a hover tooltip follows the pointer:
     "hover": true,
     "titleField": "name",
     "showFeatureId": false,
+    "maxWidth": 640,
+    "imageHeight": 420,
     "fields": [
       {
         "field": "pop_max",
@@ -483,6 +509,14 @@ inline `data:image/*;base64` values as thumbnails), `text`, `number`, `date`,
 `linkLabel`. `hover: true` on a field puts it in the tooltip's short subset; a
 tooltip with no flagged field shows the title alone, or nothing when the title
 is just the layer name.
+
+`maxWidth` (288-1200) is how wide the click popup may draw and `imageHeight`
+(40-1200) how tall an `image` field's thumbnail may draw inside it, both in CSS
+pixels; each is clamped to its range and `maxWidth` is capped by the viewport
+besides, so neither can produce a popup that blankets the map. Absent, the
+popup keeps its default width and image height. A thumbnail keeps its aspect
+ratio, so `imageHeight` alone does little for a landscape photo without
+`maxWidth` to match.
 
 `titleField` leads the popup with a feature's own value instead of the layer
 name; `titleExpression` (a MapLibre expression source) wins over it, and both
@@ -536,9 +570,26 @@ A local project may contain credentials needed to restore authenticated data,
 including layer request headers, geocoding API keys, environment variables, and
 plugin settings. Any project leaving the local workspace must pass through
 `redactCredentials(project)` first. GeoLibre applies this invariant to Share,
-standalone HTML export, embed snapshots, and collaboration snapshots. Local
-Save and Save As ask whether credentials should be stripped or deliberately
-kept.
+standalone HTML export, embed snapshots, and collaboration snapshots. On the
+desktop app, geocoding API keys and uniquely named secret environment
+variables move to the OS keychain rather than the file; see
+[Credential storage](architecture.md#credential-storage). Duplicate or
+nameless secret environment rows cannot be stored under a unique account, so
+Local Save and Save As offer the same keep/strip prompt used when the keychain
+is unavailable or the web build contains project credentials.
+
+A layer `source.requestHeaders` value may reference an environment variable as
+`${NAME}`, e.g. `"Authorization": "Bearer ${TILES_TOKEN}"`. The reference is
+saved as written and resolved from the enabled `environmentVariables` rows when
+the request is made; a header whose variable is unset or empty is not sent. A
+value that is only an optional scheme word followed by one reference survives
+redaction; any other header value is removed.
+
+Each `preferences.environmentVariables` row may carry `"secret": false`. Rows
+without it are secrets: redaction removes them, and the desktop app stores
+their values in the keychain when they have a unique, nonempty name. Rows
+marked `"secret": false` are ordinary values: they stay in the file and survive
+Share and export.
 
 Saved model and processing-history parameter bags do not currently accept
 credentials and are treated as structural project content. If a future

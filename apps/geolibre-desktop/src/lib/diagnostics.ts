@@ -2,7 +2,12 @@ import { useSyncExternalStore } from "react";
 import { classifyFetchFailure } from "./fetch-error";
 import { isTauri } from "./is-tauri";
 
-export type DiagnosticCategory = "console" | "map" | "network" | "runtime";
+/**
+ * Where a record came from. `"app"` is a handled failure the app reported to
+ * the user (an error notification, see `notify.ts`); the others are captured
+ * automatically from the console, the map engine, fetch, and global handlers.
+ */
+export type DiagnosticCategory = "app" | "console" | "map" | "network" | "runtime";
 export type DiagnosticLevel = "error" | "info" | "warning";
 
 export interface DiagnosticRecord {
@@ -261,13 +266,25 @@ function formatConsoleArgs(args: unknown[]): string {
   return args.map(formatUnknown).filter(Boolean).join(" ");
 }
 
-const REDACTED_URL_PARAMS = new Set(["access_token", "api_key", "apikey", "key", "token"]);
+const REDACTED_URL_PARAMS: Record<string, true> = {
+  access_token: true,
+  api_key: true,
+  apikey: true,
+  key: true,
+  token: true,
+  code: true,
+  state: true,
+  code_verifier: true,
+  refresh_token: true,
+};
 
 function redactUrl(raw: string): string {
   try {
     const url = new URL(raw);
     for (const param of [...url.searchParams.keys()]) {
-      if (REDACTED_URL_PARAMS.has(param.toLowerCase())) {
+      const lowered = param.toLowerCase();
+      // SigV4 presigned S3 URLs carry the session token and signature here.
+      if (Object.hasOwn(REDACTED_URL_PARAMS, lowered) || lowered.startsWith("x-amz-")) {
         url.searchParams.set(param, "[REDACTED]");
       }
     }
@@ -277,17 +294,13 @@ function redactUrl(raw: string): string {
   }
 }
 
-// Matches an http(s) URL embedded in free text, stopping before whitespace or a
-// closing delimiter so a URL inside `(...)` or quotes is captured without its
-// surrounding punctuation.
-const EMBEDDED_URL = /https?:\/\/[^\s)"'<>]+/g;
+// Capture browser URLs and the hostless desktop OAuth callback in free text.
+// Stop before whitespace or a closing delimiter so embedded URLs in quotes
+// or parentheses retain their surrounding punctuation.
+const EMBEDDED_URL = /(?:https?:\/\/|org\.geolibre\.desktop:\/)[^\s)"'<>]+/gi;
 
-// A record's `detail` often carries a raw error string, and a native
-// (Rust/reqwest) error embeds the full request URL verbatim — including any
-// `api_key`/`token` query param that `redactUrl` strips from the record's `url`
-// field. The detail is rendered in the panel and included in the "Copy JSON"
-// export, so redact any URLs it contains the same way, keeping secrets out of
-// exported diagnostics.
+// Error strings may contain a full request or callback URL, including query
+// secrets. Redact embedded URLs in diagnostic text before storing/exporting it.
 function redactUrlsInText(text: string): string {
   return text.replace(EMBEDDED_URL, (match) => redactUrl(match));
 }
@@ -316,9 +329,16 @@ function getSnapshot(): DiagnosticsSnapshot {
   return snapshot;
 }
 
-export function appendDiagnostic(input: DiagnosticInput): void {
+/**
+ * Records a diagnostic entry (redacting URLs in every free-text field).
+ *
+ * @param input - The entry to record.
+ * @returns The stored record, or `null` when the entry was filtered out (an
+ *   info-level network entry while request logging is off).
+ */
+export function appendDiagnostic(input: DiagnosticInput): DiagnosticRecord | null {
   if (input.category === "network" && input.level === "info" && !captureNetworkInfo) {
-    return;
+    return null;
   }
 
   const record: DiagnosticRecord = {
@@ -330,12 +350,13 @@ export function appendDiagnostic(input: DiagnosticInput): void {
     // the same way as the `url` field before storing/exporting them.
     message: truncate(redactUrlsInText(input.message)),
     detail: input.detail ? truncate(redactUrlsInText(input.detail)) : undefined,
-    source: input.source ? truncate(input.source) : undefined,
+    source: input.source ? truncate(redactUrlsInText(input.source)) : undefined,
     url: input.url ? truncate(redactUrl(input.url)) : undefined,
   };
 
   records = [record, ...records].slice(0, MAX_DIAGNOSTIC_RECORDS);
   emitChange();
+  return record;
 }
 
 export function clearDiagnostics(): void {

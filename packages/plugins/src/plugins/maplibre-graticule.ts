@@ -8,7 +8,7 @@ import type {
 } from "maplibre-gl";
 import proj4, { type Converter } from "proj4";
 import type { GeoLibreAppAPI, GeoLibrePlugin } from "../types";
-import { getStyleMap } from "./style-map";
+import { getControlMap } from "./style-map";
 
 /**
  * Coordinate graticule plugin.
@@ -320,6 +320,40 @@ export function lngLatToUtm(lng: number, lat: number): UtmCoordinate | null {
     ];
     if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
     return { zone, band, south, easting, northing };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Inverse of {@link lngLatToUtm}: unproject a UTM easting/northing in a zone and
+ * hemisphere back to lng/lat, through the same proj4 definition.
+ *
+ * Args:
+ *   zone: UTM zone number, 1–60.
+ *   south: Whether the northing is a southern-hemisphere (false-northing) value.
+ *   easting: Easting in metres.
+ *   northing: Northing in metres.
+ *
+ * Returns:
+ *   `[lng, lat]` in degrees, or null for an invalid zone or when proj4 cannot
+ *   unproject the values.
+ */
+export function utmToLngLat(
+  zone: number,
+  south: boolean,
+  easting: number,
+  northing: number,
+): [number, number] | null {
+  if (!Number.isInteger(zone) || zone < 1 || zone > 60) return null;
+  if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
+  try {
+    const [lng, lat] = proj4(utmProjDef(zone, south), "EPSG:4326", [easting, northing]) as [
+      number,
+      number,
+    ];
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    return [lng, lat];
   } catch {
     return null;
   }
@@ -1282,10 +1316,11 @@ export const maplibreGraticulePlugin: GeoLibrePlugin = {
   version: "0.1.0",
   // Draws the graticule through the Style Spec surface both 2D engines share
   // (GeoJSON sources, fill/line/symbol layers, camera and pointer events), read
-  // through getStyleMap so the Mapbox renderer hosts it as well.
-  engines: ["maplibre", "mapbox"],
+  // through getControlMap so the Mapbox renderer hosts it as well. On ArcGIS
+  // the host draws the same GeoJSON layers as its own graphics.
+  engines: ["maplibre", "mapbox", "arcgis"],
   activate: (app: GeoLibreAppAPI) => {
-    const activeMap = getStyleMap(app);
+    const activeMap = getControlMap(app);
     if (!activeMap) return false;
     map = activeMap;
     appRef = app;
