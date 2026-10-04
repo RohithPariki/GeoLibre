@@ -48,6 +48,7 @@ import {
   isAbortError,
   isPixelIdentifyLayer,
   isWmsLayer,
+  isWmsQueryable,
   pixelIdentifyProperties,
   timeSliderBridge,
 } from "./identify-sources";
@@ -60,6 +61,8 @@ import {
 } from "./identify-all-popup";
 
 export type { MapCanvasIdentifyAllLabels };
+import type { MapCanvasRasterIdentify } from "./raster-identify";
+export type { MapCanvasRasterIdentify, MapCanvasRasterIdentifyResult } from "./raster-identify";
 import { createMapController, type MapController } from "./map-controller";
 import type { MapEngine } from "./map-engine";
 import {
@@ -104,19 +107,6 @@ function setMapLibreIdentifyCursor(map: maplibregl.Map, active: boolean): void {
   map.getContainer().classList.toggle("maplibregl-crosshair", active);
   map.getCanvas().style.cursor = active ? "crosshair" : "";
 }
-
-/** One raster result supplied by the application to all-layer Identify. */
-export interface MapCanvasRasterIdentifyResult {
-  properties: Record<string, unknown>;
-  title?: string;
-}
-
-/** Application bridge for raster sources owned outside `@geolibre/map`. */
-export type MapCanvasRasterIdentify = (
-  layer: GeoLibreLayer,
-  lngLat: [number, number],
-  options: { signal: AbortSignal },
-) => Promise<MapCanvasRasterIdentifyResult | null>;
 
 function createIdentifyMessagePopupElement(layerName: string, message: string): HTMLElement {
   return createIdentifyPopupElement(layerName, { status: message });
@@ -727,7 +717,7 @@ export const MapCanvas = memo(function MapCanvas({
 
         const asyncLayers = eligibleLayers.filter(
           (candidate) =>
-            isWmsLayer(candidate) ||
+            (isWmsLayer(candidate) && isWmsQueryable(candidate)) ||
             isPixelIdentifyLayer(candidate) ||
             candidate.type === "cog" ||
             candidate.metadata.sourceKind === NETCDF_IMAGE_SOURCE_KIND,
@@ -983,6 +973,16 @@ export const MapCanvas = memo(function MapCanvas({
               error instanceof Error ? error.message : identifyAllLabels.pixelReadFailed;
             showIdentifyPopup(createIdentifyMessagePopupElement(layer.name, message));
           });
+        return;
+      }
+
+      if (isWmsLayer(layer) && !isWmsQueryable(layer)) {
+        // The capabilities say this layer answers no GetFeatureInfo (#2887).
+        wmsIdentifyAbortController?.abort();
+        selectFeature(null);
+        showIdentifyPopup(
+          createIdentifyMessagePopupElement(layer.name, identifyAllLabels.wmsNotQueryable),
+        );
         return;
       }
 

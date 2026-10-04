@@ -21,7 +21,11 @@ import {
 } from "@geolibre/plugins";
 import type { FeatureCollection } from "geojson";
 import { type FormEvent, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { embedEditedGeometry, hasEditedGeometry } from "../lib/edited-geometry-save";
+import {
+  discardEditedWfsGeometry,
+  embedEditedGeometry,
+  hasEditedGeometry,
+} from "../lib/edited-geometry-save";
 import { useTranslation } from "react-i18next";
 import { createAppAPI, getPluginManager } from "./usePlugins";
 import { pluginManifestUrlsForIds } from "../lib/external-plugins";
@@ -86,6 +90,7 @@ import { importArcgisProject, type ArcgisProjectImportWarning } from "../lib/arc
 import type { MapControllerRef } from "../components/layout/toolbar/constants";
 import { IS_MAS_BUILD } from "../lib/build-flags";
 import { resolveDroppedProjectIfCurrent } from "../lib/dropped-project";
+import { useWindowCloseGuard } from "./useWindowCloseGuard";
 import {
   projectCredentialRollback,
   projectCredentialsInKeychain,
@@ -875,6 +880,12 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
       asCopy?: boolean;
       oauthSessionRevision?: number;
       remoteProject?: RemoteSharedProjectTarget;
+      /**
+       * Lets the caller cancel the open (e.g. the New Project dialog closing
+       * mid-download): an abort before the project loads leaves the current
+       * project untouched.
+       */
+      signal?: AbortSignal;
     } = {},
   ): Promise<void> => {
     const normalizedUrl = normalizeProjectUrl(url);
@@ -885,6 +896,8 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
     shareUrlAbortRef.current?.abort();
     const controller = new AbortController();
     shareUrlAbortRef.current = controller;
+    if (options.signal?.aborted) controller.abort();
+    options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
     try {
       let project: Awaited<ReturnType<typeof resolveProjectXyzLayers>>;
@@ -1273,15 +1286,25 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
       };
     }
 
-    // "noembed": on the web this saves without the local data (those layers are
-    // lost on reopen). On desktop it saves file references — but only for layers
-    // that actually have a re-readable path; the rest (e.g. an Add Vector Layer
-    // file restored from an embedded copy on a machine without the original) are
-    // embedded as a fallback, since referencing them would save no data at all.
-    if (!isTauri()) return {};
+    // "noembed": on the web this saves without local data; on desktop it saves
+    // file references where available. Edited WFS layers cannot be represented
+    // by a file reference, so this choice intentionally saves the live service
+    // URL and drops the locally edited collection.
     let changed = false;
+    if (!isTauri()) {
+      const layers = useAppStore.getState().layers.map((layer) => {
+        const savedLayer = discardEditedWfsGeometry(layer);
+        if (savedLayer !== layer) changed = true;
+        return savedLayer;
+      });
+      return changed ? { layers } : {};
+    }
     const layers = useAppStore.getState().layers.map((layer) => {
-      if (hasEditedGeometry(layer) && !isReloadableLocalFileLayer(layer)) return layer;
+      if (hasEditedGeometry(layer) && !isReloadableLocalFileLayer(layer)) {
+        const savedLayer = discardEditedWfsGeometry(layer);
+        if (savedLayer !== layer) changed = true;
+        return savedLayer;
+      }
       // Plain GeoJSON with an absolute path → reference (drop the embedded copy).
       if (isReloadableLocalFileLayer(layer)) {
         changed = true;
@@ -1625,6 +1648,8 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
 
   const handleSave = () => saveProject();
   const handleSaveAs = () => saveProject({ saveAs: true });
+  // The desktop window's title-bar X asks before dropping unsaved work.
+  const windowCloseGuard = useWindowCloseGuard(handleSave);
 
   // Export the current project as a standalone interactive HTML page (#821).
   // Shares saveProject's guard so a double-click can't open two save dialogs.
@@ -1834,6 +1859,7 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
     droppedProjectPrompt,
     droppedProjectSaving,
     resolveDroppedProjectPrompt,
+    ...windowCloseGuard,
     qgisImportWarnings,
     setQgisImportWarnings,
     arcgisImportWarnings,

@@ -36,11 +36,14 @@ import {
 } from "./map-engine";
 import {
   compileMapboxLayer,
-  isInternalMapboxLayer,
-  isMapboxPluginLayer,
   DEFAULT_MAPBOX_TEXT_FONT,
   type MapboxLayerPlan,
   mapboxPaint,
+} from "./gl-style-compiler";
+import {
+  isInternalMapboxLayer,
+  isMapboxPluginLayer,
+  MAPBOX_SUPPORTED_LAYER_KINDS,
 } from "./mapbox-layers";
 import {
   BASEMAP_LABEL_KEY,
@@ -63,7 +66,7 @@ import {
   STANDARD_OPACITY,
   STANDARD_BLANK_COLOR,
 } from "./mapbox-standard-style";
-import { arcgisOpacity } from "./arcgis-vector-style";
+import { arcgisOpacity } from "./vector-style";
 import { LayerControlHost, normalizeLayerBounds } from "./layer-control-host";
 import { ResetBearingControl } from "./reset-bearing-control";
 import { MapboxGlobeControl } from "./mapbox-globe-control";
@@ -85,6 +88,13 @@ export const MAPBOX_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   // mapbox-gl has no `raster-dem` source a COG can back, so the terrain
   // source controls stay hidden here (#2475).
   terrainSource: false,
+  nativeZarr: false,
+  nativeDataSources: false,
+  // The engine is published after the initial style loads.
+  deferredEngineReady: true,
+  measureTool: true,
+  controlLayerPanels: true,
+  supportedLayerKinds: MAPBOX_SUPPORTED_LAYER_KINDS,
 });
 
 const BLANK_BACKGROUND_LAYER_ID = "geolibre-blank-background";

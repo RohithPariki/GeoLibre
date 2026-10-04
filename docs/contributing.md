@@ -133,21 +133,37 @@ runs the full production build once per invocation; if you already built, add
 `SKIP=npm-build` in front of the command.
 
 `npm run ci:web` is the quick gate for changes that only touch the web app and
-its packages: lint, the i18n catalog check, `typecheck:fast`, and the frontend
+its packages: lint, the i18n catalog check, `typecheck:fast`, the
+[test type check](maintenance.md#test-type-check-ratchet), and the frontend
 unit tests. It needs only Node.
 
 `npm run ci` runs the complete gate that mirrors continuous integration, in this
 order:
 
-| Step               | Command                         | Covers                                                                                                              |
-| ------------------ | ------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Lint               | `npm run lint`                  | ESLint over `apps/`, `packages/`, `workers/` and `tests/`                                                           |
-| i18n catalog check | `npm run i18n:tools:check`      | The processing-tool strings in `en.json` match the tool registries (regenerate with `npm run i18n:tools`)           |
-| Build              | `npm run build`                 | TypeScript compile (`tsc -b`) and Vite build                                                                        |
-| Frontend tests     | `npm run test:frontend:coverage` | Unit tests under `tests/`, gated on a [coverage floor](maintenance.md#coverage-floors)                              |
-| Worker checks      | `npm run test:worker`           | Type checks all five workers (`viewer`, `collab`, `collab-node`, `tiles`, `ai-proxy`) and runs the `collab-node` tests |
-| Backend tests      | `npm run test:backend:coverage` | `pytest` for the Python sidecar, gated on a [coverage floor](maintenance.md#coverage-floors)                        |
-| Rust check         | `npm run check:rust`            | `cargo check` for the Tauri shell                                                                                   |
+| Step               | Command                          | Covers                                                                                                                 |
+| ------------------ | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Lint               | `npm run lint`                   | ESLint over `apps/`, `packages/`, `workers/` and `tests/`                                                              |
+| i18n catalog check | `npm run i18n:tools:check`       | The processing-tool strings in `en.json` match the tool registries (regenerate with `npm run i18n:tools`)              |
+| Gallery check      | `npm run gallery:check`          | `docs/gallery.md` and the `docs/demos.md` teaser match `scripts/demo-gallery.json` (regenerate with `npm run gallery`) |
+| Plugin docs check  | `npm run plugins:docs:check`     | The built-in plugin table in `docs/user-guide/plugins.md` matches the plugin registry (regenerate with `npm run plugins:docs`) |
+| Build              | `npm run build`                  | TypeScript compile (`tsc -b`) and Vite build                                                                           |
+| Frontend tests     | `npm run test:frontend:coverage` | Unit tests under `tests/`, gated on a [coverage floor](maintenance.md#coverage-floors)                                 |
+| Untested modules   | `npm run check:untested-modules` | Source files over 500 lines that no test loads, held by a [baseline ratchet](maintenance.md#untested-module-ratchet)   |
+| Worker checks      | `npm run test:worker`            | Type checks all five workers (`viewer`, `collab`, `collab-node`, `tiles`, `ai-proxy`) and runs the `collab-node` tests |
+| Test type check    | `npm run typecheck:tests`        | `tsc` over `tests/`, gated on a [type-error ratchet](maintenance.md#test-type-check-ratchet)                           |
+| Backend tests      | `npm run test:backend:coverage`  | `pytest` for the Python sidecar, gated on a [coverage floor](maintenance.md#coverage-floors)                           |
+| Docker tests       | `npm run test:docker`            | `pytest` for the container's deployment and sidecar policy scripts under `docker/tests`                                |
+| Rust check         | `npm run check:rust`             | `cargo check` for the Tauri shell                                                                                      |
+
+The middle of the table is grouped into two scripts, which you can also run on
+their own: `npm run ci:frontend` (i18n check through worker checks; Node only)
+and `npm run ci:backend` (backend and Docker tests; needs Python and the npm CLI
+to run the script, but no `npm install`). CI runs lint, `ci:frontend`,
+`ci:backend` and `check:rust` as separate, parallel jobs in
+`.github/workflows/ci.yml` rather than one after another, with
+`typecheck:tests` running next to lint in the "Lint and type check" job, so if
+you add a step to `npm run ci`, add it to one of those groups and CI picks it
+up.
 
 You only need the toolchains for the areas you touched. A docs-only or
 frontend-only change does not require Rust or Python (use `npm run ci:web`),
@@ -214,7 +230,8 @@ The suite is split into two Playwright projects, which together partition
 
 | Project | Command | What it covers | When it runs |
 | --- | --- | --- | --- |
-| `core` | `npm run test:e2e:core` | The app boots and renders a map, plus the shared UI surfaces: layer panel, attribute table, dialogs, drag-and-drop, theme, RTL, accessibility, PWA shell. | Every push and PR, as the `E2E core (Playwright)` job in `ci.yml`. |
+| `core` | `npm run test:e2e:core` | The app boots and renders a map, plus the shared UI surfaces: layer panel, attribute table, dialogs, drag-and-drop, theme, RTL, accessibility, PWA shell, project save and reopen, the plugin deep-link docs. | Every push and PR, as the `E2E core (Playwright)` job in `ci.yml`. |
+| `core-engines` | (run by `npm run test:e2e:core`) | One smoke pass per alternate engine (Cesium, ArcGIS): switch to it, add GeoJSON, identify a feature. Runs after `core`, on one worker, because a software-rendered 3D view saturates the CPU. The ArcGIS pass loads the SDK from `js.arcgis.com`. | Every push and PR, as the `E2E core (Playwright)` job in `ci.yml`. |
 | `features` | `npm run test:e2e:features` | Per-feature integration: Mapbox/Cesium engines, STAC, exports, story maps, the scene graph, plugin install. | Nightly and on demand via `e2e-full.yml`, sharded 4x — or on a PR labelled `full-e2e`. |
 
 The split is a wall-clock decision, not a judgement about value: the full suite
@@ -229,6 +246,10 @@ automatically part of `features`. If you are touching an area the nightly suite
 covers, label the PR `full-e2e` to get that check before merging.
 
 Both jobs upload their Playwright report as an artifact on failure.
+
+Locally the suite serves the built app on port 4173 and reuses a server already
+listening there. Set `E2E_PORT` to use another port, for example when a second
+checkout is already serving its own build on 4173.
 
 ### Coding conventions
 

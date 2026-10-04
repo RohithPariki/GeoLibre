@@ -43,6 +43,7 @@ import {
   ARCGIS_ID_FIELD,
   ARCGIS_LABEL_CLASS_FIELD,
   ARCGIS_LABEL_FIELD,
+  ARCGIS_SUPPORTED_LAYER_KINDS,
   arcgisBlendMode,
   isArcgisRasterPlan,
   ARCGIS_SYMBOL_FIELD,
@@ -109,6 +110,17 @@ export const ARCGIS_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   screenOverlays: false,
   flatProjection: true,
   terrainSource: true,
+  // The SDK draws Zarr from the record. The raster and PMTiles panels are
+  // MapLibre controls this view does not host, so those formats go through the
+  // Add Data forms; the measure control draws through the MapLibre/Mapbox style
+  // API, which the SDK has no equivalent of.
+  nativeZarr: true,
+  nativeDataSources: false,
+  // The engine is published once its view is ready.
+  deferredEngineReady: true,
+  measureTool: false,
+  controlLayerPanels: false,
+  supportedLayerKinds: ARCGIS_SUPPORTED_LAYER_KINDS,
 });
 
 export const ARCGIS_DECK_CAPABILITIES: MapEngineCapabilities = Object.freeze({

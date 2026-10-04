@@ -32,8 +32,8 @@ import {
 import type { MapDiagnosticEvent } from "./map-diagnostic";
 import { MapboxEngine, redactMapboxError } from "./mapbox-engine";
 import { prepareMapboxStandard } from "./mapbox-standard-style";
-import { styleUsesUnsupportedSource } from "./mapbox-layers";
-import { resolveMapStyle } from "./map-controller";
+import { styleUsesUnsupportedSource } from "./gl-style-compiler";
+import { resolveMapStyle } from "./basemap-style";
 import { isGlobeControlToggleClick } from "./globe-control-toggle";
 import {
   attachFeatureSelection,
@@ -61,10 +61,11 @@ import {
   isAbortError,
   isPixelIdentifyLayer,
   isWmsLayer,
+  isWmsQueryable,
   pixelIdentifyProperties,
   timeSliderBridge,
 } from "./identify-sources";
-import type { MapCanvasRasterIdentify } from "./MapCanvas";
+import type { MapCanvasRasterIdentify } from "./raster-identify";
 
 export interface MapboxCanvasProps {
   accessToken: string;
@@ -740,7 +741,7 @@ export function MapboxCanvas({
           const identifyRaster = identifyRasterLayerAtRef.current;
           const asyncLayers = eligibleLayers.filter(
             (candidate) =>
-              isWmsLayer(candidate) ||
+              (isWmsLayer(candidate) && isWmsQueryable(candidate)) ||
               isPixelIdentifyLayer(candidate) ||
               candidate.type === "cog" ||
               candidate.metadata.sourceKind === NETCDF_IMAGE_SOURCE_KIND,
@@ -866,6 +867,13 @@ export function MapboxCanvas({
                 return () => showPopupAt(lngLat, message(text), maxWidth);
               }
             });
+            return true;
+          }
+          if (isWmsLayer(layer) && !isWmsQueryable(layer)) {
+            // The capabilities say this layer answers no GetFeatureInfo (#2887).
+            asyncIdentifyAbort?.abort();
+            store.selectFeature(null);
+            showPopupAt(lngLat, message(labels.wmsNotQueryable), maxWidth);
             return true;
           }
           if (isWmsLayer(layer)) {

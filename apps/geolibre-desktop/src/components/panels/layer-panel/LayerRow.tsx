@@ -1,4 +1,4 @@
-import { type DragEvent as ReactDragEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { type PointerEvent as ReactPointerEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   IDENTIFY_ALL_LAYERS_ID,
@@ -67,12 +67,11 @@ interface LayerRowProps {
   dropTarget: boolean;
   /** Panel index of the dragged row, or -1 when nothing is dragged. */
   draggedDisplayIndex: number;
-  onDragStart: (event: ReactDragEvent<HTMLElement>, layerId: string) => void;
-  onDragOver: (event: ReactDragEvent<HTMLDivElement>, layerId: string) => void;
-  onDrop: (event: ReactDragEvent<HTMLDivElement>, layerId: string, displayIndex: number) => void;
-  onDragEnd: () => void;
+  onPointerDown: (event: ReactPointerEvent<HTMLElement>, layerId: string) => void;
+  onPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerUp: (event: ReactPointerEvent<HTMLElement>) => void;
+  onPointerCancel: () => void;
   onSelect: (event: ReactMouseEvent<HTMLDivElement>, layerId: string) => void;
-  selectOnlyLayer: (layerId: string) => void;
   /** Whether this row's name is open for inline rename. */
   editing: boolean;
   editingName: string;
@@ -108,12 +107,11 @@ export function LayerRow({
   dragged,
   dropTarget,
   draggedDisplayIndex,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
   onSelect,
-  selectOnlyLayer,
   editing,
   editingName,
   setEditingName,
@@ -240,9 +238,9 @@ export function LayerRow({
   const isRefreshing = refreshStatus?.type === "refreshing";
   return (
     <div
-      data-layer-card=""
       data-testid="layer-row"
       data-layer-name={layer.name}
+      data-layer-id={layer.id}
       className={`relative min-w-0 max-w-full rounded-md border p-2 transition-colors ${
         selected
           ? "border-primary bg-primary/5"
@@ -260,23 +258,14 @@ export function LayerRow({
             }
           : undefined
       }
-      onDragOver={(e) => onDragOver(e, layer.id)}
-      onDrop={(e) => onDrop(e, layer.id, displayIndex)}
-      onDragEnd={onDragEnd}
-      aria-pressed={selected}
+      // A listitem, not a button: the card holds a dozen controls of its own,
+      // and an interactive element must not nest others (axe
+      // `nested-interactive`). Clicking anywhere on the card still selects
+      // for the mouse; the keyboard and assistive-technology path is the
+      // name button below, which carries the selection state.
+      role="listitem"
+      aria-level={group ? groupDepth(group) + 2 : 1}
       onClick={(e) => onSelect(e, layer.id)}
-      onKeyDown={(e) => {
-        // Only act on the card itself: preventDefault here would
-        // otherwise cancel the Enter activation of the action
-        // buttons nested inside it.
-        if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          selectOnlyLayer(layer.id);
-        }
-      }}
-      role="button"
-      tabIndex={0}
     >
       {dropTarget && draggedDisplayIndex > displayIndex && (
         <div className="pointer-events-none absolute -top-1 left-2 right-2 h-1 rounded-full bg-primary shadow-[0_0_0_2px_hsl(var(--background))]" />
@@ -288,14 +277,17 @@ export function LayerRow({
         <span
           role="button"
           tabIndex={0}
-          draggable
           title={t("layers.dragToReorder")}
           aria-label={t("layers.dragNamedToReorder", {
             name: layer.name,
           })}
-          className="cursor-grab rounded p-0.5 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+          className="touch-none select-none cursor-grab rounded p-0.5 text-muted-foreground hover:bg-muted active:cursor-grabbing"
           onClick={(e: ReactMouseEvent) => e.stopPropagation()}
-          onDragStart={(e) => onDragStart(e, layer.id)}
+          onPointerDown={(e) => onPointerDown(e, layer.id)}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onLostPointerCapture={onPointerCancel}
         >
           <GripVertical className="h-3.5 w-3.5" />
         </span>
@@ -349,8 +341,14 @@ export function LayerRow({
             }}
           />
         ) : (
-          <span
-            className={`min-w-0 flex-1 truncate text-sm font-medium ${
+          // The row's selection control. Its click bubbles to the card's
+          // handler, so Enter/Space selects the layer and a Shift/Ctrl click
+          // still extends or toggles the multi-selection.
+          <button
+            type="button"
+            aria-pressed={selected}
+            data-layer-select=""
+            className={`min-w-0 flex-1 truncate rounded text-start text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
               groupHidden ? "text-muted-foreground" : ""
             }`}
             title={
@@ -364,9 +362,15 @@ export function LayerRow({
               e.stopPropagation();
               if (layerEditable) beginRename(layer);
             }}
+            // F2 is the keyboard counterpart of the double-click rename.
+            onKeyDown={(e) => {
+              if (e.key !== "F2" || !layerEditable) return;
+              e.preventDefault();
+              beginRename(layer);
+            }}
           >
             {layer.name}
-          </span>
+          </button>
         )}
         {isLayerLocked && (
           <span title={t("collaborate.layerLockedHint")}>

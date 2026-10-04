@@ -8,7 +8,60 @@
     "discard": "Discard",
     "restoreError": "Could not restore this snapshot. It may be damaged or incompatible with this GeoLibre version.",
     "recoveryTitle": "Recover unsaved work?",
-    "recoveryDescription": "GeoLibre did not close cleanly. A newer autosave of “{{name}}” is available."
+    "recoveryDescription": "GeoLibre did not close cleanly. A newer autosave of “{{name}}” is available.",
+    "autosavePaused": "Autosave is paused: this project is larger than {{limit}} MB, so no new snapshots are being kept. Save it to disk to keep your work.",
+    "diff": {
+      "compare": "Compare",
+      "compareAria": "Compare the snapshot from {{date}}",
+      "back": "Back to snapshots",
+      "title": "Compare snapshots",
+      "compareWith": "Compare with",
+      "current": "Current project",
+      "snapshotOption": "Snapshot from {{date}}",
+      "range": "Changes from {{before}} to {{after}}",
+      "changeCount_one": "{{count}} change",
+      "changeCount_other": "{{count}} changes",
+      "noChanges": "No differences.",
+      "parseError": "Could not read this snapshot to compare it.",
+      "currentError": "Could not read the current project to compare it.",
+      "none": "(none)",
+      "added": "Added",
+      "removed": "Removed",
+      "changed": "Changed",
+      "layers": "Layers",
+      "layerOrder": "Layer order changed",
+      "renamed": "Renamed from “{{name}}”",
+      "moved": "Moved in the layer order",
+      "visibility": "Visibility",
+      "visible": "Visible",
+      "hidden": "Hidden",
+      "opacity": "Opacity",
+      "style": "Style",
+      "labels": "Labels",
+      "filter": "Filter",
+      "source": "Source",
+      "other": "Other",
+      "features": "Features: {{added}} added, {{removed}} removed, {{modified}} modified",
+      "featuresByGeometry": "Features without an id were matched by geometry.",
+      "featureCount_one": "{{count}} feature",
+      "featureCount_other": "{{count}} features",
+      "map": "Map",
+      "camera": "Camera",
+      "basemap": "Basemap",
+      "projection": "Projection",
+      "plugins": "Plugins",
+      "pluginEnabled": "Enabled",
+      "pluginDisabled": "Disabled",
+      "manifests": "Plugin manifests",
+      "project": "Project",
+      "details": "Title and details",
+      "preferences": "Preferences",
+      "sections": "Other changed sections",
+      "restoreLayer": "Restore this layer",
+      "restoreLayerAria": "Restore the layer {{name}} from this snapshot",
+      "layerRestored": "Restored “{{name}}”. Use Undo to revert it.",
+      "restoreLayerError": "Could not restore this layer from the snapshot."
+    }
   },
   "browser": {
     "title": "Browser",
@@ -130,6 +183,12 @@
       "trustButton": "Trust and load",
       "dismissButton": "Don't load"
     },
+    "registryTrust": {
+      "title_one": "Install this plugin?",
+      "title_other": "Install these plugins?",
+      "description_one": "This link opens a plugin from the official GeoLibre plugin registry that is not installed yet. Installing it adds it to your plugins and activates it.",
+      "description_other": "This link opens {{count}} plugins from the official GeoLibre plugin registry that are not installed yet. Installing them adds them to your plugins and activates them."
+    },
     "title": "Manage Plugins",
     "searchAria": "Search plugins",
     "searchPlaceholder": "Search plugins",
@@ -174,7 +233,11 @@
     "errorDirectoryPicker": "Could not open the directory picker.",
     "errorInstall": "Could not install the plugin.",
     "errorUninstall": "Could not uninstall the plugin.",
-    "description": "Browse, install, update, and remove external GeoLibre plugins. Plugins are listed in the <registryLink>GeoLibre plugin registry</registryLink>."
+    "description": "Browse, install, update, and remove external GeoLibre plugins. Plugins are listed in the <registryLink>GeoLibre plugin registry</registryLink>.",
+    "policySideloadDisabled": "Plugin sideloading is disabled by deployment policy.",
+    "policyBlocked": "Plugin '{{pluginId}}' is blocked by deployment policy.",
+    "policyBlocklisted": "Plugin '{{pluginId}}' was blocked by the plugin registry: {{reason}}",
+    "policyNotAllowed": "Plugin '{{pluginId}}' is not allowed by deployment policy."
   },
   "viewState": {
     "panelTitle": "Info"
@@ -201,9 +264,13 @@
       "dd": "Decimal degrees",
       "dms": "Degrees, minutes, seconds",
       "ddm": "Degrees, decimal minutes",
-      "utm": "UTM (zone, easting/northing)"
+      "utm": "UTM (zone, easting/northing)",
+      "mgrs": "MGRS (Military Grid Reference System)",
+      "usng": "USNG (US National Grid)",
+      "epsg": "Projected (EPSG:{{code}})"
     },
-    "coordinateFormatHint": "Coordinate format: {{format}}. Click to switch."
+    "coordinateFormatHint": "Coordinate format: {{format}}. Click to switch.",
+    "autosavePaused": "Autosave paused"
   },
   "fileNamePrompt": {
     "title": "Save file as",
@@ -225,8 +292,15 @@
     "projectName": "Project name",
     "savedTemplates": "Saved Templates",
     "deleteTemplate": "Delete template",
+    "examples": "Examples",
+    "examplesDescription": "Start from a published demo map. Opens a copy and needs an internet connection.",
+    "exampleOpenFailed": "Could not open “{{title}}”.",
     "basemapLabel": "Basemap",
     "create": "Create"
+  },
+  "cvdPreview": {
+    "badge": "Color vision preview: {{mode}}",
+    "turnOff": "Turn off color vision preview"
   },
   "basemapPicker": {
     "title": "Change background",
@@ -1920,6 +1994,7 @@
       "noData": "No data at this location.",
       "pixelReadFailed": "The pixel value could not be read.",
       "wmsFailed": "The WMS GetFeatureInfo request failed.",
+      "wmsNotQueryable": "This WMS layer does not provide feature information.",
       "photo": "Photo",
       "photoNoPreview": "No preview available",
       "photoViewFullResolution": "Double-click to view at full resolution",
@@ -2191,7 +2266,36 @@
     "viewshedHere": "Viewshed from here ({{radius}})",
     "viewshedLayerName": "Viewshed ({{radius}})",
     "viewshedToolName": "Viewshed",
-    "viewshedNoResult": "No visible area could be computed here."
+    "viewshedNoResult": "No visible area could be computed here.",
+    "lineOfSightHere": "Line of sight from here"
+  },
+  "lineOfSight": {
+    "title": "Line of sight",
+    "close": "Close line of sight",
+    "observerHeight": "Observer height (m)",
+    "targetHeight": "Target height (m)",
+    "curvature": "Earth curvature and refraction",
+    "pickObserver": "Click the map to place the observer.",
+    "pickTarget": "Click the map to place the target.",
+    "pickAgain": "Click the map to start a new line.",
+    "loading": "Reading terrain along the line…",
+    "noTerrain": "No terrain could be read along this line.",
+    "tooLong": "The line is longer than {{max}}. Pick a closer target.",
+    "visible": "Target visible",
+    "notVisible": "Target not visible",
+    "distance": "Distance",
+    "firstObstruction": "First obstruction",
+    "obstructionValue": "{{distance}} away, {{elevation}}",
+    "highestPoint": "Highest point",
+    "highestValue": "{{elevation}} at {{distance}}",
+    "groundVisible": "Ground in view",
+    "resolution": "Terrain resolution",
+    "saveLayer": "Save as layer",
+    "saved": "Saved",
+    "clear": "Clear",
+    "layerName": "Line of sight ({{distance}})",
+    "chartLabel": "Elevation profile along the line of sight",
+    "legend": "Line colours show the ground the observer can see (green) or not (red); the badge above is about the target's top."
   },
   "knowledgeCard": {
     "title": "Place info",
@@ -2430,7 +2534,10 @@
       "scaleUnitHint": "Choose the units shown on the scale bar at the bottom of the map.",
       "errorBoundsUnavailable": "The map bounds are not available yet.",
       "coordinateFormat": "Coordinate format",
-      "coordinateFormatHint": "Notation the status bar reports the pointer coordinate in. Click the coordinates in the status bar to switch notation."
+      "coordinateFormatHint": "Notation the status bar reports the pointer coordinate in. Click the coordinates in the status bar to switch notation.",
+      "coordinateEpsg": "Coordinate reference system (EPSG)",
+      "coordinateEpsgHint": "EPSG code the status bar projects the pointer coordinate into, e.g. 3857 (Web Mercator) or 32618 (UTM zone 18N).",
+      "coordinateEpsgUnknown": "Unknown EPSG code. The status bar shows decimal degrees until a known code is entered."
     },
     "layout": {
       "title": "Layout",
@@ -2891,7 +2998,8 @@
       "view": "View",
       "help": "Help",
       "plugins": "Plugins",
-      "settings": "Settings"
+      "settings": "Settings",
+      "tools": "Tools"
     },
     "command": {
       "projectNew": "New Project",
@@ -2930,6 +3038,7 @@
       "segmentation": "AI Segmentation",
       "objectDetection": "Object Detection",
       "segmentEverything": "Segment Everything",
+      "lineOfSight": "Line of sight",
       "toggleControl": "Toggle {{name}} Control",
       "toggleAtmosphereEffects": "Toggle Atmospheric Effects",
       "toggleDirections": "Toggle Directions",
@@ -3239,6 +3348,12 @@
       "splitViewGrid2x3": "2 × 3 grid",
       "splitViewGrid3x3": "3 × 3 grid",
       "splitViewSync": "Sync views",
+      "colorVisionPreview": "Color vision preview",
+      "cvdOff": "Off",
+      "cvdProtanopia": "Protanopia (red-blind)",
+      "cvdDeuteranopia": "Deuteranopia (green-blind)",
+      "cvdTritanopia": "Tritanopia (blue-blind)",
+      "cvdAchromatopsia": "Achromatopsia (no color)",
       "renderingEngine": "Rendering engine",
       "rendererMapLibre": "MapLibre",
       "rendererMapbox": "Mapbox",
@@ -3348,8 +3463,12 @@
       "activate": "Activate",
       "position": "Position",
       "webServices": "Web Services",
+      "installedPlugins": "Installed",
+      "managePlugins": "Manage Plugins…",
+      "showMenuInToolbar": "Show menu in toolbar",
       "dggs": "DGGS",
       "commandPalette": "Command Palette",
+      "simplifyInterface": "Simplify Interface...",
       "openProjectFromUrl": "Open project from URL",
       "importQgisProjectEllipsis": "Import QGIS Project…",
       "importArcgisProjectEllipsis": "Import ArcGIS Pro Project…",
@@ -3547,6 +3666,10 @@
       "bothRasterLayers_other": "{{count}} raster layers",
       "savePromptTitle": "Save current project?",
       "savePromptDescription": "The current project has unsaved changes. Save them before opening the dropped project?"
+    },
+    "windowClose": {
+      "savePromptTitle": "Save changes before closing?",
+      "savePromptDescription": "The current project has unsaved changes. Save them before closing GeoLibre?"
     },
     "error": {
       "couldNotOpenProject": "Could not open project.",
@@ -4636,7 +4759,12 @@
     "cancel": "Cancel",
     "saveElement": "Save Element",
     "atPoint": "At Point",
-    "pinnedToExtent": "Pinned to Extent"
+    "pinnedToExtent": "Pinned to Extent",
+    "editorColor": "Color",
+    "noElements": "No map elements yet.",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "deleteElement": "Delete"
   },
   "dimensions": {
     "toolbar": "Dimension tools",
@@ -5160,6 +5288,8 @@
         "projectedHint": "Saved to your downloads in the target CRS. The map only displays EPSG:4326, so a projected result is not added as a layer."
       },
       "filterBySource": "Filter by source",
+      "filterByCategory": "Filter by category",
+      "layerFor": "Layer for {{name}}",
       "allSources": "All sources",
       "geolibreTools": "GeoLibre tools",
       "whiteboxTools": "Whitebox tools",
@@ -8019,6 +8149,10 @@
     "exportedWithWarnings": "Layer exported. {{warnings}}",
     "exported": "Layer exported.",
     "exportLayerError": "Could not export this layer.",
+    "export3dModel": "3D model: {{format}}",
+    "export3dModelNoSolids": "No extruded polygons to export. Give the layer polygons with a height above the extrusion base.",
+    "export3dModelSkipped_one": "3D model exported. {{count}} feature with no height above the base or no area was left out.",
+    "export3dModelSkipped_other": "3D model exported. {{count}} features with no height above the base or no area were left out.",
     "exportPolyline": "Encoded Polyline (precision {{precision}})",
     "refreshIntervals": {
       "off": "Off",
@@ -8076,6 +8210,11 @@
     "viewportStretchNoValues": "No raster values found in the viewport.",
     "viewportStretchNoRange": "The viewport values do not define a range.",
     "viewportStretchMoved": "The map moved before the read finished. Apply again.",
+    "histogram": "Histogram",
+    "histogramLoading": "Computing histogram…",
+    "histogramUnavailable": "No histogram is available for this band.",
+    "histogramMinAria": "Stretch minimum, {{band}}",
+    "histogramMaxAria": "Stretch maximum, {{band}}",
     "index": "Index",
     "opacityClasses": "Opacity classes",
     "classifyToggle": "Classify into discrete classes",
@@ -8319,12 +8458,28 @@
     "copyJson": "Copy JSON",
     "copied": "Copied",
     "clear": "Clear",
+    "reportIssue": "Report issue",
     "emptyAll": "No diagnostics captured.",
     "emptyError": "No error diagnostics captured.",
     "emptyWarning": "No warning diagnostics captured.",
     "emptyInfo": "No info diagnostics captured.",
     "emptyNetwork": "No network diagnostics captured.",
     "emptyNetworkError": "No network error diagnostics captured."
+  },
+  "notifications": {
+    "regionLabel": "Notifications",
+    "dismiss": "Dismiss notification",
+    "reportIssue": "Report issue",
+    "repeated": "×{{count}}",
+    "layerLoadFailed": "Layer \"{{name}}\" failed to load",
+    "layerLoadFailedHint": "Check the URL, your network connection, and any required API key. Details are in the Diagnostics panel.",
+    "fileReadFailed": "Could not read \"{{name}}\", so it was skipped.",
+    "libraryLayerRestoreFailed": "Could not add \"{{name}}\" from My Data.",
+    "localLayersDropped_one": "Removed {{count}} layer: its file could not be read ({{path}}).",
+    "localLayersDropped_other": "Removed {{count}} layers: their file could not be read ({{path}}).",
+    "pluginActivateFailed": "Could not start the plugin \"{{id}}\" from the link.",
+    "pluginMenuActionFailed": "The menu action \"{{name}}\" failed.",
+    "recordingOverlaysSkipped": "The map panels could not be captured, so the recording shows only the map."
   },
   "shell": {
     "workspaceTitle": "GeoLibre map workspace",
@@ -8623,7 +8778,12 @@
       "arcgisSourceUnsupported": "Use a 3D Tiles tileset.json URL in this ArcGIS view. Google Photorealistic and I3S tiles require another renderer.",
       "globeGoogleKeyRequired": "Google Photorealistic 3D Tiles need a Google Maps API key in Settings to load on the globe.",
       "headersHint": "One per line as Name: Value. Use ${NAME} to insert an environment variable from Settings → Environment; the value is not saved with the layer.",
-      "insecureHeaders": "Request headers are only sent to an HTTPS tileset URL (or localhost)."
+      "insecureHeaders": "Request headers are only sent to an HTTPS tileset URL (or localhost).",
+      "showKey": "Show key",
+      "hideKey": "Hide key",
+      "showKeyAria": "Show Google Maps API key",
+      "hideKeyAria": "Hide Google Maps API key",
+      "toggleLayerAria": "Toggle {{name}}"
     },
     "geolibre-osm-downloader": {
       "title": "OSM Downloader",
@@ -9057,6 +9217,36 @@
         "17": "Bridge deck",
         "18": "High noise"
       }
+    },
+    "geolibre-elevation-profile": {
+      "title": "Elevation Profile",
+      "drawHint": "Click on the map to add points. Double-click or press Enter to finish.",
+      "drawCancelled": "Drawing cancelled.",
+      "needTwoPoints": "Need at least two points to build a profile.",
+      "selectLineHint": "Select a line feature to build its elevation profile.",
+      "sampling": "Sampling elevation…",
+      "loadError": "Could not load elevation data.",
+      "closePanel": "Close panel",
+      "drawLine": "Draw line",
+      "finish": "Finish",
+      "clear": "Clear",
+      "useSelected": "Use selected",
+      "useSelectedTitle": "Build a profile from the selected line feature",
+      "selectLineFirst": "Select a line feature first",
+      "exportLabel": "Export:",
+      "exportCsv": "Download the profile as CSV",
+      "exportSvg": "Save the chart as an SVG image",
+      "statDistance": "Distance",
+      "statMin": "Min",
+      "statMax": "Max",
+      "statAscent": "Ascent ↑",
+      "statDescent": "Descent ↓",
+      "unitsTitle": "Units: {{units}}"
+    },
+    "maplibre-gl-geoagent": {
+      "signIn": "Sign in",
+      "signInOpening": "Opening Google sign-in...",
+      "signInComplete": "Earth Engine sign-in complete."
     }
   }
 }

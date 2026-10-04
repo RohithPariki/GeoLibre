@@ -8,6 +8,9 @@ import {
 } from "../packages/plugins/src/toolbar-menu-registry";
 import type { GeoLibreAppAPI, GeoLibrePlugin } from "../packages/plugins/src/types";
 
+/** The panel a plugin hands to `registerRightPanel`. */
+type RightPanel = Parameters<NonNullable<GeoLibreAppAPI["registerRightPanel"]>>[0];
+
 const app = {} as GeoLibreAppAPI;
 
 function testPlugin(patch: Partial<GeoLibrePlugin> = {}): GeoLibrePlugin {
@@ -747,6 +750,34 @@ describe("PluginManager toolbar menu scoping", () => {
     assert.deepEqual(seen, ["menu-plugin"]);
   });
 
+  it("tags registerMenuContribution with the activating plugin's id and name", () => {
+    const manager = new PluginManager();
+    const seen: Array<[string | undefined, string | undefined]> = [];
+    // Only the contribution registrar: a scope must still be built for it.
+    const mockApp = {
+      registerMenuContribution: (_c: unknown, ownerPluginId?: string, ownerName?: string) => {
+        seen.push([ownerPluginId, ownerName]);
+        return () => undefined;
+      },
+    } as unknown as GeoLibreAppAPI;
+
+    manager.register(
+      testPlugin({
+        id: "contrib-plugin",
+        name: "Contrib Plugin",
+        activate: (api) =>
+          void api.registerMenuContribution?.({
+            id: "contrib-plugin-processing",
+            menu: "processing",
+            items: [],
+          }),
+      }),
+    );
+    manager.activate("contrib-plugin", mockApp);
+
+    assert.deepEqual(seen, [["contrib-plugin", "Contrib Plugin"]]);
+  });
+
   it("tags app.credentials calls with the calling plugin's id", () => {
     const manager = new PluginManager();
     const seen: Array<[string, string | undefined]> = [];
@@ -979,8 +1010,7 @@ describe("PluginManager panel auto-expand on restore", () => {
 
   it("deactivates an opted-in plugin when its native panel closes", async () => {
     const manager = new PluginManager();
-    let registeredPanel: Parameters<NonNullable<GeoLibreAppAPI["registerRightPanel"]>>[0] | null =
-      null;
+    let registeredPanel = null as RightPanel | null;
     const mockApp = {
       registerRightPanel: (panel: NonNullable<typeof registeredPanel>) => {
         registeredPanel = panel;
@@ -1014,8 +1044,7 @@ describe("PluginManager panel auto-expand on restore", () => {
 
   it("deactivates an opted-in plugin when its panel close hook throws", async () => {
     const manager = new PluginManager();
-    let registeredPanel: Parameters<NonNullable<GeoLibreAppAPI["registerRightPanel"]>>[0] | null =
-      null;
+    let registeredPanel = null as RightPanel | null;
     const mockApp = {
       registerRightPanel: (panel: NonNullable<typeof registeredPanel>) => {
         registeredPanel = panel;
@@ -1042,9 +1071,44 @@ describe("PluginManager panel auto-expand on restore", () => {
 
     manager.activate("throwing-close-panel", mockApp);
     assert.ok(registeredPanel);
-    assert.throws(() => registeredPanel.onExplicitClose?.(), /close failed/);
+    const panel = registeredPanel;
+    assert.throws(() => panel.onExplicitClose?.(), /close failed/);
     await flushTimers(1);
     assert.equal(manager.isActive("throwing-close-panel"), false);
+  });
+
+  it("keeps a plugin re-activated after its own deactivate closed its panel", async () => {
+    const manager = new PluginManager();
+    let registeredPanel = null as RightPanel | null;
+    const mockApp = {
+      registerRightPanel: (panel: NonNullable<typeof registeredPanel>) => {
+        registeredPanel = panel;
+        return () => undefined;
+      },
+      deactivatePlugin: (id: string) => manager.deactivate(id, mockApp as GeoLibreAppAPI),
+    } as unknown as GeoLibreAppAPI;
+    manager.register(
+      testPlugin({
+        id: "swap-with-panel",
+        activate: (api) => {
+          api.registerRightPanel?.({
+            id: "swap-with-panel-content",
+            title: "Swap with panel",
+            deactivatePluginOnClose: true,
+            render: () => undefined,
+          });
+        },
+        // Like the docked Web Services plugins: deactivate closes the panel.
+        deactivate: () => registeredPanel?.onExplicitClose?.(),
+      }),
+    );
+
+    manager.activate("swap-with-panel", mockApp);
+    manager.deactivate("swap-with-panel", mockApp);
+    // A renderer swap re-activates before the deferred deactivation runs.
+    manager.activate("swap-with-panel", mockApp);
+    await flushTimers(1);
+    assert.equal(manager.isActive("swap-with-panel"), true);
   });
 
   it("leaves a plugin that persists its own collapsed state expanded", async () => {
@@ -1348,7 +1412,7 @@ describe("PluginManager plugin coordination", () => {
         return !manager.isActive(id);
       },
     } as GeoLibreAppAPI;
-    let closer: GeoLibreAppAPI | null = null;
+    let closer = null as GeoLibreAppAPI | null;
     manager.register(
       testPlugin({
         id: "closer",

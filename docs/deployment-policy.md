@@ -7,14 +7,15 @@ library, sharing endpoints, and branding.
 
 ## Loading
 
-The web, desktop and Jupyter builds fetch `deployment.json` from the app's base
-URL (`<base>/deployment.json`) before the first render, so nothing paints with a
-setting the policy then changes. No policy applies when the file is absent
-(404 or an HTML fallback page), unreachable, not JSON, of an unknown `version`,
-or does not arrive within 3 seconds. In those cases the app behaves exactly as
-it does without the file. The container image writes the file on every boot
-(see [Docker](#docker)); reading it from the desktop config directory arrives in
-a later release.
+The web and Jupyter builds fetch `deployment.json` from the app's base URL
+(`<base>/deployment.json`) before the first render, so nothing paints with a
+setting the policy then changes. Desktop first reads the app config directory
+(see [Desktop](#desktop)), falling back to that web URL only when the config-dir
+file is absent or cannot be read. No policy applies when the selected file is
+absent (404 or an HTML fallback page), not JSON, or of an unknown `version`.
+An unreachable web file or a fetch that takes more than 3 seconds also yields
+no policy. In those cases the app behaves exactly as it does without the file.
+The container image writes the file on every boot (see [Docker](#docker)).
 
 What each section does today:
 
@@ -23,8 +24,9 @@ What each section does today:
 - `interface` replaces `admin-profile.json` whole; fields are not merged. An
   empty `interface` (`{}`) configures nothing and counts as absent, so
   `admin-profile.json` still applies.
-- `plugins.registryUrl` sets the plugin registry. `allowed`, `blocked`,
-  `sideload` and `defaultActive` are stored but not enforced yet.
+- `plugins.registryUrl` sets the plugin registry. `allowed`, `blocked` and
+  `sideload` gate external plugin loads and installs; `defaultActive` seeds
+  activation in fresh projects.
 - `services`, `sharing`, `geolens` and `branding.appName` override the
   matching `GEOLIBRE_*` deployment settings. `sharing.embedOrigins: []` turns
   the embed API off.
@@ -171,6 +173,39 @@ mean opposite things. Omitted means "no restriction from this file"; `[]` means
 An id in `blocked` is never loaded, even if it is also in `allowed`; when
 `allowed` is present, any id not in it is not loaded.
 
+The evaluator checks sideload permission first, then `blocked`, then `allowed`.
+Bundled drop-ins under `public/plugins/` are exempt from `allowed` and
+`sideload`, but still honor `blocked`. Built-in plugins are not external plugins
+and are not governed by these load restrictions.
+
+For URL plugins, GeoLibre must fetch `plugin.json` to learn the id. A denied id
+never has its entry or stylesheet fetched or its code imported. Denials appear
+as external plugin load issues.
+
+With `sideload: false`, manifest URL, zip and directory controls disappear and
+programmatic installs refuse. Project-supplied manifest URLs produce no trust
+prompt and cannot be trusted into settings. Previously installed URLs stay in
+settings, but only URLs recognized by permitted entries in the current registry
+may load (plus bundled drop-ins). If that registry is unavailable, installed URLs
+fail closed; bundled drop-ins can still load. Existing file-installed archives
+and additional directories cannot load. Each skipped configured directory is
+reported as an external plugin load issue without reading its contents.
+Each settings-triggered or forced scan checks current registry membership before
+reusing a previous load. A previously loaded URL that is no longer approved
+is unloaded, including when the registry is unavailable. Its installed URL and
+integrity pin remain until the user uninstalls it; registry approval returning
+does not silently trust changed code. Denied registry entries are hidden in
+the marketplace, but their installed source URLs remain removable in Settings.
+
+`defaultActive` marks permitted, loaded external plugins for activation in a
+fresh project. It does not override a saved project's active plugin list and
+does not allow a denied plugin to load. URL updates preserve these deployment
+defaults for later fresh projects. Without a `plugins` section, existing loading
+and activation behavior is unchanged.
+
+Plugin policy is client-side enforcement only, not a server security boundary:
+a modified client can bypass it. It does not provide signing or sandboxing.
+
 ## Precedence between sources
 
 The order, highest first, is:
@@ -202,6 +237,42 @@ The client parser is lenient and works section by section:
 The container validates strictly: it rejects unknown keys, duplicate or invalid
 ids, service ids that collide after trimming, and numeric service field values
 beyond the safe-integer range, none of which JSON Schema alone can all express.
+
+## Desktop
+
+Place `deployment.json` in Tauri's `<app_config_dir>`, next to any
+`admin-profile.json`. For the standard `org.geolibre.desktop` application
+identifier, the paths are:
+
+| OS | Policy path |
+| --- | --- |
+| Linux | `$XDG_CONFIG_HOME/org.geolibre.desktop/deployment.json`, or `~/.config/org.geolibre.desktop/deployment.json` when `XDG_CONFIG_HOME` is unset |
+| macOS | `~/Library/Application Support/org.geolibre.desktop/deployment.json` |
+| Windows | `%APPDATA%\org.geolibre.desktop\deployment.json` (normally `C:\Users\<user>\AppData\Roaming\org.geolibre.desktop\deployment.json`) |
+
+These follow Tauri's [app config directory](https://v2.tauri.app/reference/javascript/api/namespacepath/#appconfigdir).
+Sandboxed installations may resolve the directory inside their sandbox;
+custom builds with a different application identifier use that identifier
+instead.
+
+The `read_deployment_policy` command returns raw UTF-8 text, or `null` when
+the file is absent. A leading UTF-8 BOM is accepted by the parser. The selected
+policy is applied before the first render, including capability restrictions,
+without rebuilding the app. Restart GeoLibre after changing the file; there is
+no runtime file watching.
+
+An existing config-dir file is authoritative, even if empty, malformed or of
+an unsupported version: it yields no policy rather than falling back to a
+bundled file. Config-dir and bundled policies are never merged. When the file
+is absent, GeoLibre fetches `<base>/deployment.json` instead. Other read errors
+(including permission failures) produce a console warning in every build and
+fall back to that same web file. Unsupported versions also warn in every build.
+With no file in either location, existing behavior is unchanged.
+
+A non-empty policy `interface` replaces `admin-profile.json` whole, just as
+on the web; an absent or empty `interface` leaves the admin profile in force.
+The config directory is user-writable: this is desktop provisioning, not a
+security boundary or server-side enforcement.
 
 ## Docker
 

@@ -31,6 +31,7 @@ export * from "./scale-units";
 export * from "./elevation";
 export * from "./camera-altitude";
 export * from "./project";
+export * from "./project-diff";
 export * from "./style-library";
 export * from "./layer-library";
 export * from "./layer-defaults";
@@ -221,12 +222,15 @@ export {
 } from "./header-references";
 export {
   isCredentialFieldName,
+  isCredentialUrlParam,
   MAX_REDACT_DEPTH,
   PROJECT_CREDENTIAL_FIELDS,
   PUBLISHABLE_PLUGIN_SETTINGS,
+  redactConfigurationCredentials,
   redactCredentials,
   redactProjectCredentials,
   redactUrlCredentials,
+  setRegistryPublishableSettings,
   type CredentialRedactionResult,
 } from "./credentials";
 export { excludeHiddenFieldsFromGeojson, excludeHiddenFieldsFromProject } from "./visibility";

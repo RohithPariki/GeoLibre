@@ -43,6 +43,16 @@ export {
   type ToolbarMenuEntry,
 } from "./toolbar-menu-registry";
 export {
+  registerMenuContribution,
+  unregisterMenuContribution,
+  listMenuContributions,
+  getMenuContributionsSnapshot,
+  subscribeMenuContributions,
+  isMenuContributionTarget,
+  type MenuContributionsSnapshot,
+  type MenuContributionEntry,
+} from "./menu-contribution-registry";
+export {
   registerFloatingPanel,
   unregisterFloatingPanel,
   openFloatingPanel,
@@ -68,7 +78,16 @@ export {
   resolveToolbarLabel,
   type GeoLibreToolbarLabel,
 } from "./toolbar-menu-label";
-export { maplibreLayerControlPlugin } from "./plugins/layer-control";
+// The translator plugins use to resolve `plugin.<id>.*` keys through the app
+// API with an interpolated English fallback (see docs/plugin-api.md).
+export {
+  createPluginTranslator,
+  interpolatePluginText,
+  pluginDisplayTitle,
+  type PluginTranslate,
+  type PluginTranslateParams,
+} from "./plugin-i18n";
+export { LAYER_CONTROL_PLUGIN_ID, maplibreLayerControlPlugin } from "./plugins/layer-control";
 export { getStyleMap } from "./plugins/style-map";
 export {
   createAnnotationMarker,

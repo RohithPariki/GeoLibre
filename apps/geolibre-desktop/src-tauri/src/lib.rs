@@ -1,6 +1,7 @@
 mod arcgis_http;
 mod aws_credentials;
 mod aws_sts;
+mod plugin_http;
 // Earth Engine sign-in uses Google's OAuth loopback-redirect flow, which binds
 // a listener on 127.0.0.1 to accept the browser's redirect. Accepting an
 // inbound connection requires the `com.apple.security.network.server`
@@ -77,6 +78,12 @@ mod secure_store {
     pub async fn secure_store_get_many(_accounts: Vec<String>) -> Result<HashMap<String, String>, String> {
         Err(UNAVAILABLE.to_string())
     }
+
+    /// Nothing to seal: reads always fail here.
+    #[tauri::command]
+    pub fn secure_store_seal() {}
+
+    pub fn reset_read_gate(_label: &str) {}
 
     #[tauri::command]
     pub async fn secure_store_set(_account: String, _secret: String) -> Result<(), String> {
@@ -413,6 +420,7 @@ pub fn run() {
         .manage(pending_project_paths)
         .manage(SelectedImagePaths::default())
         .manage(arcgis_http::ArcGISRequests::default())
+        .manage(plugin_http::PluginHttpRequests::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         // Runs before persisted-scope's setup hook so legacy photo grants are
@@ -478,6 +486,8 @@ pub fn run() {
             fetch_url_response,
             arcgis_http::fetch_arcgis_response,
             arcgis_http::cancel_arcgis_request,
+            plugin_http::plugin_http_request,
+            plugin_http::cancel_plugin_http_request,
             aws_credentials::aws_list_profiles,
             aws_credentials::aws_resolve_credentials,
             aws_credentials::aws_sso_login_start,
@@ -488,6 +498,7 @@ pub fn run() {
             pick_image_paths,
             read_selected_image,
             read_admin_profile,
+            read_deployment_policy,
             read_env_vars,
             take_pending_project_paths,
             allow_raster_asset,
@@ -507,9 +518,17 @@ pub fn run() {
             start_earth_engine_oauth,
             poll_earth_engine_oauth,
             secure_store::secure_store_get_many,
+            secure_store::secure_store_seal,
             secure_store::secure_store_set,
             secure_store::secure_store_delete
         ])
+        // A new document in a webview hydrates credentials again, so give it
+        // back its one startup read (secure_store.rs, issue #2858).
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                secure_store::reset_read_gate(webview.label());
+            }
+        })
         .setup(|app| {
             create_main_window(app)?;
             // Nothing on Linux claims the OAuth callback scheme for us.
@@ -744,7 +763,7 @@ pub(crate) fn is_allowed_project_path(path: &str) -> bool {
 fn read_project_file(path: String) -> Result<String, String> {
     if !is_allowed_project_path(&path) {
         return Err(format!(
-            "Refusing to read \"{path}\": not an absolute local project file path"
+            "Refusing to read \"{path}\": a project file must be an absolute local path whose name ends in .geolibre or .geolibre.json"
         ));
     }
     // Resolve symlinks and re-check the extension, so a symlink named
@@ -1182,6 +1201,21 @@ fn is_safe_absolute_path(path: &str) -> bool {
     !path.split(['/', '\\']).any(|segment| segment == "..")
 }
 
+/// Read optional configuration without parsing or normalizing its UTF-8 text.
+/// Only a missing file is treated as absent; all other read errors propagate.
+fn read_optional_config_file(path: &Path) -> Result<Option<String>, std::io::Error> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_admin_profile_file(path: &Path) -> Result<Option<String>, String> {
+    read_optional_config_file(path)
+        .map_err(|error| format!("Could not read admin profile: {error}"))
+}
+
 /// Read the optional admin UI-profile file (`<app_config_dir>/admin-profile.json`).
 ///
 /// Returns `Ok(None)` when the file is absent so a missing file is not an error;
@@ -1194,11 +1228,19 @@ fn read_admin_profile(app: tauri::AppHandle) -> Result<Option<String>, String> {
         .app_config_dir()
         .map_err(|error| format!("Could not resolve config directory: {error}"))?;
     let path = config_dir.join("admin-profile.json");
-    match fs::read_to_string(&path) {
-        Ok(contents) => Ok(Some(contents)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!("Could not read admin profile: {error}")),
-    }
+    read_admin_profile_file(&path)
+}
+
+/// Read the optional deployment policy (`<app_config_dir>/deployment.json`).
+/// Returns its raw UTF-8 text, or `None` only when the file is absent.
+#[tauri::command]
+fn read_deployment_policy(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("Could not resolve config directory: {error}"))?;
+    read_optional_config_file(&config_dir.join("deployment.json"))
+        .map_err(|error| format!("Could not read deployment policy: {error}"))
 }
 
 /// The only environment variable names `read_env_vars` will ever return. This
@@ -1612,6 +1654,29 @@ fn guarded_http_client() -> Result<reqwest::blocking::Client, String> {
     static CLIENT: std::sync::OnceLock<Result<reqwest::blocking::Client, String>> =
         std::sync::OnceLock::new();
     CLIENT.get_or_init(build_guarded_http_client).clone()
+}
+
+/// An async `reqwest` client builder with the same SSRF guard, enterprise CAs
+/// and mTLS identity as [`build_guarded_http_client_with_redirects`]. The async
+/// transports (ArcGIS, plugin requests) add their own redirect policy and any
+/// extra settings, then build and cache the client themselves.
+fn guarded_async_client_builder(
+    redirects: reqwest::redirect::Policy,
+) -> Result<reqwest::ClientBuilder, String> {
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(REMOTE_TILE_CONNECT_TIMEOUT_SECS))
+        .dns_resolver(std::sync::Arc::new(GuardedDnsResolver))
+        .user_agent("GeoLibre Desktop")
+        .redirect(redirects);
+    for certificate in extra_ca_certificates()? {
+        builder = builder.add_root_certificate(certificate);
+    }
+    Ok(match client_identity()? {
+        #[cfg(not(target_os = "android"))]
+        Some(ClientIdentity::Pkcs12(identity)) => builder.use_native_tls().identity(identity),
+        Some(ClientIdentity::Pem(identity)) => builder.use_rustls_tls().identity(identity),
+        None => builder.use_rustls_tls(),
+    })
 }
 
 fn build_guarded_http_client() -> Result<reqwest::blocking::Client, String> {
@@ -4892,7 +4957,6 @@ mod tests {
     #[cfg(not(feature = "mas"))]
     use std::io::{Cursor, Write};
     use std::net::IpAddr;
-    #[cfg(not(feature = "mas"))]
     use std::path::PathBuf;
     #[cfg(not(feature = "mas"))]
     use std::process::Command;
@@ -4951,10 +5015,8 @@ mod tests {
     // on drop, so scratch dirs are cleaned up even when an assertion panics.
     // Uses the process id (no rand dependency) and clears any leftover from a
     // prior run at construction.
-    #[cfg(not(feature = "mas"))]
     struct ScratchDir(PathBuf);
 
-    #[cfg(not(feature = "mas"))]
     impl ScratchDir {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir().join(format!("geolibre-{name}-{}", std::process::id()));
@@ -4968,10 +5030,59 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "mas"))]
     impl Drop for ScratchDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn optional_config_file_returns_none_only_when_missing() {
+        let root = ScratchDir::new("optional-config-missing");
+        let path = root.path().join("deployment.json");
+        assert_eq!(super::read_optional_config_file(&path).unwrap(), None);
+        assert_eq!(super::read_admin_profile_file(&path).unwrap(), None);
+    }
+
+    #[test]
+    fn optional_config_file_preserves_raw_utf8_text() {
+        let root = ScratchDir::new("optional-config-text");
+        let path = root.path().join("deployment.json");
+        for contents in [
+            "",
+            " \r\n{\"name\":\"café\"}\r\n ",
+            "\u{feff}{\"enabled\":true}\n",
+        ] {
+            fs::write(&path, contents).unwrap();
+            assert_eq!(
+                super::read_optional_config_file(&path).unwrap(),
+                Some(contents.to_owned())
+            );
+            assert_eq!(
+                super::read_admin_profile_file(&path).unwrap(),
+                Some(contents.to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn optional_config_file_propagates_non_not_found_errors() {
+        let root = ScratchDir::new("optional-config-errors");
+        let directory = root.path().join("deployment.json");
+        fs::create_dir(&directory).unwrap();
+        let invalid_utf8 = root.path().join("admin-profile.json");
+        fs::write(&invalid_utf8, [0xff]).unwrap();
+
+        for path in [&directory, &invalid_utf8] {
+            let original_error = fs::read_to_string(path).unwrap_err();
+            let error = super::read_optional_config_file(path).unwrap_err();
+            assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+            assert_eq!(error.kind(), original_error.kind());
+            assert_eq!(error.to_string(), original_error.to_string());
+            assert_eq!(
+                super::read_admin_profile_file(path).unwrap_err(),
+                format!("Could not read admin profile: {original_error}")
+            );
         }
     }
 

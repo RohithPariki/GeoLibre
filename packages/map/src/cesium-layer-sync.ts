@@ -40,7 +40,7 @@ import {
   type ZarrCesiumModule,
 } from "./cesium-zarr-imagery";
 import { getZarrStore } from "./zarr-source";
-import { createFeatureStyleResolver, type FeatureStyleResolver } from "./cesium-feature-style";
+import { createFeatureStyleResolver, type FeatureStyleResolver } from "./feature-style";
 import { createCesiumLabeler, pickLabelPart } from "./cesium-labels";
 import {
   buildPointCloudCollection,
@@ -61,13 +61,12 @@ import {
   type PointRenderPlan,
 } from "./cesium-points";
 import {
-  hasRegisteredProtocol,
   mercatorBbox,
   ProtocolImageryProvider,
-  protocolScheme,
   quadkey,
   webMercatorRectangle,
 } from "./cesium-protocol-imagery";
+import { hasRegisteredProtocol, protocolScheme } from "./protocol-tiles";
 import {
   compileTilesetStyle,
   tilesetStyleKey,
@@ -75,8 +74,13 @@ import {
 } from "./cesium-tileset-style";
 import { renderFillPatternCanvas } from "./fill-patterns";
 import { getLayerBounds } from "./geojson-loader";
-import { classifyLayer, type LayerKind, unhandledLayerKind } from "./layer-kind";
-import { getPMTilesArchive } from "./layer-sync";
+import {
+  classifyLayer,
+  hasLayerKindSupport,
+  type LayerKind,
+  type SupportedLayerKinds,
+} from "./layer-kind";
+import { getPMTilesArchive } from "./pmtiles-archive";
 import { renderMarkerCanvas } from "./markers";
 import { normalizePMTilesUrl } from "./pmtiles-layer";
 import type { Header as PMTilesHeader } from "pmtiles";
@@ -577,6 +581,32 @@ function wmtsCapabilities(
 }
 
 /**
+ * What the globe's kind dispatch ({@link isCesiumSupportedLayerType}) does with
+ * each layer kind. The globe has no plugin controls, so every kind it draws is
+ * `"native"` (some only for certain data: a raster archive, a draped style, a
+ * tileset URL). The `"unsupported"` kinds stay in the 2D panes, unless their
+ * record carries a FeatureCollection, CZML or KML, which the globe draws
+ * whatever the kind.
+ */
+export const CESIUM_SUPPORTED_LAYER_KINDS = Object.freeze({
+  geojson: "native",
+  "raster-tiles": "native",
+  "vector-tiles": "native",
+  arcgis: "native",
+  "tile-archive": "native",
+  zarr: "native",
+  lidar: "native",
+  "gaussian-splat": "native",
+  "3d-tiles": "native",
+  cog: "native",
+  "vector-file": "unsupported",
+  "duckdb-query": "unsupported",
+  "deckgl-viz": "unsupported",
+  video: "unsupported",
+  image: "native",
+} as const satisfies SupportedLayerKinds);
+
+/**
  * Whether the globe can render this layer *kind* at all (regardless of whether
  * its data has loaded yet). Exported so the UI can flag "2D only" layers on a
  * globe pane. See the module header for the supported kinds.
@@ -586,6 +616,9 @@ export function isCesiumSupportedLayerType(layer: GeoLibreLayer): boolean {
   // FeatureCollection on a kind that takes the GeoJSON path.
   if (isCzmlLayer(layer) || isCesiumKmlLayer(layer) || hasGeoJsonCollection(layer)) return true;
   const kind = classifyLayer(layer);
+  // No globe renderer (vector files, DuckDB queries, deck.gl, video), or an
+  // unknown type: these stay in the 2D panes.
+  if (hasLayerKindSupport(CESIUM_SUPPORTED_LAYER_KINDS, kind, "unsupported")) return false;
   switch (kind) {
     // GeoJSON (loaded or not yet), imagery (tile templates and a georeferenced
     // image as a single-tile provider) and COGs, which the globe opens itself.
@@ -605,14 +638,6 @@ export function isCesiumSupportedLayerType(layer: GeoLibreLayer): boolean {
     case "vector-tiles":
     case "arcgis":
       return isDrapedLayer(layer);
-    // No globe renderer: these stay in the 2D panes.
-    case "vector-file":
-    case "duckdb-query":
-    case "deckgl-viz":
-    case "video":
-      return false;
-    default:
-      return unhandledLayerKind(kind, false);
   }
 }
 
