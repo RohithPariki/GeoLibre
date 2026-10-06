@@ -64,6 +64,7 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
   // quietly; the exaggeration slider above still applies.
   const { terrainSource: terrainSourceSupported, ionTerrain: ionTerrainSupported } =
     useMapCapabilities(mapControllerRef);
+  const savedIonAssetId = useAppStore((state) => state.preferences.map.terrainIonAssetId);
   const [open, setOpen] = useState(false);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [terrainUrl, setTerrainUrl] = useState("");
@@ -453,7 +454,7 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                     disabled={
                       !!sourceLoading ||
                       (!mapControllerRef.current?.hasCustomTerrainSource() &&
-                        useAppStore.getState().preferences.map.terrainIonAssetId === undefined)
+                        savedIonAssetId === undefined)
                     }
                     onClick={() => void restoreDefaultSource()}
                   >

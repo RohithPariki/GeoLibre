@@ -1328,8 +1328,13 @@ export class CesiumEngine implements MapEngine {
    * terrain correction to fix it. The interface form cannot express that (it
    * returns `boolean`), so the mount path calls this and the interface delegates
    * to it fire-and-forget.
+   *
+   * A saved Ion asset that fails to load (revoked, deleted, wrong account) falls
+   * back to World Terrain rather than leaving the globe with none. Callers that
+   * are switching the source themselves pass `false` so they see the failure
+   * and can keep the previous source.
    */
-  async enableWorldTerrain(): Promise<boolean> {
+  async enableWorldTerrain(fallbackFromIon = true): Promise<boolean> {
     this.terrainEnabled = true;
     const request = ++this.terrainRequest;
     try {
@@ -1341,7 +1346,10 @@ export class CesiumEngine implements MapEngine {
               this.cogTerrain ? 22 : 15,
             ))
           : this.terrainIonAssetId !== null
-            ? await this.loadIonTerrain(this.terrainIonAssetId)
+            ? await this.loadIonTerrain(this.terrainIonAssetId).catch((error: unknown) => {
+                if (!fallbackFromIon) throw error;
+                return this.Cesium.createWorldTerrainAsync();
+              })
             : await this.Cesium.createWorldTerrainAsync();
       const viewer = this.live();
       // The toggle may have been reversed, or the viewer destroyed, while the
@@ -1383,7 +1391,7 @@ export class CesiumEngine implements MapEngine {
       return true;
     }
     const before = this.terrainRequest;
-    const applied = await this.enableWorldTerrain();
+    const applied = await this.enableWorldTerrain(false);
     // Roll back only a genuine load failure. A newer request (another asset, a
     // COG switch, or terrain turned off) bumps `terrainRequest` past ours, and
     // restoring `previous` then would override that newer state.
@@ -1416,6 +1424,8 @@ export class CesiumEngine implements MapEngine {
     if (!this.live()) return false;
     const normalized = typeof source === "string" ? source.trim() || null : source;
     if (this.cogTerrain === null && normalized === null) {
+      // Still supersede a COG that is opening, so it cannot land after this.
+      this.cogTerrainRequest++;
       this.cogTerrainUrl = null;
       return true;
     }
@@ -1440,7 +1450,7 @@ export class CesiumEngine implements MapEngine {
     this.cogTerrainUrl = typeof normalized === "string" ? normalized : null;
     if (this.terrainEnabled) {
       const before = this.terrainRequest;
-      const applied = await this.enableWorldTerrain();
+      const applied = await this.enableWorldTerrain(false);
       // Clearing the COG falls back to Ion/World Terrain, which can fail to
       // load. Keep the active COG source then instead of leaving no terrain.
       if (!applied && this.terrainRequest === before + 1 && this.live()) {

@@ -985,6 +985,20 @@ describe("CesiumEngine terrain", () => {
     engine.destroy();
   });
 
+  it("falls back to World Terrain when a saved Ion asset fails to load", async () => {
+    const fakes = makeViewer();
+    const Cesium = makeCesium();
+    Cesium.IonResource.fromAssetId = (() => Promise.reject(new Error("revoked"))) as never;
+    const engine = new CesiumEngine(Cesium, fakes.viewer, {
+      ionToken: "tok-123",
+      terrainIonAssetId: 2767062,
+    });
+    assert.equal(await engine.enableWorldTerrain(), true);
+    assert.equal(engine.isTerrainEnabled(), true);
+    assert.deepEqual(fakes.viewer.terrainProvider, { kind: "world-terrain" });
+    engine.destroy();
+  });
+
   it("does not roll back an Ion terrain request a newer one superseded", async () => {
     const fakes = makeViewer();
     const Cesium = makeCesium();
