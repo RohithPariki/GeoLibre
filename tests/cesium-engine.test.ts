@@ -959,10 +959,10 @@ describe("CesiumEngine terrain", () => {
   it("restores previous terrain when Ion terrain asset fails to load asynchronously", async () => {
     const fakes = makeViewer();
     const Cesium = makeCesium();
-    Cesium.IonResource.fromAssetId = (assetId: number, options?: { accessToken?: string }) => {
+    Cesium.IonResource.fromAssetId = ((assetId: number, options?: { accessToken?: string }) => {
       if (assetId === 999999) return Promise.reject(new Error("Asset not found or inaccessible"));
       return Promise.resolve({ kind: "ion-resource", assetId, token: options?.accessToken });
-    };
+    }) as never;
     const engine = new CesiumEngine(Cesium, fakes.viewer, {
       ionToken: "tok-123",
       terrainIonAssetId: 2767062,
@@ -989,10 +989,10 @@ describe("CesiumEngine terrain", () => {
     const fakes = makeViewer();
     const Cesium = makeCesium();
     let rejectSlow: (error: Error) => void = () => {};
-    Cesium.IonResource.fromAssetId = (assetId: number, options?: { accessToken?: string }) =>
+    Cesium.IonResource.fromAssetId = ((assetId: number, options?: { accessToken?: string }) =>
       assetId === 111
         ? new Promise((_, reject) => (rejectSlow = reject))
-        : Promise.resolve({ kind: "ion-resource", assetId, token: options?.accessToken });
+        : Promise.resolve({ kind: "ion-resource", assetId, token: options?.accessToken })) as never;
     const engine = new CesiumEngine(Cesium, fakes.viewer, {
       ionToken: "tok-123",
       terrainIonAssetId: 2767062,

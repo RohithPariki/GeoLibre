@@ -375,20 +375,20 @@ describe("Cesium Ion terrain asset project persistence", () => {
   it("normalizes invalid or missing terrainIonAssetId safely", () => {
     const project = createEmptyProject();
     // String number should coerce
-    (project.preferences.map as Record<string, unknown>).terrainIonAssetId = "2767062";
+    (project.preferences.map as unknown as Record<string, unknown>).terrainIonAssetId = "2767062";
     let parsed = parseProject(serializeProject(project));
     assert.equal(parsed.preferences.map.terrainIonAssetId, 2767062);
 
     // Negative, 0, float, or invalid text should normalize to undefined
-    (project.preferences.map as Record<string, unknown>).terrainIonAssetId = -5;
+    (project.preferences.map as unknown as Record<string, unknown>).terrainIonAssetId = -5;
     parsed = parseProject(serializeProject(project));
     assert.equal(parsed.preferences.map.terrainIonAssetId, undefined);
 
-    (project.preferences.map as Record<string, unknown>).terrainIonAssetId = 0;
+    (project.preferences.map as unknown as Record<string, unknown>).terrainIonAssetId = 0;
     parsed = parseProject(serializeProject(project));
     assert.equal(parsed.preferences.map.terrainIonAssetId, undefined);
 
-    (project.preferences.map as Record<string, unknown>).terrainIonAssetId = "invalid";
+    (project.preferences.map as unknown as Record<string, unknown>).terrainIonAssetId = "invalid";
     parsed = parseProject(serializeProject(project));
     assert.equal(parsed.preferences.map.terrainIonAssetId, undefined);
   });
