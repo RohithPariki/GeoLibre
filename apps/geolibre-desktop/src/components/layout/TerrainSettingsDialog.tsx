@@ -57,13 +57,13 @@ export interface TerrainSettingsDialogProps {
 export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialogProps) {
   const { t } = useTranslation();
   const ionToken = useCesiumIonToken();
-  const isCesiumPrimary = useAppStore((state) => state.primaryRenderer === "cesium");
   // Not every engine can take a DEM of its own: mapbox-gl has no `raster-dem`
   // source a COG can back, so `setTerrainCogSource` there returns false and the
   // whole section used to accept a URL, a file or a layer and then do nothing at
   // all — no change, no error (#2475). Hide it instead of letting it fail
   // quietly; the exaggeration slider above still applies.
-  const { terrainSource: terrainSourceSupported } = useMapCapabilities(mapControllerRef);
+  const { terrainSource: terrainSourceSupported, ionTerrain: ionTerrainSupported } =
+    useMapCapabilities(mapControllerRef);
   const [open, setOpen] = useState(false);
   const [exaggeration, setExaggeration] = useState(DEFAULT_EXAGGERATION);
   const [terrainUrl, setTerrainUrl] = useState("");
@@ -196,10 +196,21 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
     setSourceLoading(action);
     setSourceError(null);
     try {
-      if (isCesiumPrimary && controller.setTerrainIonAssetId) {
+      // False means another caller's newer selection won, so this request must
+      // not clear the field or otherwise report itself as the applied source.
+      // The COG source goes first so a failed registration keeps the saved Ion
+      // selection; a COG source outranks Ion in the engine, so clearing Ion
+      // afterwards does not fetch it again.
+      if (!(await controller.setTerrainCogSource(source)) || !isCurrent()) return;
+      if (ionTerrainSupported && controller.setTerrainIonAssetId) {
         if (controller.getTerrainIonAssetId?.() !== null) {
           const clearIon = await controller.setTerrainIonAssetId(null);
-          if (!clearIon || !isCurrent()) return;
+          if (!isCurrent()) return;
+          // Not superseded, so the fallback World Terrain itself failed to load.
+          if (!clearIon) {
+            setSourceError(t("terrainSettings.sourceError"));
+            return;
+          }
         }
         const preferences = useAppStore.getState().preferences;
         if (preferences.map.terrainIonAssetId !== undefined) {
@@ -210,9 +221,6 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
         }
         setIonAssetId("");
       }
-      // False means another caller's newer selection won, so this request must
-      // not clear the field or otherwise report itself as the applied source.
-      if (!(await controller.setTerrainCogSource(source)) || !isCurrent()) return;
       onApplied?.();
     } catch (error) {
       if (isCurrent()) setSourceError(translateSourceError(error));
@@ -270,11 +278,20 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
     setSourceLoading("ion");
     setSourceError(null);
     try {
-      if (controller.hasCustomTerrainSource()) {
-        if (!(await controller.setTerrainCogSource(null)) || !isCurrent()) return;
-      }
+      // Select the asset before dropping the COG source: while a COG source is
+      // active it outranks Ion, so this is cheap, and clearing the COG is then
+      // what loads the asset. The engine keeps the COG source if that load
+      // fails, so revert the asset id to match.
+      const previousAssetId = controller.getTerrainIonAssetId?.() ?? null;
       if (!(await controller.setTerrainIonAssetId(assetId)) || !isCurrent()) {
         throw new Error(t("terrainSettings.ionError"));
+      }
+      if (controller.hasCustomTerrainSource()) {
+        if (!(await controller.setTerrainCogSource(null))) {
+          if (isCurrent()) await controller.setTerrainIonAssetId(previousAssetId);
+          throw new Error(t("terrainSettings.ionError"));
+        }
+        if (!isCurrent()) return;
       }
       const preferences = useAppStore.getState().preferences;
       useAppStore.getState().setPreferences({
@@ -443,7 +460,7 @@ export function TerrainSettingsDialog({ mapControllerRef }: TerrainSettingsDialo
                     {t("terrainSettings.restoreDefaultSource")}
                   </Button>
                 </div>
-                {isCesiumPrimary ? (
+                {ionTerrainSupported ? (
                   <div className="space-y-1 border-t pt-3">
                     <Label htmlFor="terrain-ion-asset">{t("terrainSettings.ionAssetLabel")}</Label>
                     <p className="text-muted-foreground text-xs">

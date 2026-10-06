@@ -10,11 +10,7 @@ import {
   storyLocationView,
 } from "@geolibre/core";
 import type { Cartesian2 } from "@cesium/core";
-import type {
-  CesiumTerrainProvider,
-  CesiumWidget,
-  PointPrimitiveCollection,
-} from "@cesium/engine";
+import type { CesiumTerrainProvider, CesiumWidget, PointPrimitiveCollection } from "@cesium/engine";
 import type { FeatureCollection, Point, Polygon } from "geojson";
 import type * as maplibregl from "maplibre-gl";
 import {
@@ -88,6 +84,7 @@ export const CESIUM_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   screenOverlays: false,
   flatProjection: false,
   terrainSource: true,
+  ionTerrain: true,
   // Zarr cubes, KML/KMZ, CZML and ion assets load through the globe's own
   // imagery and data-source loaders.
   nativeZarr: true,
@@ -1385,13 +1382,16 @@ export class CesiumEngine implements MapEngine {
       this.terrainRequest++;
       return true;
     }
+    const before = this.terrainRequest;
     const applied = await this.enableWorldTerrain();
-    if (!applied) {
+    // Roll back only a genuine load failure. A newer request (another asset, a
+    // COG switch, or terrain turned off) bumps `terrainRequest` past ours, and
+    // restoring `previous` then would override that newer state.
+    if (!applied && this.terrainRequest === before + 1 && this.terrainIonAssetId === assetId) {
       this.terrainIonAssetId = previous;
-      await this.enableWorldTerrain();
-      return false;
+      if (this.live()) await this.enableWorldTerrain();
     }
-    return true;
+    return applied;
   }
 
   getTerrainExaggeration(): number {
@@ -1434,10 +1434,24 @@ export class CesiumEngine implements MapEngine {
     this.terrainRequest++;
     const previousProvider = this.terrainProvider;
     const previousSource = this.cogTerrain;
+    const previousUrl = this.cogTerrainUrl;
     this.terrainProvider = null;
     this.cogTerrain = registration;
     this.cogTerrainUrl = typeof normalized === "string" ? normalized : null;
-    if (this.terrainEnabled) await this.enableWorldTerrain();
+    if (this.terrainEnabled) {
+      const before = this.terrainRequest;
+      const applied = await this.enableWorldTerrain();
+      // Clearing the COG falls back to Ion/World Terrain, which can fail to
+      // load. Keep the active COG source then instead of leaving no terrain.
+      if (!applied && this.terrainRequest === before + 1 && this.live()) {
+        registration?.dispose();
+        this.terrainProvider = previousProvider;
+        this.cogTerrain = previousSource;
+        this.cogTerrainUrl = previousUrl;
+        await this.enableWorldTerrain();
+        return false;
+      }
+    }
     previousProvider?.destroy();
     previousSource?.dispose();
     return true;

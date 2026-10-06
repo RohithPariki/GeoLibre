@@ -985,6 +985,73 @@ describe("CesiumEngine terrain", () => {
     engine.destroy();
   });
 
+  it("does not roll back an Ion terrain request a newer one superseded", async () => {
+    const fakes = makeViewer();
+    const Cesium = makeCesium();
+    let rejectSlow: (error: Error) => void = () => {};
+    Cesium.IonResource.fromAssetId = (assetId: number, options?: { accessToken?: string }) =>
+      assetId === 111
+        ? new Promise((_, reject) => (rejectSlow = reject))
+        : Promise.resolve({ kind: "ion-resource", assetId, token: options?.accessToken });
+    const engine = new CesiumEngine(Cesium, fakes.viewer, {
+      ionToken: "tok-123",
+      terrainIonAssetId: 2767062,
+    });
+    await engine.enableWorldTerrain();
+
+    const slow = engine.setTerrainIonAssetId(111);
+    assert.equal(await engine.setTerrainIonAssetId(222), true);
+    rejectSlow(new Error("gone"));
+    assert.equal(await slow, false);
+    assert.equal(engine.getTerrainIonAssetId(), 222);
+    assert.deepEqual(fakes.viewer.terrainProvider, {
+      kind: "ion-terrain",
+      resource: { kind: "ion-resource", assetId: 222, token: "tok-123" },
+    });
+
+    // Turning terrain off while a load fails must not switch it back on.
+    const failing = engine.setTerrainIonAssetId(111);
+    engine.setTerrainEnabled(false);
+    rejectSlow(new Error("gone"));
+    assert.equal(await failing, false);
+    assert.equal(engine.isTerrainEnabled(), false);
+    engine.destroy();
+  });
+
+  it("keeps the COG terrain source when clearing it fails to load Ion terrain", async () => {
+    const fakes = makeViewer();
+    const Cesium = makeCesium();
+    Object.assign(Cesium, {
+      WebMercatorTilingScheme,
+      Event,
+      Credit,
+      TileAvailability,
+      TerrainProvider,
+    });
+    Cesium.IonResource.fromAssetId = () => Promise.reject(new Error("gone"));
+    const engine = new CesiumEngine(Cesium, fakes.viewer, {
+      ionToken: "tok-123",
+      terrainIonAssetId: 2767062,
+    });
+    let disposed = false;
+    const internals = engine as unknown as {
+      cogTerrain: unknown;
+      cogTerrainUrl: string | null;
+    };
+    internals.cogTerrain = { renderTile: () => null, dispose: () => (disposed = true) };
+    internals.cogTerrainUrl = "dem.tif";
+    await engine.enableWorldTerrain();
+    const cogProvider = fakes.viewer.terrainProvider;
+
+    assert.equal(await engine.setTerrainCogSource(null), false);
+    assert.equal(engine.hasCustomTerrainSource(), true);
+    assert.equal(engine.getTerrainCogSource(), "dem.tif");
+    assert.equal(engine.isTerrainEnabled(), true);
+    assert.equal(fakes.viewer.terrainProvider, cogProvider);
+    assert.equal(disposed, false);
+    engine.destroy();
+  });
+
   it("configures Ion asset id without enabling terrain when terrain is disabled", async () => {
     const fakes = makeViewer();
     const engine = new CesiumEngine(makeCesium(), fakes.viewer, {
