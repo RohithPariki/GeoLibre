@@ -1,6 +1,6 @@
 import { DEFAULT_LAYER_STYLE, styleValue, type GeoLibreLayer } from "@geolibre/core";
+import type { Color } from "@cesium/core";
 import type {
-  Color,
   DataSource,
   Entity,
   HeightReference,
@@ -9,7 +9,7 @@ import type {
   Scene,
 } from "@cesium/engine";
 import type { Feature } from "geojson";
-import type { FeatureStyleResolver } from "./cesium-feature-style";
+import type { FeatureStyleResolver } from "./feature-style";
 
 // Point layers on the globe beyond one entity per feature (issue #2282).
 //

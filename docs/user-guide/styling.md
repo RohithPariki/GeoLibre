@@ -44,10 +44,18 @@ Graduated and categorized styles share four more controls, and then list the gen
 
 - **Attribute** — the field the style reads.
 - **Classes** — 2 to 12 classes for a graduated style; 1 to 12 for a categorized one, plus an **All (n)** option that gives every distinct value its own colour.
-- **Scheme** — how the stops are chosen. Graduated offers **Equal interval**, **Quantile**, and **Natural breaks**; categorized offers **Most frequent**, **Alphabetical**, and **First values**.
+- **Scheme** — how the stops are chosen. Graduated offers **Equal interval**, **Quantile**, **Natural breaks**, **Standard deviation**, **Geometric interval**, and **Manual**; categorized offers **Most frequent**, **Alphabetical**, and **First values**.
 - **Colormap** — the named colour ramp the classes are drawn from.
 
 Nothing reaches the map until you click **Apply style type**, so you can adjust the classification and watch the stop list update first.
+
+The graduated schemes differ in where they put the class breaks:
+
+- **Standard deviation** centres classes one standard deviation wide on the mean, so it shows how far each feature is from average. An even class count puts a break on the mean; an odd count gives a middle class that straddles it. Breaks that would fall outside the data's range are dropped, so you can get fewer classes than you asked for. A diverging colormap suits it.
+- **Geometric interval** grows the breaks by a constant ratio from the smallest positive value to the maximum, which suits skewed data spanning orders of magnitude (population, income, concentrations). Zero and negative values fall into the first class; if no value is positive, it classifies by equal interval instead.
+- **Manual** is set for you as soon as you edit a class value, add a class, or remove one, so the method shown never claims to have produced breaks you typed. Choose it yourself to keep the current breaks while you edit them. Changing the class count, colormap, or attribute regenerates the breaks by equal interval.
+
+The map legend names the method under a graduated layer's field, for example "Quantile, 5 classes", so a reader of an exported or shared map can tell how the classes were built. A project saved before the **Manual** scheme existed keeps the method it was classified with even if its breaks were edited by hand afterwards; reapply the classification, or pick **Manual**, to correct the caption.
 
 ### Diagram symbology
 
@@ -142,6 +150,25 @@ For raster layers the Style panel exposes image adjustments:
 - **Hue rotation** (in degrees)
 
 These let you tune the look of GeoTIFF, COG, and tile-based raster layers without changing the underlying data.
+
+### Raster symbology and histogram stretch
+
+GeoTIFF and COG layers add a **Raster symbology** section with a **Render mode**:
+
+- **Single band (pseudocolor)** draws one **Band** through a colormap, which can be reversed or replaced with your own colors, and optionally **Classify into discrete classes** (equal interval, quantile, or manual breaks).
+- **RGB composite** maps three bands to red, green, and blue.
+- **Index (normalized difference)** computes an index such as NDVI from two bands.
+
+**Min** and **Max** set the stretch range (left empty, they show `auto`), and **Stretch** (**Linear**, **Logarithmic**, or **Square root**) and **Gamma** shape it. **No data** reads the nodata value from the file, renders every pixel, or uses a custom value.
+
+Under **Histogram**, a single-band (unclassified) or RGB raster shows the distribution of its pixel values with the active stretch window shaded between two handles:
+
+- **Drag a handle** to set the minimum or maximum; the **Min**/**Max** inputs follow, and typing a value moves the handle.
+- From the keyboard, focus a handle and use the arrow keys, with `Shift` or `Page Up`/`Page Down` for steps ten times larger and `Home`/`End` for the ends.
+- An **RGB composite** shows one histogram per channel, each with its own **Min** and **Max**. Editing one channel pins the others at their current automatic range so they do not jump.
+- With no range set, the automatic window is the 2nd to 98th percentile of the band.
+
+For a single-band or index raster that is not classified, **Viewport stretch** fits the range to the pixels currently on screen instead: **Viewport min / max**, **Viewport 5–95 percentile**, or **Viewport mean ± 2 standard deviations**, then **Apply to viewport**. Tick **Update automatically when the map moves** to keep refitting as you pan and zoom. The stretch is saved with the layer.
 
 ### Spectral profile
 

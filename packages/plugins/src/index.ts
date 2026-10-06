@@ -43,6 +43,16 @@ export {
   type ToolbarMenuEntry,
 } from "./toolbar-menu-registry";
 export {
+  registerMenuContribution,
+  unregisterMenuContribution,
+  listMenuContributions,
+  getMenuContributionsSnapshot,
+  subscribeMenuContributions,
+  isMenuContributionTarget,
+  type MenuContributionsSnapshot,
+  type MenuContributionEntry,
+} from "./menu-contribution-registry";
+export {
   registerFloatingPanel,
   unregisterFloatingPanel,
   openFloatingPanel,
@@ -68,7 +78,22 @@ export {
   resolveToolbarLabel,
   type GeoLibreToolbarLabel,
 } from "./toolbar-menu-label";
-export { maplibreLayerControlPlugin } from "./plugins/layer-control";
+// The translator plugins use to resolve `plugin.<id>.*` keys through the app
+// API with an interpolated English fallback (see docs/plugin-api.md).
+export {
+  createPluginTranslator,
+  interpolatePluginText,
+  pluginDisplayTitle,
+  type PluginTranslate,
+  type PluginTranslateParams,
+} from "./plugin-i18n";
+export {
+  LocalizedError,
+  localizedMessage,
+  setLocalizedErrorTranslator,
+  type LocalizedErrorTranslator,
+} from "./localized-error";
+export { LAYER_CONTROL_PLUGIN_ID, maplibreLayerControlPlugin } from "./plugins/layer-control";
 export { getStyleMap } from "./plugins/style-map";
 export {
   createAnnotationMarker,
@@ -112,6 +137,7 @@ export {
   closeBookmarkPanel,
   closeColorbarPanel,
   closeHtmlPanel,
+  closeImagePanel,
   closeLegendPanel,
   closeMaplibreComponentControls,
   closeMeasurePanel,
@@ -123,6 +149,7 @@ export {
   isBookmarkPanelVisible,
   isColorbarPanelVisible,
   isHtmlPanelVisible,
+  isImagePanelVisible,
   isLegendPanelVisible,
   isMeasurePanelVisible,
   isMinimapPanelVisible,
@@ -137,10 +164,30 @@ export {
   openFlatGeobufAddVectorLayerPanel,
   openColorbarPanel,
   openHtmlPanel,
+  openHtmlPanelWithEntry,
+  setImageControl,
+  setImageLabels,
+  removeImageControl,
+  getImageControlStates,
+  MAX_IMAGE_CONTROLS,
+  subscribeImagePanel,
+  DEFAULT_IMAGE_STATE,
+  IMAGE_RATIO_MAX,
+  IMAGE_RATIO_MIN,
+  IMAGE_SIZE_MAX,
+  IMAGE_SIZE_MIN,
+  formatAspectRatio,
+  normalizeImageUrl,
+  isRatioHeightInRange,
+  ratioHeight,
+  parseAspectRatio,
+  type ComponentImageState,
+  type ImageSizeMode,
   openLegendPanel,
   openLegendPanelWithItems,
   LIDAR_SOURCE_KIND,
   openLidarLayerPanel,
+  addLidarLayerFromBytes,
   addLidarLayerFromUrl,
   restoreLidarLayers,
   openMeasurePanel,
@@ -201,6 +248,7 @@ export {
   buildInlineZarrStore,
   composeColormappedImage,
   composeRgbImage,
+  crossesAntimeridian,
   gridBounds,
   gridPixelAt,
   gridValueAt,
@@ -217,9 +265,11 @@ export {
   type LocalNetcdfImage,
   type LocalNetcdfVariable,
   type LocalNetcdfLayerRefs,
+  type LocalNetcdfLayerRefsOptions,
   type LocalNetcdfRgbImage,
   type LocalNetcdfRgbOptions,
   type LocalNetcdfWindow,
+  type InlineZarrAxis,
   type InlineZarrGrid,
 } from "./plugins/local-netcdf";
 export {
@@ -463,6 +513,7 @@ export {
   startLayerGeometryEdit,
   endLayerGeometryEdit,
   getGeometryEditTargetLayerId,
+  selectGeometryEditFeature,
   isGeoEditorUsingRightClick,
   subscribeGeometryEdit,
   isGeoEditorAvailableForImport,
@@ -601,6 +652,13 @@ export {
   type ArcGisHubPluginConfig,
   type ArcGisHubPluginInstance,
 } from "./plugins/maplibre-arcgis-hub";
+export {
+  ARCGIS_PORTAL_PLUGIN_ID,
+  maplibreArcGisPortalPlugin,
+  setArcGisPortalAuth,
+  type ArcGisPortalAuth,
+  type ArcGisPortalConnection,
+} from "./plugins/maplibre-arcgis-portal";
 export {
   DEFAULT_TENNESSEE_GIS_LABELS,
   maplibreTennesseeGisPlugin,
@@ -775,6 +833,31 @@ export {
   type SourceCoopProduct,
 } from "./plugins/source-coop-api";
 export { maplibreNationalMapPlugin } from "./plugins/maplibre-national-map";
+export {
+  DEFAULT_USGS_DEM_LABELS,
+  maplibreUsgsDemPlugin,
+  setUsgsDemLabels,
+  USGS_DEM_PLUGIN_ID,
+  type UsgsDemLabels,
+} from "./plugins/maplibre-usgs-dem";
+export {
+  buildUsgsDemSearchUrl,
+  extractRawDemName,
+  filterRedundantDemItems,
+  footprintCollection as usgsDemFootprintCollection,
+  footprintFeature as usgsDemFootprintFeature,
+  get24kQuadGeometry,
+  parseSearchResponse as parseUsgsDemSearchResponse,
+  searchUsgsDem,
+  USGS_24K_QUAD_ENDPOINT,
+  USGS_DEM_DATASETS,
+  USGS_TNM_PRODUCTS_ENDPOINT,
+  type UsgsDemDatasetInfo,
+  type UsgsDemFootprintProps,
+  type UsgsDemItem,
+  type UsgsDemSearchOptions,
+  type UsgsDemSearchResult,
+} from "./plugins/usgs-dem-api";
 export { maplibreOvertureMapsPlugin } from "./plugins/maplibre-overture-maps";
 export { maplibreStreetViewPlugin } from "./plugins/maplibre-streetview";
 export {

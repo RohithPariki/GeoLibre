@@ -1442,8 +1442,8 @@ describe("MapController camera and query helpers", () => {
 
     controller.fitLayer(
       pointLayer("global-tiles", {
-        type: "vector-tile",
-        source: { type: "vector-tile", minzoom: 2 },
+        type: "vector-tiles",
+        source: { type: "vector-tiles", minzoom: 2 },
         geojson: undefined,
         metadata: { bounds: [-180, -85, 180, 85] },
       }),
@@ -1469,6 +1469,68 @@ describe("MapController camera and query helpers", () => {
     const fit = fake.calls.find((c) => c.method === "fitBounds");
     assert.ok(fit, "zoom-to-layer fits the bounds");
     assert.ok(typeof (fit.args[1] as { maxZoom?: number }).maxZoom === "number");
+  });
+
+  it("fits a bare vector tile template to its loaded features' extent", () => {
+    const { map, fake } = makeFakeMap();
+    (map as { querySourceFeatures: unknown }).querySourceFeatures = () => [
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: [-74.01, 40.71] },
+      },
+      {
+        type: "Feature",
+        properties: {},
+        geometry: { type: "Point", coordinates: [-73.97, 40.76] },
+      },
+    ];
+    (map as { getSource: unknown }).getSource = () => ({});
+    const controller = controllerWith(map);
+    const layer = pointLayer("xyz-tiles", {
+      type: "vector-tiles",
+      source: {
+        type: "vector",
+        tiles: ["https://example.com/{z}/{x}/{y}.pbf"],
+        sourceLayer: "data.buildings",
+      },
+      geojson: undefined,
+      metadata: {},
+    });
+
+    assert.equal(controller.fitLayer(layer), true);
+    const fit = fake.calls.find((c) => c.method === "fitBounds");
+    assert.ok(fit, "fits the loaded features");
+    assert.deepEqual(fit.args[0], [
+      [-74.01, 40.71],
+      [-73.97, 40.76],
+    ]);
+  });
+
+  it("reports a layer with no known extent instead of moving the camera", () => {
+    const { map, fake } = makeFakeMap();
+    // The source exists but has no features loaded yet.
+    let queried = 0;
+    (map as { querySourceFeatures: unknown }).querySourceFeatures = () => {
+      queried += 1;
+      return [];
+    };
+    (map as { getSource: unknown }).getSource = () => ({});
+    const controller = controllerWith(map);
+    const layer = pointLayer("xyz-tiles", {
+      type: "vector-tiles",
+      source: {
+        type: "vector",
+        tiles: ["https://example.com/{z}/{x}/{y}.pbf"],
+        sourceLayer: "data.buildings",
+      },
+      geojson: undefined,
+      metadata: {},
+    });
+
+    assert.equal(controller.fitLayer(layer), false);
+    assert.ok(!fake.calls.some((c) => c.method === "fitBounds" || c.method === "flyTo"));
+    assert.ok(queried > 0, "queried the loaded features before giving up");
   });
 
   it("frames a scenegraph model layer at a tilt so it is not edge-on", () => {
@@ -2199,7 +2261,7 @@ function makeTerrainDomStub(): { createElement: () => unknown } {
 
 describe("MapController terrain auto-enable", () => {
   it("lets a plugin enable and restore terrain while the map control is hidden", () => {
-    let terrain: maplibregl.TerrainSpecification | null = null;
+    let terrain = null as maplibregl.TerrainSpecification | null;
     let centerClamped = true;
     const sources = new Set<string>();
     const map = {
@@ -2233,7 +2295,7 @@ describe("MapController terrain auto-enable", () => {
     const prevDoc = (globalThis as { document?: unknown }).document;
     (globalThis as { document?: unknown }).document = makeTerrainDomStub();
     try {
-      let terrain: maplibregl.TerrainSpecification | null = null;
+      let terrain = null as maplibregl.TerrainSpecification | null;
       const sources = new Set<string>();
       const map = {
         // addControl mirrors MapLibre: it runs the control's onAdd so the
@@ -2273,7 +2335,7 @@ describe("MapController terrain auto-enable", () => {
     const prevDoc = (globalThis as { document?: unknown }).document;
     (globalThis as { document?: unknown }).document = makeTerrainDomStub();
     try {
-      let terrain: maplibregl.TerrainSpecification | null = null;
+      let terrain = null as maplibregl.TerrainSpecification | null;
       const sources = new Set<string>();
       const map = {
         addControl: (control: maplibregl.IControl) =>
@@ -2315,7 +2377,11 @@ describe("MapController terrain auto-enable", () => {
       internal.addTerrainSource();
       if (internal.terrainEnablePending) internal.autoEnableTerrain();
 
-      assert.equal(terrain?.source, "geolibre-terrain-dem");
+      // Re-read through the declared type: the `assert.equal(terrain, null)`
+      // above narrowed the local to `null`, and the fake's setTerrain assigns it
+      // out of the compiler's sight.
+      const enabled = terrain as maplibregl.TerrainSpecification | null;
+      assert.equal(enabled?.source, "geolibre-terrain-dem");
       assert.equal(internal.terrainEnablePending, false);
     } finally {
       if (prevDoc === undefined) delete (globalThis as { document?: unknown }).document;

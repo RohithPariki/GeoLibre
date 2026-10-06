@@ -65,6 +65,7 @@ import {
   type SelectionMode,
   type SelectionShape,
 } from "./selection";
+import { createPluginTranslator } from "../../plugin-i18n";
 
 export const POINT_CLOUD_ANNOTATION_PLUGIN_ID = "geolibre-point-cloud-annotation";
 const PANEL_ID = POINT_CLOUD_ANNOTATION_PLUGIN_ID;
@@ -213,21 +214,14 @@ function markChanged(): void {
   if (!useAppStore.getState().isDirty) useAppStore.setState({ isDirty: true });
 }
 
+/** Resolves a plugin-namespaced translation key, falling back to English text. */
 function tr(
   app: GeoLibreAppAPI,
   key: string,
   fallback: string,
   params?: Record<string, string | number>,
 ): string {
-  const text = app.translate?.(
-    `plugin.${POINT_CLOUD_ANNOTATION_PLUGIN_ID}.${key}`,
-    fallback,
-    params,
-  );
-  if (text !== undefined) return text;
-  return params
-    ? fallback.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(params[name] ?? ""))
-    : fallback;
+  return createPluginTranslator(app, POINT_CLOUD_ANNOTATION_PLUGIN_ID)(key, fallback, params);
 }
 
 function className(app: GeoLibreAppAPI, code: number): string {
@@ -1174,6 +1168,7 @@ function buildPanel(container: HTMLElement, app: GeoLibreAppAPI): () => void {
   const renderLabels = () => {
     renderCustomClasses();
     setup.heading.textContent = tr(app, "pointCloud", "Point cloud");
+    cloudSelect.setAttribute("aria-label", tr(app, "pointCloud", "Point cloud"));
     openLidarButton.textContent = tr(app, "openLidar", "Open LiDAR panel");
     fullDetailButton.textContent = tr(app, "fullDetail", "Full detail in view");
     fullDetailButton.title = tr(

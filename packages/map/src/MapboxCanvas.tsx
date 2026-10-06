@@ -32,8 +32,8 @@ import {
 import type { MapDiagnosticEvent } from "./map-diagnostic";
 import { MapboxEngine, redactMapboxError } from "./mapbox-engine";
 import { prepareMapboxStandard } from "./mapbox-standard-style";
-import { styleUsesUnsupportedSource } from "./mapbox-layers";
-import { resolveMapStyle } from "./map-controller";
+import { styleUsesUnsupportedSource } from "./gl-style-compiler";
+import { resolveMapStyle } from "./basemap-style";
 import { isGlobeControlToggleClick } from "./globe-control-toggle";
 import {
   attachFeatureSelection,
@@ -56,15 +56,20 @@ import {
   type MapCanvasIdentifyAllLabels,
 } from "./identify-all-popup";
 import {
+  createIdentifyEditActionsElement,
+  type MapCanvasIdentifyEditActions,
+} from "./identify-edit-actions";
+import {
   duckDBBridge,
   fetchWmsIdentifyProperties,
   isAbortError,
   isPixelIdentifyLayer,
   isWmsLayer,
+  isWmsQueryable,
   pixelIdentifyProperties,
   timeSliderBridge,
 } from "./identify-sources";
-import type { MapCanvasRasterIdentify } from "./MapCanvas";
+import type { MapCanvasRasterIdentify } from "./raster-identify";
 
 export interface MapboxCanvasProps {
   accessToken: string;
@@ -77,6 +82,8 @@ export interface MapboxCanvasProps {
   identifyAllLabels?: MapCanvasIdentifyAllLabels;
   /** The app's COG / NetCDF pixel reader for "Identify visible layers". */
   identifyRasterLayerAt?: MapCanvasRasterIdentify;
+  /** Edit geometry / Edit attributes actions on vector Identify results (#2932). */
+  identifyEditActions?: MapCanvasIdentifyEditActions;
 }
 
 /** The namespace and its CSS load only when a Mapbox pane is mounted. */
@@ -89,6 +96,7 @@ export function MapboxCanvas({
   canUseRemoteElevation,
   identifyAllLabels = DEFAULT_IDENTIFY_ALL_LABELS,
   identifyRasterLayerAt,
+  identifyEditActions,
 }: MapboxCanvasProps) {
   const container = useRef<HTMLDivElement>(null);
   const readyCallback = useRef(onEngineReady);
@@ -101,6 +109,8 @@ export function MapboxCanvas({
   identifyAllLabelsRef.current = identifyAllLabels;
   const identifyRasterLayerAtRef = useRef(identifyRasterLayerAt);
   identifyRasterLayerAtRef.current = identifyRasterLayerAt;
+  const identifyEditActionsRef = useRef(identifyEditActions);
+  identifyEditActionsRef.current = identifyEditActions;
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -171,10 +181,12 @@ export function MapboxCanvas({
         const current = engine;
         const setIdentifyCursor = (active: boolean) => {
           // Mapbox's grab cursor belongs to the interactive canvas container,
-          // not the canvas itself. Use its supported crosshair mode so every
-          // map surface agrees while Identify owns pointer clicks.
-          map.getContainer().classList.toggle("mapboxgl-crosshair", active);
-          map.getCanvas().style.cursor = active ? "crosshair" : "";
+          // not the canvas itself, so set both. Inline, not the
+          // `mapboxgl-crosshair` class: BoxZoom owns that class and every camera
+          // move resets it away, as on MapLibre (#2879).
+          const cursor = active ? "crosshair" : "";
+          map.getCanvasContainer().style.cursor = cursor;
+          map.getCanvas().style.cursor = cursor;
         };
         const featureSelection: FeatureSelectionState = {
           active: { current: false },
@@ -733,14 +745,23 @@ export function MapboxCanvas({
             }, undefined);
             showPopupAt(
               lngLat,
-              createGlobalIdentifyPopupElement(allHits, map.getZoom(), activate, labels, widest),
+              createGlobalIdentifyPopupElement(
+                allHits,
+                map.getZoom(),
+                activate,
+                labels,
+                widest,
+                identifyEditActionsRef.current,
+                // Programmatic: the edit action owns the selection from here.
+                () => removeIdentifyPopup({ restore: false }),
+              ),
               identifyPopupShellMaxWidth(widest ? { maxWidth: widest } : undefined),
             );
           };
           const identifyRaster = identifyRasterLayerAtRef.current;
           const asyncLayers = eligibleLayers.filter(
             (candidate) =>
-              isWmsLayer(candidate) ||
+              (isWmsLayer(candidate) && isWmsQueryable(candidate)) ||
               isPixelIdentifyLayer(candidate) ||
               candidate.type === "cog" ||
               candidate.metadata.sourceKind === NETCDF_IMAGE_SOURCE_KIND,
@@ -868,6 +889,13 @@ export function MapboxCanvas({
             });
             return true;
           }
+          if (isWmsLayer(layer) && !isWmsQueryable(layer)) {
+            // The capabilities say this layer answers no GetFeatureInfo (#2887).
+            asyncIdentifyAbort?.abort();
+            store.selectFeature(null);
+            showPopupAt(lngLat, message(labels.wmsNotQueryable), maxWidth);
+            return true;
+          }
           if (isWmsLayer(layer)) {
             store.selectFeature(null);
             const zoom = map.getZoom();
@@ -897,15 +925,27 @@ export function MapboxCanvas({
               return true;
             }
             store.selectFeature(result.featureId);
-            showPopupAt(
-              lngLat,
-              createIdentifyPopupElement(layer.name, result.properties, result.featureId, {
+            const content = createIdentifyPopupElement(
+              layer.name,
+              result.properties,
+              result.featureId,
+              {
                 popup: layer.popup,
                 fieldVisibility: layer.fieldVisibility,
                 zoom: map.getZoom(),
-              }),
-              maxWidth,
+              },
             );
+            // DuckDB rows are editable in the attribute table too, as in the
+            // grouped popup.
+            const editRow = createIdentifyEditActionsElement(
+              layer,
+              result.featureId,
+              identifyEditActionsRef.current,
+              labels,
+              () => removeIdentifyPopup({ restore: false }),
+            );
+            if (editRow) content.firstElementChild?.after(editRow);
+            showPopupAt(lngLat, content, maxWidth);
             return true;
           }
           return false;
@@ -990,6 +1030,16 @@ export function MapboxCanvas({
               zoom: map.getZoom(),
             },
           );
+          const editRow = createIdentifyEditActionsElement(
+            layer,
+            match.featureId,
+            identifyEditActionsRef.current,
+            identifyAllLabelsRef.current,
+            // Programmatic: the edit action owns the selection from here.
+            () => removeIdentifyPopup({ restore: false }),
+          );
+          // Under the title, above the attribute rows.
+          if (editRow) content.firstElementChild?.after(editRow);
           const nextPopup = new gl.Popup({
             className: "geolibre-identify-popup",
             closeButton: true,

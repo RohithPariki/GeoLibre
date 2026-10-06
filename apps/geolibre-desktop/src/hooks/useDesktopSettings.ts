@@ -54,6 +54,13 @@ export interface DesktopSettings {
   layout: DesktopLayoutSettings;
   pluginManifestUrls: string[];
   /**
+   * Ids of external plugins whose top-level toolbar menus the user moved out of
+   * the banner (GeoLibre#2850). Such a menu renders inside the plugin's entry in
+   * Plugins → Installed instead. Device-local, like the rest of the plugin
+   * settings.
+   */
+  foldedPluginMenus: string[];
+  /**
    * Personal API token for uploading projects to share.geolibre.app. The
    * desktop build keeps it in the OS credential store (see
    * `lib/credential-store.ts`) and writes only an empty string into this
@@ -144,6 +151,8 @@ export interface StartupSettings {
    * added to the map. Null when none is set.
    */
   layerStyles: StartupLayerStyles | null;
+  /** Open the S3 Browser panel when the app starts (not in the read-only viewer). */
+  openS3Browser: boolean;
 }
 
 /**
@@ -290,6 +299,7 @@ export const DEFAULT_STARTUP_SETTINGS: StartupSettings = {
   center: [...createDefaultMapView().center],
   zoom: createDefaultMapView().zoom,
   layerStyles: null,
+  openS3Browser: false,
 };
 
 export const DEFAULT_THEME_SETTINGS: ThemeSettings = {
@@ -302,6 +312,7 @@ const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   language: "",
   layout: DEFAULT_DESKTOP_LAYOUT_SETTINGS,
   pluginManifestUrls: [],
+  foldedPluginMenus: [],
   shareToken: "",
   cesiumIonToken: "",
   mapboxAccessToken: "",
@@ -338,6 +349,7 @@ export function normalizeDesktopSettings(settings: unknown): DesktopSettings {
     pluginManifestUrls: normalizeStringList(candidate.pluginManifestUrls).filter(
       isAllowedPluginManifestUrl,
     ),
+    foldedPluginMenus: normalizeStringList(candidate.foldedPluginMenus),
     shareToken: typeof candidate.shareToken === "string" ? candidate.shareToken.trim() : "",
     mapboxAccessToken:
       typeof candidate.mapboxAccessToken === "string" ? candidate.mapboxAccessToken.trim() : "",
@@ -388,6 +400,7 @@ function normalizeStartupSettings(startup: unknown): StartupSettings {
     center: view.center,
     zoom: view.zoom,
     layerStyles: normalizeStartupLayerStyles(candidate.layerStyles),
+    openS3Browser: candidate.openS3Browser === true,
   };
 }
 

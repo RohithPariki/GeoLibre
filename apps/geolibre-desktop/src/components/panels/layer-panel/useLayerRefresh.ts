@@ -6,6 +6,7 @@ import type { GeoLibreLayer } from "@geolibre/core";
 import { reloadVectorControlLayer, replayVectorControlLayerById } from "@geolibre/plugins";
 import {
   getLayerRefreshConfig,
+  getRefreshFailureLayerPatch,
   isRefreshableLayer,
   isVectorControlRefreshLayer,
   refreshGeoJsonLayer,
@@ -28,6 +29,12 @@ import {
   type LayerRefreshStatus,
   type LayerRefreshTimer,
 } from "./layer-panel-utils";
+import { readMssqlTable } from "@geolibre/processing";
+import { MssqlReconnectRequiredError, withMssqlSession } from "../../../lib/mssql-sessions";
+import {
+  reconcileMssqlWritebackMetadata,
+  rememberMssqlLoadedRows,
+} from "../../../lib/mssql-writeback";
 
 interface UseLayerRefreshOptions {
   /** The project's layers, in store order. */
@@ -51,6 +58,12 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
   const projectGeneration = useAppStore((s) => s.projectGeneration);
   const updateLayer = useAppStore((s) => s.updateLayer);
   const [refreshStatuses, setRefreshStatuses] = useState<Record<string, LayerRefreshStatus>>({});
+  const markMssqlRefreshRequired = useCallback(
+    (layerId: string) => {
+      updateLayer(layerId, { mssqlWritebackPending: true });
+    },
+    [updateLayer],
+  );
   // "Last synced <relative time>" is derived from the clock, not from store
   // state, so without a tick the label would keep reading "a few seconds ago"
   // until an unrelated re-render happened to recompute it. Tick once a minute
@@ -66,6 +79,8 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
     return () => window.clearInterval(timer);
   }, [isCollapsed, hasSyncTimestamps]);
   const refreshingLayerIdsRef = useRef(new Set<string>());
+  const observedWfsSourceUrlsRef = useRef(new Map<string, unknown>());
+  const observedWfsGenerationRef = useRef(projectGeneration);
   const refreshTimersRef = useRef(new Map<string, LayerRefreshTimer>());
   const refreshStatusTimersRef = useRef(new Map<string, number>());
   // Active filesystem watchers for "watch local file" layers, keyed by layer id.
@@ -103,9 +118,26 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
 
   const handleRefreshLayer = useCallback(
     async (layer: GeoLibreLayer, automatic = false) => {
-      if (refreshingLayerIdsRef.current.has(layer.id)) return;
+      const requestGeneration = projectGeneration;
+      const requestSourceUrl = layer.source.url;
+      const mssqlRecoveryRefresh = layer.mssqlWritebackPending === true;
+      const getCurrentRequestLayer = (): GeoLibreLayer | undefined => {
+        const state = useAppStore.getState();
+        if (state.projectGeneration !== requestGeneration) return undefined;
+        const current = state.layers.find((candidate) => candidate.id === layer.id);
+        if (
+          !current ||
+          current.source.url !== requestSourceUrl ||
+          current.sourcePath !== layer.sourcePath
+        ) {
+          return undefined;
+        }
+        return current;
+      };
+      const requestKey = `${requestGeneration}:${layer.id}:${requestSourceUrl}`;
+      if (refreshingLayerIdsRef.current.has(requestKey)) return;
 
-      refreshingLayerIdsRef.current.add(layer.id);
+      refreshingLayerIdsRef.current.add(requestKey);
       clearRefreshStatusTimer(layer.id);
       setRefreshStatuses((current) => ({
         ...current,
@@ -116,6 +148,62 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
       }));
 
       try {
+        if (mssqlRecoveryRefresh) {
+          const connectionId =
+            typeof layer.metadata.mssqlConnectionId === "string"
+              ? layer.metadata.mssqlConnectionId
+              : "";
+          const table =
+            typeof layer.metadata.mssqlTable === "string" ? layer.metadata.mssqlTable : "";
+          if (!connectionId || !table) {
+            throw new Error(t("layers.saveEditsMssqlNoConnection"));
+          }
+          const schema =
+            typeof layer.metadata.mssqlSchema === "string" ? layer.metadata.mssqlSchema : "dbo";
+          const geometryColumn =
+            typeof layer.metadata.mssqlGeometryColumn === "string"
+              ? layer.metadata.mssqlGeometryColumn
+              : undefined;
+          const refreshed = await withMssqlSession(connectionId, (sessionId) =>
+            readMssqlTable({
+              session_id: sessionId,
+              schema_name: schema,
+              table,
+              geometry_column: geometryColumn,
+              excluded_fields: layer.fieldVisibility
+                ? Object.keys(layer.fieldVisibility).filter(
+                    (key) => layer.fieldVisibility![key] === "excluded",
+                  )
+                : undefined,
+            }),
+          );
+          const latest = getCurrentRequestLayer();
+          if (!latest) return;
+          updateLayer(layer.id, {
+            geojson: refreshed.geojson,
+            mssqlWritebackPending: undefined,
+            ...setLayerConnectionResult(latest, {
+              syncedAt: new Date().toISOString(),
+              error: null,
+            }),
+            metadata: reconcileMssqlWritebackMetadata(latest.metadata, refreshed),
+          });
+          const primaryKey = latest.metadata.mssqlPrimaryKey;
+          if (typeof primaryKey === "string") {
+            rememberMssqlLoadedRows(layer.id, requestGeneration, primaryKey, refreshed.geojson);
+          }
+          setRefreshStatuses((current) => ({
+            ...current,
+            [layer.id]: {
+              type: "success",
+              message: t("layers.refreshedCount", {
+                count: refreshed.feature_count.toLocaleString(),
+              }),
+            },
+          }));
+          scheduleStatusClear(layer.id);
+          return;
+        }
         if (isSqlQueryLayer(layer)) {
           // SQL query layers refresh by re-executing their stored DuckDB
           // statement against the current layers (the query layer itself is
@@ -124,9 +212,7 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
             layer,
             useAppStore.getState().layers,
           );
-          const latest = useAppStore
-            .getState()
-            .layers.find((candidate) => candidate.id === layer.id);
+          const latest = getCurrentRequestLayer();
           if (!latest) return;
 
           updateLayer(layer.id, {
@@ -158,9 +244,7 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
           // only path that re-reads the table: they are excluded from the
           // interval scheduling below, so `automatic` is never true here.
           const { geojson, featureCount, totalRows, truncated } = await refreshIcebergLayer(layer);
-          const latest = useAppStore
-            .getState()
-            .layers.find((candidate) => candidate.id === layer.id);
+          const latest = getCurrentRequestLayer();
           if (!latest) return;
 
           updateLayer(layer.id, {
@@ -198,9 +282,7 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
           // Local-file vector layers re-read their features from disk (the same
           // conversion the import ran) rather than fetching a URL.
           const { geojson, featureCount } = await reloadLocalFileLayer(layer);
-          const latest = useAppStore
-            .getState()
-            .layers.find((candidate) => candidate.id === layer.id);
+          const latest = getCurrentRequestLayer();
           if (!latest) return;
 
           updateLayer(layer.id, {
@@ -235,6 +317,8 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
           const info =
             (await reloadVectorControlLayer(layer.id)) ??
             (await replayVectorControlLayerById(layer.id));
+          const latest = getCurrentRequestLayer();
+          if (!latest) return;
           if (!info) {
             // The control is unavailable (panel never opened, or torn down
             // and not yet replayed) or the replay above did not succeed.
@@ -259,9 +343,6 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
           // write would risk clobbering the synced values. `info` feeds only
           // the toast below.
           const featureCount = typeof info.featureCount === "number" ? info.featureCount : null;
-          const latest = useAppStore
-            .getState()
-            .layers.find((candidate) => candidate.id === layer.id);
           if (latest) {
             updateLayer(
               layer.id,
@@ -291,7 +372,7 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
           featureCount,
           metadata: refreshedMetadata,
         } = await refreshGeoJsonLayer(layer);
-        const latest = useAppStore.getState().layers.find((candidate) => candidate.id === layer.id);
+        const latest = getCurrentRequestLayer();
         if (!latest) return;
 
         updateLayer(layer.id, {
@@ -320,20 +401,23 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
         }));
         scheduleStatusClear(layer.id);
       } catch (error) {
-        const message = error instanceof Error ? error.message : t("layers.refreshError");
-        const latest = useAppStore.getState().layers.find((candidate) => candidate.id === layer.id);
-        if (latest) {
-          updateLayer(layer.id, {
-            ...setLayerConnectionResult(latest, { error: message }),
-            ...(latest.connection?.onFailure === "clear" &&
-            latest.geojson &&
-            !arcGISLayerHasPendingEdits(latest.id)
-              ? {
-                  geojson: { type: "FeatureCollection" as const, features: [] },
-                }
-              : {}),
-          });
-        }
+        const latest = getCurrentRequestLayer();
+        if (!latest) return;
+        const message =
+          error instanceof MssqlReconnectRequiredError
+            ? t("layers.saveEditsMssqlNoConnection")
+            : error instanceof Error
+              ? error.message
+              : t("layers.refreshError");
+        updateLayer(
+          layer.id,
+          getRefreshFailureLayerPatch(
+            latest,
+            message,
+            mssqlRecoveryRefresh,
+            arcGISLayerHasPendingEdits(latest.id),
+          ),
+        );
         setRefreshStatuses((current) => ({
           ...current,
           [layer.id]: {
@@ -343,10 +427,10 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
         }));
         scheduleStatusClear(layer.id);
       } finally {
-        refreshingLayerIdsRef.current.delete(layer.id);
+        refreshingLayerIdsRef.current.delete(requestKey);
       }
     },
-    [clearRefreshStatusTimer, scheduleStatusClear, t, updateLayer],
+    [clearRefreshStatusTimer, projectGeneration, scheduleStatusClear, t, updateLayer],
   );
 
   // Read through a ref inside interval callbacks so long-lived timers never
@@ -355,6 +439,51 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
   useEffect(() => {
     handleRefreshLayerRef.current = handleRefreshLayer;
   }, [handleRefreshLayer]);
+
+  useEffect(() => {
+    if (observedWfsGenerationRef.current !== projectGeneration) {
+      observedWfsGenerationRef.current = projectGeneration;
+      observedWfsSourceUrlsRef.current.clear();
+      for (const timer of refreshStatusTimersRef.current.values()) {
+        window.clearTimeout(timer);
+      }
+      refreshStatusTimersRef.current.clear();
+      setRefreshStatuses({});
+      const generationPrefix = `${projectGeneration}:`;
+      for (const requestKey of refreshingLayerIdsRef.current) {
+        if (!requestKey.startsWith(generationPrefix)) {
+          refreshingLayerIdsRef.current.delete(requestKey);
+        }
+      }
+    }
+    const currentIds = new Set(layers.map((layer) => layer.id));
+    for (const id of observedWfsSourceUrlsRef.current.keys()) {
+      if (!currentIds.has(id)) observedWfsSourceUrlsRef.current.delete(id);
+    }
+    for (const layer of layers) {
+      if (layer.type !== "geojson" || layer.metadata.sourceKind !== "wfs-getfeature") {
+        observedWfsSourceUrlsRef.current.delete(layer.id);
+        continue;
+      }
+      const alreadyObserved = observedWfsSourceUrlsRef.current.has(layer.id);
+      if (alreadyObserved && observedWfsSourceUrlsRef.current.get(layer.id) === layer.source.url) {
+        continue;
+      }
+      observedWfsSourceUrlsRef.current.set(layer.id, layer.source.url);
+      // A hydrated layer present at first observation needs no bootstrap. Once
+      // observed, a changed URL must refresh even if old features are still set.
+      if (layer.geojson && !alreadyObserved) continue;
+      if (typeof layer.source.url !== "string") continue;
+      let requestUrl: URL;
+      try {
+        requestUrl = new URL(layer.source.url);
+      } catch {
+        continue;
+      }
+      if (requestUrl.protocol !== "http:" && requestUrl.protocol !== "https:") continue;
+      void handleRefreshLayerRef.current(layer);
+    }
+  }, [layers, projectGeneration]);
 
   // Drop the status notes (and their fade timers) of layers that were removed.
   useEffect(() => {
@@ -599,6 +728,7 @@ export function useLayerRefresh({ layers, isCollapsed }: UseLayerRefreshOptions)
     setRefreshInterval,
     setRefreshFailurePolicy,
     toggleWatchLayer,
+    markMssqlRefreshRequired,
   };
 }
 

@@ -13,7 +13,7 @@ import {
   parseCesiumIonAssetId,
 } from "../packages/core/src/cesium-ion";
 import { createEmptyProject, parseProject, serializeProject } from "../packages/core/src/project";
-import type { GeoLibreLayer } from "../packages/core/src/types";
+import { DEFAULT_LAYER_STYLE, type GeoLibreLayer } from "../packages/core/src/types";
 import { CesiumLayerSync, isCesiumSupportedLayerType } from "../packages/map/src/cesium-layer-sync";
 
 // Cesium Ion assets (issue #2290). The layer builder and the id parser are
@@ -73,7 +73,7 @@ describe("cesium-ion layer builder", () => {
       source: { type: "3d-tiles", url: "https://a/tileset.json", ionAssetId: 5 },
       visible: true,
       opacity: 1,
-      style: {},
+      style: { ...DEFAULT_LAYER_STYLE },
       metadata: { sourceKind: "3d-tiles-url" },
     };
     assert.equal(cesiumIonAssetId(plain), null, "the source kind is the contract, not the field");
@@ -121,6 +121,8 @@ function makeGlobe() {
     imagery: [] as Array<{ provider: unknown; show: boolean; alpha: number }>,
   };
   const Cesium = {
+    // The viewer below has no `scene.mode`, so it never reads as mid-morph.
+    SceneMode: { MORPHING: 0 },
     IonResource: {
       fromAssetId: async (assetId: number, options?: { accessToken?: string }) => {
         calls.ionResources.push({ assetId, token: options?.accessToken });
@@ -182,7 +184,7 @@ function makeGlobe() {
         calls.imagery.push(layer);
         return layer;
       },
-      remove: (layer: { provider: unknown }) =>
+      remove: (layer: (typeof calls.imagery)[number]) =>
         calls.imagery.splice(calls.imagery.indexOf(layer), 1),
       raiseToTop: () => {},
     },

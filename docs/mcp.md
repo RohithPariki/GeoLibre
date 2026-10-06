@@ -6,10 +6,16 @@ other) at it and you can ask for a map in words: the server writes a real
 `.geolibre.json` project you open in the desktop app, the web app, or the
 `geolibre` Jupyter widget, and can export it as a standalone HTML page.
 
-The server is **headless**. It needs no browser, no running GeoLibre instance,
-and no bundled web build. It builds project files with the same
-[project builders](python.md) the Python package uses, so a project it writes is
-byte-for-byte the kind the app already loads.
+The file tools are **headless**. They need no browser, no running GeoLibre
+instance, and no bundled web build. They build project files with the same
+[project builders](python.md) the Python package uses, so a project they write
+is byte-for-byte the kind the app already loads.
+
+The `live_*` tools are the other half. They speak the desktop Notebook relay
+([Notebook panel](notebook.md)), so a command from an MCP client moves the map
+already open in GeoLibre Desktop. Open **Processing → Jupyter Notebook** once
+per app launch; the panel can be closed after that. Web and JupyterLite have
+no relay, so those tools have nothing to attach to there.
 
 ## Install
 
@@ -94,7 +100,7 @@ Give it a directory meant for maps, not your home directory.
 | `set_point_cloud_classes` | Define the annotator's custom classes (codes 19-255, name, `#rrggbb` color); keeps existing labels and boxes. |
 | `prelabel_point_cloud` | Run the app's Whitebox pre-label classifiers on a local copy of a LiDAR layer and save the changed classes as its labels (needs `geolibre[pointcloud]`). |
 | `write_labeled_point_cloud` | Write a local copy of a LiDAR layer's LAS/LAZ/COPC file with the project's labels and instance ids applied (needs `geolibre[pointcloud]`). |
-| `list_catalog` | List the named basemaps, color ramps, and legend presets, plus the active workspace roots. |
+| `list_catalog` | List the named basemaps, color ramps, legend presets, and the plugin ids `set_plugin_state` accepts, plus the active workspace roots. |
 
 ### Adding layers
 
@@ -120,8 +126,11 @@ Give it a directory meant for maps, not your home directory.
 | `remove_layer` | Drop a layer. |
 | `style_layer` | Merge style keys (`fillColor`, `strokeWidth`, `circleRadius`, …). |
 | `set_layer_popup` | Choose the fields a click popup shows, their labels and formats, its width and image height, and an optional hover tooltip. |
+| `set_layer_metadata` | Describe a layer for catalogs (title, abstract, keywords, license, attribution, contact, lineage, temporal extent, links): what the app's Metadata dialog edits and exports as a STAC Item. |
 | `classify_layer` | Build a graduated choropleth from a numeric column. |
 | `list_layer_properties` | List a layer's feature properties with sample values. |
+| `set_layer_filter` | Hide the features that do not match a boolean MapLibre expression (the saved filter Select by Expression → Filter layer writes); omit the expression to clear it. |
+| `set_labels` | Label features from a property or a text expression, with size, colors, halo, zoom range, anchor, and the rarer settings under `options`. Settings left out keep their values. |
 
 Layers are addressed by id **or** by display name, so a client can work from
 what `describe_project` showed it without tracking UUIDs.
@@ -136,6 +145,42 @@ what `describe_project` showed it without tracking UUIDs.
 | `add_legend` | Add a legend from a preset, a `{label: color}` map, or paired lists. |
 | `add_colorbar` | Add a colorbar for continuous data. |
 | `add_swipe` | Configure the split-map comparison slider. |
+
+### Plugin state and story maps
+
+| Tool | What it does |
+| --- | --- |
+| `set_plugin_state` | Store a plugin's saved project state (the blob it restores on open, such as the Time Slider's timeline). Built-in ids come from `list_catalog`; an external plugin's id needs `allow_unknown`. |
+| `set_story_map` | Set a story map's title block, theme, markers, inset, and start/end slides. |
+| `add_story_chapter` | Add a chapter with its camera, text, image, alignment, animation, and layer fades. A camera value left out comes from the project's saved view. |
+| `move_story_chapter` / `remove_story_chapter` | Reorder or drop a chapter by id, title, or index. |
+
+The shapes match what the app reads (`parseProject` in `@geolibre/core`); a
+round-trip test loads a project these tools wrote through it and checks nothing
+is dropped or rewritten.
+
+Bookmarks have no tool: the app keeps them in browser storage, not in the
+project file, so there is nothing for a project tool to write. Story chapters
+are the saved, shareable equivalent.
+
+### Live desktop map
+
+| Tool | What it does |
+| --- | --- |
+| `live_status` | Report whether a GeoLibre Desktop window is listening. |
+| `live_list_layers` | List the open map's layers. |
+| `live_fly_to` / `live_fit_bounds` / `live_zoom_to_layer` | Move the camera. |
+| `live_set_basemap` | Switch the basemap. |
+| `live_add_geojson` / `live_remove_layer` | Add or remove a layer. |
+| `live_set_visibility` / `live_set_opacity` / `live_set_style` | Change a layer. |
+| `live_list_algorithms` | List the app's processing algorithms and their parameters, optionally filtered by `query`. |
+| `live_run_algorithm` | Run an algorithm on the open map; returns its logs and the ids of the result layers it added. |
+
+Processing is live-only. The algorithm catalog and the engines that run it
+(Turf.js, DuckDB-WASM) live in the app, so there is nothing a file tool could
+run. The relay waits about five seconds for a result: a longer run keeps going
+in the app, and the tool reports that it did not finish in time instead of its
+result layer ids, so check `live_list_layers` before running it again.
 
 ### Export
 
@@ -173,10 +218,12 @@ will not load for anyone else, so use hosted URLs for a shareable export.
 - **Remote fetches are checked**: a URL whose host resolves to a private,
   loopback, or link-local address is refused, on every redirect hop as well as
   the first request, so a crafted URL cannot reach a cloud metadata endpoint.
-- The server authors projects; it does **not** drive a live map. Interactive
-  control of a running GeoLibre instance goes through the scripting bridge that
-  backs the [Python widget](python.md) and the
-  [embed API](user-guide/embedding.md).
+- **File tools write a project. `live_*` tools move the open desktop map.**
+  A live edit is in the session until you save it from the app. The relay is
+  loopback-only and refuses redirects, so the Jupyter token stays on the
+  machine. The same scripting surface backs the [Python widget](python.md)
+  and the [embed API](user-guide/embedding.md); those remain how a host page
+  or a notebook drives a map without MCP.
 
 ## Driving the server from an agent
 

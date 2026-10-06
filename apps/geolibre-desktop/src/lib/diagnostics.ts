@@ -2,7 +2,12 @@ import { useSyncExternalStore } from "react";
 import { classifyFetchFailure } from "./fetch-error";
 import { isTauri } from "./is-tauri";
 
-export type DiagnosticCategory = "console" | "map" | "network" | "runtime";
+/**
+ * Where a record came from. `"app"` is a handled failure the app reported to
+ * the user (an error notification, see `notify.ts`); the others are captured
+ * automatically from the console, the map engine, fetch, and global handlers.
+ */
+export type DiagnosticCategory = "app" | "console" | "map" | "network" | "runtime";
 export type DiagnosticLevel = "error" | "info" | "warning";
 
 export interface DiagnosticRecord {
@@ -67,11 +72,12 @@ const TAURI_IPC_FALLBACK_WARNING =
 // is kept out of the diagnostics panel (still echoed to the console for devs).
 //
 // three.js warns this once when more than one copy of its module ends up in the
-// bundle. Several first- and third-party deps (deck.gl mesh layers, the 3D
-// tiles / lidar / splat plugins, mapillary-js) each pull in three at slightly
-// different versions, so a single deduped copy is not guaranteed. The warning
-// is cosmetic — our three usage does not rely on cross-copy identity — so it is
-// kept out of the diagnostics panel (still echoed to the console for devs).
+// page. The app and its three-based plugins share one copy (the root
+// `overrides` pins it), but mapillary-js ships a prebuilt bundle with its own
+// three 0.134, so opening the Mapillary viewer still loads a second copy. The
+// warning is cosmetic — our three usage does not rely on cross-copy identity —
+// so it is kept out of the diagnostics panel (still echoed to the console for
+// devs).
 const BENIGN_CONSOLE_WARNINGS = [
   "Easing around a point is not supported under globe projection.",
   "WARNING: Multiple instances of Three.js being imported.",
@@ -94,12 +100,12 @@ function isBenignConsoleWarning(args: unknown[]): boolean {
   );
 }
 
-// Request header that flags a fetch whose failure (typically a 404) is expected
-// and harmless — e.g. an optional config file that may simply be absent. A
-// non-ok response to such a request is recorded at info level instead of error,
-// so it does not surface as a problem in the diagnostics panel (issue follow-up
-// to #500: the optional admin-profile.json 404 on every load).
+// Client-only header that marks a non-ok response as an expected status rather
+// than an error. The diagnostics wrapper strips it before forwarding.
 export const OPTIONAL_RESOURCE_HEADER = "x-geolibre-optional-resource";
+export const EXPECTED_STATUS_HEADER = "x-geolibre-expected-status";
+
+const DIAGNOSTIC_REQUEST_HEADERS = [OPTIONAL_RESOURCE_HEADER, EXPECTED_STATUS_HEADER] as const;
 
 /** Read a single header value across the Headers/array/record init shapes. */
 function readHeader(headers: HeadersInit | undefined, name: string): string | null {
@@ -118,45 +124,35 @@ function readHeader(headers: HeadersInit | undefined, name: string): string | nu
   return null;
 }
 
-/** Whether a request opted out of error-level logging for benign failures. */
-function isOptionalResourceRequest(
+/** Read a client-side diagnostic marker using fetch's init-header precedence. */
+function requestMarker(
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1],
-): boolean {
-  // Per the fetch spec, when init.headers is provided it replaces a Request
-  // input's headers entirely, so only fall back to the Request's own headers
-  // when init omits them — otherwise an init that drops the marker would still
-  // be treated as optional.
-  if (init?.headers !== undefined) {
-    return readHeader(init.headers, OPTIONAL_RESOURCE_HEADER) != null;
-  }
-  return input instanceof Request && input.headers.get(OPTIONAL_RESOURCE_HEADER) != null;
+  name: string,
+): string | null {
+  if (init?.headers !== undefined) return readHeader(init.headers, name);
+  return input instanceof Request ? input.headers.get(name) : null;
 }
 
-/**
- * Remove the optional-resource marker before the request leaves the app. It is a
- * client-side diagnostics hint with no meaning to any server; forwarding it
- * would, on a cross-origin request, turn it into a non-simple header that forces
- * a CORS preflight the server would have to allow.
- */
-function stripOptionalResourceHeader(
+/** Strip client-only diagnostic markers before forwarding the request. */
+function stripRequestMarkers(
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1],
 ): { input: Parameters<typeof fetch>[0]; init: Parameters<typeof fetch>[1] } {
-  // init.headers, when present, is what actually gets sent (it replaces a
-  // Request input's headers), so strip it there.
   if (init?.headers !== undefined) {
-    if (readHeader(init.headers, OPTIONAL_RESOURCE_HEADER) == null) {
+    if (!DIAGNOSTIC_REQUEST_HEADERS.some((name) => readHeader(init.headers, name) !== null)) {
       return { input, init };
     }
     const headers = new Headers(init.headers);
-    headers.delete(OPTIONAL_RESOURCE_HEADER);
+    for (const name of DIAGNOSTIC_REQUEST_HEADERS) headers.delete(name);
     return { input, init: { ...init, headers } };
   }
-  // Otherwise a Request input may carry it; rebuild without the marker.
-  if (input instanceof Request && input.headers.has(OPTIONAL_RESOURCE_HEADER)) {
+  if (
+    input instanceof Request &&
+    DIAGNOSTIC_REQUEST_HEADERS.some((name) => input.headers.has(name))
+  ) {
     const headers = new Headers(input.headers);
-    headers.delete(OPTIONAL_RESOURCE_HEADER);
+    for (const name of DIAGNOSTIC_REQUEST_HEADERS) headers.delete(name);
     return { input: new Request(input, { headers }), init };
   }
   return { input, init };
@@ -324,9 +320,16 @@ function getSnapshot(): DiagnosticsSnapshot {
   return snapshot;
 }
 
-export function appendDiagnostic(input: DiagnosticInput): void {
+/**
+ * Records a diagnostic entry (redacting URLs in every free-text field).
+ *
+ * @param input - The entry to record.
+ * @returns The stored record, or `null` when the entry was filtered out (an
+ *   info-level network entry while request logging is off).
+ */
+export function appendDiagnostic(input: DiagnosticInput): DiagnosticRecord | null {
   if (input.category === "network" && input.level === "info" && !captureNetworkInfo) {
-    return;
+    return null;
   }
 
   const record: DiagnosticRecord = {
@@ -344,6 +347,7 @@ export function appendDiagnostic(input: DiagnosticInput): void {
 
   records = [record, ...records].slice(0, MAX_DIAGNOSTIC_RECORDS);
   emitChange();
+  return record;
 }
 
 export function clearDiagnostics(): void {
@@ -395,6 +399,43 @@ export function getDiagnosticsSnapshot(): DiagnosticsSnapshot {
  * Each caller must therefore invoke its cleanup exactly once (e.g. from a
  * useEffect cleanup or a single entry-point install as in main.tsx).
  */
+/** A completed fetch the capture saw: enough to judge a tile layer's health. */
+export interface NetworkResponseObservation {
+  url: string;
+  method: string;
+  status: number;
+}
+
+const networkResponseObservers = new Set<(observation: NetworkResponseObservation) => void>();
+
+/**
+ * Subscribes to every completed `fetch` response the capture sees (successful
+ * or not, logged or not), so a feature can follow request outcomes without
+ * re-patching `fetch`. Opaque responses carry no status and are not passed on.
+ * Only active while {@link installDiagnosticsCapture} is installed.
+ *
+ * @param listener - Called once per completed response. A throw is swallowed.
+ * @returns A function that unsubscribes.
+ */
+export function observeNetworkResponses(
+  listener: (observation: NetworkResponseObservation) => void,
+): () => void {
+  networkResponseObservers.add(listener);
+  return () => {
+    networkResponseObservers.delete(listener);
+  };
+}
+
+function emitNetworkResponse(observation: NetworkResponseObservation): void {
+  for (const listener of networkResponseObservers) {
+    try {
+      listener(observation);
+    } catch {
+      // An observer's bug must never fail the request it observed.
+    }
+  }
+}
+
 export function installDiagnosticsCapture(): () => void {
   captureRefCount += 1;
   if (captureCleanup) {
@@ -428,13 +469,14 @@ export function installDiagnosticsCapture(): () => void {
     const method = requestMethod(input, init);
     const url = requestUrl(input);
 
-    // A request may declare that a failure (a non-ok response such as a 404, or
-    // a thrown network error) is expected — e.g. an optional config file that
-    // may be absent — so it is logged as info rather than flagged an error. The
-    // marker is read here, then stripped so it never reaches the server.
-    const optional = isOptionalResourceRequest(input, init);
-    const forwarded = stripOptionalResourceHeader(input, init);
-
+    // Optional-resource requests downgrade any failure; expected-status requests
+    // downgrade only listed HTTP responses. Both markers are stripped before fetch.
+    const optional = requestMarker(input, init, OPTIONAL_RESOURCE_HEADER) !== null;
+    const expectedStatusHeader = requestMarker(input, init, EXPECTED_STATUS_HEADER);
+    const expectedStatuses = new Set(
+      expectedStatusHeader?.split(",").map((status) => Number(status.trim())) ?? [],
+    );
+    const forwarded = stripRequestMarkers(input, init);
     try {
       const response =
         forwarded.init !== undefined
@@ -448,13 +490,17 @@ export function installDiagnosticsCapture(): () => void {
       const opaque = response.type === "opaque" || response.type === "opaqueredirect";
       appendDiagnostic({
         category: "network",
-        level: response.ok || optional || opaque ? "info" : "error",
+        level:
+          response.ok || optional || opaque || expectedStatuses.has(response.status)
+            ? "info"
+            : "error",
         message: `${method} ${response.status} ${response.statusText}`.trim(),
         durationMs: Math.round(performance.now() - startedAt),
         method,
         status: response.status,
         url,
       });
+      if (!opaque) emitNetworkResponse({ url, method, status: response.status });
       return response;
     } catch (error) {
       const isAbort =

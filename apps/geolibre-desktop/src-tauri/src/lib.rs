@@ -1,6 +1,7 @@
 mod arcgis_http;
 mod aws_credentials;
 mod aws_sts;
+mod plugin_http;
 // Earth Engine sign-in uses Google's OAuth loopback-redirect flow, which binds
 // a listener on 127.0.0.1 to accept the browser's redirect. Accepting an
 // inbound connection requires the `com.apple.security.network.server`
@@ -77,6 +78,12 @@ mod secure_store {
     pub async fn secure_store_get_many(_accounts: Vec<String>) -> Result<HashMap<String, String>, String> {
         Err(UNAVAILABLE.to_string())
     }
+
+    /// Nothing to seal: reads always fail here.
+    #[tauri::command]
+    pub fn secure_store_seal() {}
+
+    pub fn reset_read_gate(_label: &str) {}
 
     #[tauri::command]
     pub async fn secure_store_set(_account: String, _secret: String) -> Result<(), String> {
@@ -202,6 +209,14 @@ const MARTIN_HEALTH_ATTEMPTS: usize = 30;
 const SIDECAR_HEALTH_ATTEMPTS: usize = 180;
 #[cfg(not(feature = "mas"))]
 const SIDECAR_PORT: u16 = 8765;
+// Returned when a sidecar from an earlier launch holds SIDECAR_PORT and could not
+// be reclaimed. The frontend (src/lib/sidecar.ts) recognizes it by the phrase
+// "does not accept this session's token" and shows it instead of the bare 401
+// the stale sidecar would answer later requests with (GeoLibre#2959).
+#[cfg(not(feature = "mas"))]
+const STALE_SIDECAR_ERROR: &str = "A GeoLibre processing server from a previous session is \
+     still running on port 8765 but does not accept this session's token. Quit any stray \
+     GeoLibre processes and try again.";
 // The sidecar's PostGIS endpoints refuse every destination until this variable
 // names the allowed hosts — the check that stops a *shared* deployment (the
 // Docker image, where the sidecar is reachable same-origin through the nginx
@@ -210,10 +225,12 @@ const SIDECAR_PORT: u16 = 8765;
 // backend/geolibre_server/geolibre_server/app/postgis.py.
 #[cfg(not(feature = "mas"))]
 const POSTGIS_HOSTS_ENV: &str = "GEOLIBRE_POSTGIS_HOSTS";
-// Desktop is the case that restriction is not aimed at: the sidecar is
-// loopback-bound, token-authenticated, and spawned for one user who is also its
-// operator, so it would only mean a user cannot reach their own database
-// without setting an environment variable for a process the app launches.
+// SQL Server endpoints use the same destination restriction for shared deployments.
+#[cfg(not(feature = "mas"))]
+const MSSQL_HOSTS_ENV: &str = "GEOLIBRE_MSSQL_HOSTS";
+#[cfg(not(feature = "mas"))]
+const MSSQL_HOSTS_DESKTOP_DEFAULT: &str = "*";
+// Desktop starts its loopback sidecar for one user, so the default is unrestricted.
 #[cfg(not(feature = "mas"))]
 const POSTGIS_HOSTS_DESKTOP_DEFAULT: &str = "*";
 // The desktop JupyterLab server for the Notebook panel. Loopback-bound and
@@ -413,6 +430,7 @@ pub fn run() {
         .manage(pending_project_paths)
         .manage(SelectedImagePaths::default())
         .manage(arcgis_http::ArcGISRequests::default())
+        .manage(plugin_http::PluginHttpRequests::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         // Runs before persisted-scope's setup hook so legacy photo grants are
@@ -478,6 +496,8 @@ pub fn run() {
             fetch_url_response,
             arcgis_http::fetch_arcgis_response,
             arcgis_http::cancel_arcgis_request,
+            plugin_http::plugin_http_request,
+            plugin_http::cancel_plugin_http_request,
             aws_credentials::aws_list_profiles,
             aws_credentials::aws_resolve_credentials,
             aws_credentials::aws_sso_login_start,
@@ -488,6 +508,7 @@ pub fn run() {
             pick_image_paths,
             read_selected_image,
             read_admin_profile,
+            read_deployment_policy,
             read_env_vars,
             take_pending_project_paths,
             allow_raster_asset,
@@ -507,9 +528,17 @@ pub fn run() {
             start_earth_engine_oauth,
             poll_earth_engine_oauth,
             secure_store::secure_store_get_many,
+            secure_store::secure_store_seal,
             secure_store::secure_store_set,
             secure_store::secure_store_delete
         ])
+        // A new document in a webview hydrates credentials again, so give it
+        // back its one startup read (secure_store.rs, issue #2858).
+        .on_page_load(|webview, payload| {
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+                secure_store::reset_read_gate(webview.label());
+            }
+        })
         .setup(|app| {
             create_main_window(app)?;
             // Nothing on Linux claims the OAuth callback scheme for us.
@@ -744,7 +773,7 @@ pub(crate) fn is_allowed_project_path(path: &str) -> bool {
 fn read_project_file(path: String) -> Result<String, String> {
     if !is_allowed_project_path(&path) {
         return Err(format!(
-            "Refusing to read \"{path}\": not an absolute local project file path"
+            "Refusing to read \"{path}\": a project file must be an absolute local path whose name ends in .geolibre or .geolibre.json"
         ));
     }
     // Resolve symlinks and re-check the extension, so a symlink named
@@ -1182,11 +1211,27 @@ fn is_safe_absolute_path(path: &str) -> bool {
     !path.split(['/', '\\']).any(|segment| segment == "..")
 }
 
-/// Read the optional admin UI-profile file (`<app_config_dir>/admin-profile.json`).
+/// Read optional configuration without parsing or normalizing its UTF-8 text.
+/// Only a missing file is treated as absent; all other read errors propagate.
+fn read_optional_config_file(path: &Path) -> Result<Option<String>, std::io::Error> {
+    match fs::read_to_string(path) {
+        Ok(contents) => Ok(Some(contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+fn read_admin_profile_file(path: &Path) -> Result<Option<String>, String> {
+    read_optional_config_file(path)
+        .map_err(|error| format!("Could not read admin profile: {error}"))
+}
+
+/// Read the optional legacy admin UI-profile file
+/// (`<app_config_dir>/admin-profile.json`), still honoured when the primary
+/// `deployment.json` policy has no non-empty `interface` section.
 ///
-/// Returns `Ok(None)` when the file is absent so a missing file is not an error;
-/// administrators drop one in to pre-configure and optionally lock the UI profile
-/// for a deployment. See `docs/ui-profiles.md`.
+/// Returns `Ok(None)` when the file is absent so a missing file is not an error.
+/// See `docs/ui-profiles.md`.
 #[tauri::command]
 fn read_admin_profile(app: tauri::AppHandle) -> Result<Option<String>, String> {
     let config_dir = app
@@ -1194,11 +1239,19 @@ fn read_admin_profile(app: tauri::AppHandle) -> Result<Option<String>, String> {
         .app_config_dir()
         .map_err(|error| format!("Could not resolve config directory: {error}"))?;
     let path = config_dir.join("admin-profile.json");
-    match fs::read_to_string(&path) {
-        Ok(contents) => Ok(Some(contents)),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(format!("Could not read admin profile: {error}")),
-    }
+    read_admin_profile_file(&path)
+}
+
+/// Read the optional deployment policy (`<app_config_dir>/deployment.json`).
+/// Returns its raw UTF-8 text, or `None` only when the file is absent.
+#[tauri::command]
+fn read_deployment_policy(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| format!("Could not resolve config directory: {error}"))?;
+    read_optional_config_file(&config_dir.join("deployment.json"))
+        .map_err(|error| format!("Could not read deployment policy: {error}"))
 }
 
 /// The only environment variable names `read_env_vars` will ever return. This
@@ -1612,6 +1665,29 @@ fn guarded_http_client() -> Result<reqwest::blocking::Client, String> {
     static CLIENT: std::sync::OnceLock<Result<reqwest::blocking::Client, String>> =
         std::sync::OnceLock::new();
     CLIENT.get_or_init(build_guarded_http_client).clone()
+}
+
+/// An async `reqwest` client builder with the same SSRF guard, enterprise CAs
+/// and mTLS identity as [`build_guarded_http_client_with_redirects`]. The async
+/// transports (ArcGIS, plugin requests) add their own redirect policy and any
+/// extra settings, then build and cache the client themselves.
+fn guarded_async_client_builder(
+    redirects: reqwest::redirect::Policy,
+) -> Result<reqwest::ClientBuilder, String> {
+    let mut builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(REMOTE_TILE_CONNECT_TIMEOUT_SECS))
+        .dns_resolver(std::sync::Arc::new(GuardedDnsResolver))
+        .user_agent("GeoLibre Desktop")
+        .redirect(redirects);
+    for certificate in extra_ca_certificates()? {
+        builder = builder.add_root_certificate(certificate);
+    }
+    Ok(match client_identity()? {
+        #[cfg(not(target_os = "android"))]
+        Some(ClientIdentity::Pkcs12(identity)) => builder.use_native_tls().identity(identity),
+        Some(ClientIdentity::Pem(identity)) => builder.use_rustls_tls().identity(identity),
+        None => builder.use_rustls_tls(),
+    })
 }
 
 fn build_guarded_http_client() -> Result<reqwest::blocking::Client, String> {
@@ -2542,7 +2618,9 @@ fn add_main_sidecar_extras(command: &mut Command) {
         .arg("--extra")
         .arg("ml")
         .arg("--extra")
-        .arg("postgis");
+        .arg("postgis")
+        .arg("--extra")
+        .arg("mssql");
 }
 
 #[cfg(not(feature = "mas"))]
@@ -2594,12 +2672,7 @@ fn start_geolibre_sidecar_blocking(app: tauri::AppHandle) -> Result<SidecarServe
         // answering /health, and falling through to spawn would then surface as
         // an opaque uvicorn "address already in use" instead of this message.
         if !wait_for_port_free(SIDECAR_PORT) {
-            return Err(
-                "A GeoLibre processing server from a previous session is still \
-                 running on port 8765 but does not accept this session's token. \
-                 Quit any stray GeoLibre processes and try again."
-                    .to_string(),
-            );
+            return Err(STALE_SIDECAR_ERROR.to_string());
         }
     }
 
@@ -2612,6 +2685,10 @@ fn start_geolibre_sidecar_blocking(app: tauri::AppHandle) -> Result<SidecarServe
         .ok()
         .filter(|value| !value.trim().is_empty())
         .unwrap_or_else(|| POSTGIS_HOSTS_DESKTOP_DEFAULT.to_string());
+    let mssql_hosts = env::var(MSSQL_HOSTS_ENV)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| MSSQL_HOSTS_DESKTOP_DEFAULT.to_string());
 
     let mut command = Command::new(&uv);
     command
@@ -2621,10 +2698,9 @@ fn start_geolibre_sidecar_blocking(app: tauri::AppHandle) -> Result<SidecarServe
         .arg("--frozen")
         .arg("--project")
         .arg(&project_dir);
-    // The main sidecar serves both the AI segmentation proxy and editable
-    // PostGIS layers. Unlike whitebox/conversion (separate managed venvs),
-    // neither feature has a lazy bootstrap, so both extras must be synced into
-    // the sidecar environment here.
+    // The main sidecar serves AI segmentation, editable PostGIS and SQL Server
+    // layers. Unlike whitebox/conversion (separate managed venvs), their extras
+    // must be synced into this environment here.
     add_main_sidecar_extras(&mut command);
     command
         .arg("uvicorn")
@@ -2638,6 +2714,8 @@ fn start_geolibre_sidecar_blocking(app: tauri::AppHandle) -> Result<SidecarServe
         .env("GEOLIBRE_SIDECAR_TOKEN", sidecar_token())
         .env("GEOLIBRE_RUNTIME_DIR", &runtime_dir)
         .env(POSTGIS_HOSTS_ENV, &postgis_hosts)
+        .env(MSSQL_HOSTS_ENV, &mssql_hosts)
+        .env("GEOLIBRE_MSSQL_DESKTOP_AUTH", "1")
         .env("UV_CACHE_DIR", runtime_dir.join("uv-cache"))
         .env("UV_PYTHON_INSTALL_DIR", runtime_dir.join("uv-python"))
         .env("UV_PROJECT_ENVIRONMENT", runtime_dir.join("sidecar-server"))
@@ -3518,16 +3596,17 @@ fn terminate_jupyter_listeners_on_port(
 // only ever terminate a listener whose executable lives inside this user's own
 // GeoLibre runtime directory (the uv-managed environment under
 // `%APPDATA%\org.geolibre.desktop\runtime\`). A Jupyter the user installed
-// themselves lives outside it and is left alone. The sidecar's port keeps its
-// no-op: unlike Jupyter it already reports an actionable message of its own
-// when the port stays busy (see start_geolibre_sidecar_blocking).
+// themselves lives outside it and is left alone. The sidecar's port is reaped
+// the same way but recognized by its command line instead (see
+// terminate_sidecar_listeners_on_port), since its interpreter can be a system
+// Python that uv picked outside the runtime directory.
 #[cfg(all(target_os = "windows", not(feature = "mas")))]
 fn terminate_jupyter_listeners_on_port(
     port: u16,
     runtime_dir: &std::path::Path,
 ) -> Result<(), String> {
     for pid in listening_tcp_pids(port) {
-        terminate_listener_under(pid, runtime_dir);
+        terminate_listener_if(pid, |process| process_image_is_under(process, runtime_dir));
     }
     Ok(())
 }
@@ -3556,7 +3635,7 @@ fn listening_tcp_pids(port: u16) -> HashSet<u32> {
             |row| (row.dwLocalPort, row.dwOwningPid),
             &mut pids,
         ),
-        Err(error) => eprintln!("Jupyter: {error}"),
+        Err(error) => eprintln!("GeoLibre: {error}"),
     }
     match extended_tcp_table(AF_INET6) {
         Ok(table) => collect_owner_pids::<MIB_TCP6ROW_OWNER_PID>(
@@ -3565,7 +3644,7 @@ fn listening_tcp_pids(port: u16) -> HashSet<u32> {
             |row| (row.dwLocalPort, row.dwOwningPid),
             &mut pids,
         ),
-        Err(error) => eprintln!("Jupyter: {error}"),
+        Err(error) => eprintln!("GeoLibre: {error}"),
     }
     pids
 }
@@ -3658,26 +3737,26 @@ fn extended_tcp_table(family: u32) -> Result<Vec<u32>, String> {
     Err("Could not read the TCP listener table: it kept growing between calls.".to_string())
 }
 
-// Terminate `pid`, but only if its executable lives inside `runtime_dir`. Does
-// nothing when the process has already exited or we may not touch it.
+// Terminate `pid`, but only if `is_ours` recognizes the process. Does nothing
+// when the process has already exited or we may not touch it.
 //
-// The image check and the kill deliberately share ONE handle. An open handle
+// The identity check and the kill deliberately share ONE handle. An open handle
 // pins the process object, so the PID cannot be recycled onto some unrelated
 // process in between -- re-opening by PID to terminate would leave exactly that
-// window, and the whole point of the image check is that we never kill a
+// window, and the whole point of the identity check is that we never kill a
 // process that is not ours.
 //
 // Windows has no SIGTERM, so unlike the Linux path there is no graceful step to
 // try first: an orphan from a previous session has no channel we can ask it to
 // shut down through.
 #[cfg(all(target_os = "windows", not(feature = "mas")))]
-fn terminate_listener_under(pid: u32, runtime_dir: &Path) {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
+fn terminate_listener_if(
+    pid: u32,
+    is_ours: impl FnOnce(windows_sys::Win32::Foundation::HANDLE) -> bool,
+) {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, TerminateProcess, PROCESS_NAME_WIN32,
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        OpenProcess, TerminateProcess, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
     };
 
     // SAFETY: one handle for both the query and the kill; closed on every path.
@@ -3691,6 +3770,23 @@ fn terminate_listener_under(pid: u32, runtime_dir: &Path) {
     if process.is_null() {
         return;
     }
+    if is_ours(process) {
+        // SAFETY: the same handle, opened with PROCESS_TERMINATE above.
+        let _ = unsafe { TerminateProcess(process, 1) };
+    }
+    let _ = unsafe { CloseHandle(process) };
+}
+
+// Whether the executable of `process` lives inside `runtime_dir`.
+#[cfg(all(target_os = "windows", not(feature = "mas")))]
+fn process_image_is_under(
+    process: windows_sys::Win32::Foundation::HANDLE,
+    runtime_dir: &Path,
+) -> bool {
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use windows_sys::Win32::System::Threading::{QueryFullProcessImageNameW, PROCESS_NAME_WIN32};
+
     // Sized for an extended-length path rather than MAX_PATH, so a deeply
     // nested app-data directory is not silently truncated into a non-match.
     let mut buffer = vec![0u16; 32_768];
@@ -3705,16 +3801,83 @@ fn terminate_listener_under(pid: u32, runtime_dir: &Path) {
             &mut length,
         )
     };
-    if queried != 0 {
-        let image = PathBuf::from(OsString::from_wide(
-            &buffer[..(length as usize).min(buffer.len())],
-        ));
-        if path_is_under(&image, runtime_dir) {
-            // SAFETY: the same handle, opened with PROCESS_TERMINATE above.
-            let _ = unsafe { TerminateProcess(process, 1) };
-        }
+    if queried == 0 {
+        return false;
     }
-    let _ = unsafe { CloseHandle(process) };
+    let image = PathBuf::from(OsString::from_wide(
+        &buffer[..(length as usize).min(buffer.len())],
+    ));
+    path_is_under(&image, runtime_dir)
+}
+
+// The full command line of `process`, via ProcessCommandLineInformation (Windows
+// 8.1+), which only needs PROCESS_QUERY_LIMITED_INFORMATION. None when the
+// query fails, e.g. the process has exited.
+#[cfg(all(target_os = "windows", not(feature = "mas")))]
+fn process_command_line(process: windows_sys::Win32::Foundation::HANDLE) -> Option<String> {
+    use std::mem::size_of;
+    use windows_sys::Wdk::System::Threading::{
+        NtQueryInformationProcess, ProcessCommandLineInformation,
+    };
+    use windows_sys::Win32::Foundation::UNICODE_STRING;
+
+    // NTSTATUS codes for "buffer too small"; the call reports the size it needs.
+    // Which one this info class returns is not documented, so accept all three.
+    const STATUS_INFO_LENGTH_MISMATCH: i32 = 0xC000_0004_u32 as i32;
+    const STATUS_BUFFER_TOO_SMALL: i32 = 0xC000_0023_u32 as i32;
+    const STATUS_BUFFER_OVERFLOW: i32 = 0x8000_0005_u32 as i32;
+
+    // The result is a UNICODE_STRING header followed by the text it points at.
+    // A u64 buffer keeps the header's pointer field aligned.
+    let mut buffer = vec![0u64; 512];
+    for _ in 0..4 {
+        let capacity = (buffer.len() * size_of::<u64>()) as u32;
+        let mut needed: u32 = 0;
+        // SAFETY: the pointer and `capacity` describe the same allocation, and
+        // the call writes at most `capacity` bytes.
+        let status = unsafe {
+            NtQueryInformationProcess(
+                process,
+                ProcessCommandLineInformation,
+                buffer.as_mut_ptr().cast(),
+                capacity,
+                &mut needed,
+            )
+        };
+        if matches!(
+            status,
+            STATUS_INFO_LENGTH_MISMATCH | STATUS_BUFFER_TOO_SMALL | STATUS_BUFFER_OVERFLOW
+        ) && needed > capacity
+        {
+            buffer = vec![0u64; (needed as usize).div_ceil(size_of::<u64>())];
+            continue;
+        }
+        if status < 0 {
+            return None;
+        }
+        // SAFETY: on success the buffer starts with an initialized, aligned
+        // UNICODE_STRING.
+        let header = unsafe { &*buffer.as_ptr().cast::<UNICODE_STRING>() };
+        let start = buffer.as_ptr() as usize;
+        let end = start + capacity as usize;
+        let text = header.Buffer as usize;
+        let bytes = usize::from(header.Length);
+        // The text must lie inside our allocation; anything else is not a
+        // shape we trust enough to read.
+        if header.Buffer.is_null()
+            || text < start + size_of::<UNICODE_STRING>()
+            || text
+                .checked_add(bytes)
+                .is_none_or(|text_end| text_end > end)
+            || !text.is_multiple_of(std::mem::align_of::<u16>())
+        {
+            return None;
+        }
+        // SAFETY: bounds and alignment were checked against our allocation.
+        let units = unsafe { std::slice::from_raw_parts(header.Buffer, bytes / 2) };
+        return Some(String::from_utf16_lossy(units));
+    }
+    None
 }
 
 // MIB_TCP*ROW_OWNER_PID keeps the local port in the low word of a DWORD, in
@@ -3777,17 +3940,109 @@ fn terminate_listeners_on_port(port: u16, is_ours: fn(i32) -> bool) -> Result<()
         }
     }
 
-    for pid in &pids {
-        terminate_pid(*pid, SIGTERM);
-    }
-    thread::sleep(Duration::from_millis(250));
-    for pid in &pids {
-        terminate_pid(*pid, SIGKILL);
+    terminate_pids(&pids, is_ours);
+    Ok(())
+}
+
+// Windows: the listener's owner comes from the IP Helper TCP table, and it is
+// only terminated when its command line names our sidecar app -- the same
+// identity guard Linux uses. The image path is no help here: uv may run the
+// sidecar on a system Python outside the runtime directory.
+#[cfg(all(target_os = "windows", not(feature = "mas")))]
+fn terminate_sidecar_listeners_on_port(port: u16) -> Result<(), String> {
+    for pid in listening_tcp_pids(port) {
+        terminate_listener_if(pid, |process| {
+            process_command_line(process)
+                .is_some_and(|command_line| is_geolibre_sidecar_command_line(&command_line))
+        });
     }
     Ok(())
 }
 
-#[cfg(all(not(target_os = "linux"), not(feature = "mas")))]
+// macOS has no /proc, so the listener comes from lsof and its command line from
+// ps. Both ship with the OS at fixed paths, which keeps a PATH override from
+// substituting either. A failed lookup reclaims nothing rather than erroring, so
+// the caller still reports the stale-session message the frontend recognizes.
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
+fn terminate_sidecar_listeners_on_port(port: u16) -> Result<(), String> {
+    let pids: HashSet<i32> = listening_tcp_pids_lsof(port)
+        .into_iter()
+        .filter(|pid| is_geolibre_sidecar_pid(*pid))
+        .collect();
+    terminate_pids(&pids, is_geolibre_sidecar_pid);
+    Ok(())
+}
+
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
+fn is_geolibre_sidecar_pid(pid: i32) -> bool {
+    process_command_line_ps(pid)
+        .is_some_and(|command_line| is_geolibre_sidecar_command_line(&command_line))
+}
+
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
+fn listening_tcp_pids_lsof(port: u16) -> HashSet<i32> {
+    let output = match Command::new("/usr/sbin/lsof")
+        .args(["-nP", "-t", "-sTCP:LISTEN"])
+        .arg(format!("-iTCP:{port}"))
+        .stdin(Stdio::null())
+        .output()
+    {
+        Ok(output) => output,
+        Err(error) => {
+            eprintln!("GeoLibre: could not run lsof: {error}");
+            return HashSet::new();
+        }
+    };
+    // lsof exits 1 when nothing matches, so the status is not an error signal;
+    // an empty stdout is.
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.trim().parse::<i32>().ok())
+        .filter(|pid| *pid > 0)
+        .collect()
+}
+
+#[cfg(all(target_os = "macos", not(feature = "mas")))]
+fn process_command_line_ps(pid: i32) -> Option<String> {
+    let output = Command::new("/bin/ps")
+        .args(["-ww", "-o", "command="])
+        .arg("-p")
+        .arg(pid.to_string())
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+// SIGTERM, a short grace, then SIGKILL for whatever is still alive. `kill(2)`
+// cannot pin a process the way a Windows handle does, so `is_ours` is checked
+// again right before each signal: a sidecar that exited on SIGTERM frees its
+// PID, and the OS may hand it to an unrelated process during the grace period.
+#[cfg(all(any(target_os = "linux", target_os = "macos"), not(feature = "mas")))]
+fn terminate_pids(pids: &HashSet<i32>, is_ours: fn(i32) -> bool) {
+    if pids.is_empty() {
+        return;
+    }
+    for pid in pids {
+        if is_ours(*pid) {
+            terminate_pid(*pid, SIGTERM);
+        }
+    }
+    thread::sleep(Duration::from_millis(250));
+    for pid in pids {
+        if is_ours(*pid) {
+            terminate_pid(*pid, SIGKILL);
+        }
+    }
+}
+
+#[cfg(all(
+    not(any(target_os = "linux", target_os = "windows", target_os = "macos")),
+    not(feature = "mas")
+))]
 fn terminate_sidecar_listeners_on_port(_port: u16) -> Result<(), String> {
     Ok(())
 }
@@ -3857,8 +4112,22 @@ fn is_geolibre_sidecar_process(pid: i32) -> bool {
         return false;
     };
     let command_line = String::from_utf8_lossy(&command_line);
+    // Linux has always also accepted the app's directory path; Windows and macOS
+    // match only the module the sidecar is launched with.
+    is_geolibre_sidecar_command_line(&command_line) || command_line.contains("geolibre_server/app")
+}
+
+// Whether a process command line is one of our sidecars, started by
+// start_geolibre_sidecar_blocking as `uvicorn geolibre_server.app.main:app`.
+#[cfg(any(
+    all(
+        any(target_os = "linux", target_os = "windows", target_os = "macos"),
+        not(feature = "mas")
+    ),
+    test
+))]
+fn is_geolibre_sidecar_command_line(command_line: &str) -> bool {
     command_line.contains("geolibre_server.app.main")
-        || command_line.contains("geolibre_server/app")
 }
 
 // Recognize OUR Jupyter server (started by start_jupyter_server) by the bundled
@@ -4861,11 +5130,11 @@ mod tests {
     use super::{
         client_cert_is_pkcs12, client_cert_password_without_path, ensure_fetchable_url,
         is_allowed_geojson_write_path, is_allowed_local_vector_path, is_allowed_project_path,
-        is_disallowed_ip, is_image_picker_path, is_persisted_image_file, is_safe_absolute_path,
-        is_ssrf_guard_error, is_unc_resolved_path, path_is_under, project_path_string,
-        project_paths_from_args, read_mbtiles_zoom_range, resolve_fetch_timeout_secs,
-        tcp_table_port, write_local_geojson_file, MAX_FETCH_TIMEOUT_SECS, REMOTE_TILE_TIMEOUT_SECS,
-        SSRF_BLOCKED_MESSAGE,
+        is_disallowed_ip, is_geolibre_sidecar_command_line, is_image_picker_path,
+        is_persisted_image_file, is_safe_absolute_path, is_ssrf_guard_error, is_unc_resolved_path,
+        path_is_under, project_path_string, project_paths_from_args, read_mbtiles_zoom_range,
+        resolve_fetch_timeout_secs, tcp_table_port, write_local_geojson_file,
+        MAX_FETCH_TIMEOUT_SECS, REMOTE_TILE_TIMEOUT_SECS, SSRF_BLOCKED_MESSAGE,
     };
     #[cfg(target_os = "linux")]
     use super::{
@@ -4892,7 +5161,6 @@ mod tests {
     #[cfg(not(feature = "mas"))]
     use std::io::{Cursor, Write};
     use std::net::IpAddr;
-    #[cfg(not(feature = "mas"))]
     use std::path::PathBuf;
     #[cfg(not(feature = "mas"))]
     use std::process::Command;
@@ -4932,7 +5200,7 @@ mod tests {
 
     #[cfg(not(feature = "mas"))]
     #[test]
-    fn main_sidecar_installs_postgis_runtime() {
+    fn main_sidecar_installs_database_runtimes() {
         let mut command = Command::new("uv");
         add_main_sidecar_extras(&mut command);
         let args: Vec<_> = command.get_args().collect();
@@ -4943,6 +5211,8 @@ mod tests {
                 OsStr::new("ml"),
                 OsStr::new("--extra"),
                 OsStr::new("postgis"),
+                OsStr::new("--extra"),
+                OsStr::new("mssql"),
             ]
         );
     }
@@ -4951,10 +5221,8 @@ mod tests {
     // on drop, so scratch dirs are cleaned up even when an assertion panics.
     // Uses the process id (no rand dependency) and clears any leftover from a
     // prior run at construction.
-    #[cfg(not(feature = "mas"))]
     struct ScratchDir(PathBuf);
 
-    #[cfg(not(feature = "mas"))]
     impl ScratchDir {
         fn new(name: &str) -> Self {
             let dir = std::env::temp_dir().join(format!("geolibre-{name}-{}", std::process::id()));
@@ -4968,10 +5236,59 @@ mod tests {
         }
     }
 
-    #[cfg(not(feature = "mas"))]
     impl Drop for ScratchDir {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn optional_config_file_returns_none_only_when_missing() {
+        let root = ScratchDir::new("optional-config-missing");
+        let path = root.path().join("deployment.json");
+        assert_eq!(super::read_optional_config_file(&path).unwrap(), None);
+        assert_eq!(super::read_admin_profile_file(&path).unwrap(), None);
+    }
+
+    #[test]
+    fn optional_config_file_preserves_raw_utf8_text() {
+        let root = ScratchDir::new("optional-config-text");
+        let path = root.path().join("deployment.json");
+        for contents in [
+            "",
+            " \r\n{\"name\":\"café\"}\r\n ",
+            "\u{feff}{\"enabled\":true}\n",
+        ] {
+            fs::write(&path, contents).unwrap();
+            assert_eq!(
+                super::read_optional_config_file(&path).unwrap(),
+                Some(contents.to_owned())
+            );
+            assert_eq!(
+                super::read_admin_profile_file(&path).unwrap(),
+                Some(contents.to_owned())
+            );
+        }
+    }
+
+    #[test]
+    fn optional_config_file_propagates_non_not_found_errors() {
+        let root = ScratchDir::new("optional-config-errors");
+        let directory = root.path().join("deployment.json");
+        fs::create_dir(&directory).unwrap();
+        let invalid_utf8 = root.path().join("admin-profile.json");
+        fs::write(&invalid_utf8, [0xff]).unwrap();
+
+        for path in [&directory, &invalid_utf8] {
+            let original_error = fs::read_to_string(path).unwrap_err();
+            let error = super::read_optional_config_file(path).unwrap_err();
+            assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+            assert_eq!(error.kind(), original_error.kind());
+            assert_eq!(error.to_string(), original_error.to_string());
+            assert_eq!(
+                super::read_admin_profile_file(path).unwrap_err(),
+                format!("Could not read admin profile: {original_error}")
+            );
         }
     }
 
@@ -6069,5 +6386,35 @@ mod tests {
             std::path::Path::new(r"C:\anything"),
             std::path::Path::new("")
         ));
+    }
+
+    #[test]
+    fn recognizes_only_geolibre_sidecar_command_lines() {
+        // Windows: uv's uvicorn.exe trampoline hands the app spec to Python.
+        assert!(is_geolibre_sidecar_command_line(
+            r#""C:\Python312\python.exe" "C:\Users\me\AppData\Roaming\org.geolibre.desktop\runtime\sidecar-server\Scripts\uvicorn.exe" geolibre_server.app.main:app --host 127.0.0.1 --port 8765"#
+        ));
+        // Linux /proc cmdline (NUL-separated) and macOS ps output.
+        assert!(is_geolibre_sidecar_command_line(
+            "/runtime/sidecar-server/bin/python3\0/runtime/sidecar-server/bin/uvicorn\0geolibre_server.app.main:app\0"
+        ));
+        // The user's own server on the same port is left alone.
+        assert!(!is_geolibre_sidecar_command_line(
+            "python -m uvicorn myapp.main:app --port 8765"
+        ));
+        // A different server merely run from inside the package's directory is
+        // not the sidecar.
+        assert!(!is_geolibre_sidecar_command_line(
+            "python /src/geolibre_server/app/other_server.py --port 8765"
+        ));
+        assert!(!is_geolibre_sidecar_command_line(""));
+    }
+
+    // src/lib/sidecar.ts classifies the start failure by this phrase; if it
+    // drifts, a stale sidecar is ignored again and users get a bare 401.
+    #[cfg(not(feature = "mas"))]
+    #[test]
+    fn stale_sidecar_error_keeps_the_phrase_the_frontend_matches() {
+        assert!(super::STALE_SIDECAR_ERROR.contains("does not accept this session's token"));
     }
 }

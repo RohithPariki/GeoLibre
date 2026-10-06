@@ -9,13 +9,15 @@ import {
 } from "@geolibre/core";
 import type { MapEngine } from "@geolibre/map";
 import { fetchArcGISMapServiceSublayers } from "@geolibre/plugins";
-import { fetchPostgisStatus, listPostgisTables } from "@geolibre/processing";
 import { Input, ScrollArea } from "@geolibre/ui";
 import { Search } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import { isDesktopRuntime } from "../../lib/is-mobile";
-import { startGeoLibreSidecar } from "../../lib/sidecar";
+import { fetchMssqlBrowserTables, forgetMssqlBrowserConnection } from "../../lib/mssql-browser";
+import {
+  fetchPostgresBrowserTables,
+  confirmForgetPostgresBrowserConnection,
+} from "../../lib/postgres-browser";
 import {
   isLoadableFilePath,
   listDirectory,
@@ -37,7 +39,7 @@ import {
   filterBrowserTree,
   flattenVisibleTree,
   type BrowserNode,
-  type ConnectionLoad,
+  type ConnectionLoads,
   type FolderLoad,
 } from "../../lib/browser-tree";
 import { applyServiceEntry } from "../layout/add-data/apply-service";
@@ -49,6 +51,7 @@ import { BrowserTreeNode } from "./BrowserTreeNode";
 
 /** The `connection:` / `folder:` id prefixes (id = prefix + connString/path). */
 const CONNECTION_ID_PREFIX = "connection:";
+const MSSQL_CONNECTION_ID_PREFIX = "mssql-connection:";
 const FOLDER_ID_PREFIX = "folder:";
 /** The `service:` id prefix (id = prefix + saved-service id). */
 const SERVICE_ID_PREFIX = "service:";
@@ -76,6 +79,8 @@ const DEFAULT_EXPANDED = new Set([
   "section:services",
   "section:recent",
   "section:databases",
+  "database-engine:postgres",
+  "database-engine:mssql",
   "section:files",
 ]);
 
@@ -153,87 +158,33 @@ export function BrowserPanel({
   // Lazy PostGIS introspection: keyed by connection string, populated the first
   // time a connection node is expanded so we never hit the sidecar for a
   // connection the user hasn't opened.
-  const [connLoads, setConnLoads] = useState<Record<string, ConnectionLoad>>({});
+  const [connLoads, setConnLoads] = useState<ConnectionLoads>({});
   // Tracks in-flight/settled fetches so a re-expand (or the expand-all a search
   // triggers) doesn't refetch. A failed fetch drops its entry so re-expanding
   // the connection retries (there is no separate refresh affordance).
   const connFetchedRef = useRef<Set<string>>(new Set());
+  // A successful forget invalidates pending PostgreSQL requests for that DSN.
+  const connGenRef = useRef<Map<string, number>>(new Map());
+
+  // SQL Server introspection, keyed `mssql:<profile id>` so it merges with the
+  // PostGIS loads without colliding; same retry-on-failure tracking.
+  const [mssqlLoads, setMssqlLoads] = useState<ConnectionLoads>({});
+  const mssqlFetchedRef = useRef<Set<string>>(new Set());
+  const fetchMssqlTables = useCallback(
+    (connectionId: string) =>
+      fetchMssqlBrowserTables(connectionId, mssqlFetchedRef.current, setMssqlLoads, t),
+    [t],
+  );
 
   const fetchConnectionTables = useCallback(
-    (connectionString: string) => {
-      if (connFetchedRef.current.has(connectionString)) return;
-      connFetchedRef.current.add(connectionString);
-      // PostGIS browsing needs the desktop sidecar/Martin, so outside the
-      // desktop shell show the same localized "requires GeoLibre Desktop"
-      // message the Add Data dialog gives rather than letting
-      // startGeoLibreSidecar/fetch fail with a raw network error. The gate is
-      // isDesktopRuntime(), not isTauri(): the packaged mobile apps are Tauri
-      // too and have no sidecar to reach (GeoLibre#2091). Dropped from the
-      // fetched set so it can retry on desktop.
-      if (!isDesktopRuntime()) {
-        connFetchedRef.current.delete(connectionString);
-        setConnLoads((prev) => ({
-          ...prev,
-          [connectionString]: {
-            status: "error",
-            message: t("addData.postgres.errorDesktopOnly"),
-          },
-        }));
-        return;
-      }
-      setConnLoads((prev) => ({
-        ...prev,
-        [connectionString]: { status: "loading" },
-      }));
-      // The desktop sidecar is spawned on demand and only authenticated after
-      // startGeoLibreSidecar runs, so ensure it is up before hitting /postgis —
-      // best-effort, mirroring PostgresSource.handleConnectEditable (a failed
-      // start still lets the status/list calls surface the real error).
-      void startGeoLibreSidecar()
-        .catch(() => {})
-        .then(() => fetchPostgisStatus())
-        .then((status) => {
-          // Same runtime gate as the Add Data dialog, so a missing postgis
-          // extra reads as the friendly "install the extra" message rather
-          // than a raw connection error from /postgis/tables.
-          if (!status.available) {
-            throw new Error(t("addData.postgres.errorRuntimeMissing"));
-          }
-          return listPostgisTables(connectionString);
-        })
-        .then((tables) => {
-          // geometry_columns returns one row per geometry column, so a table
-          // with several geometry columns appears several times; keep the first
-          // because the Browser tree represents tables, while the Add Data
-          // dialog provides the geometry-column picker after a table is chosen.
-          const seen = new Set<string>();
-          const deduped: { schema: string; table: string }[] = [];
-          for (const tbl of tables) {
-            const key = `${tbl.schema}.${tbl.table}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            deduped.push({ schema: tbl.schema, table: tbl.table });
-          }
-          setConnLoads((prev) => ({
-            ...prev,
-            [connectionString]: { status: "loaded", tables: deduped },
-          }));
-        })
-        .catch((err: unknown) => {
-          // Allow a retry: drop the fetched marker so collapsing and
-          // re-expanding the connection re-runs introspection rather than
-          // sticking on the error. Reuse the Add Data errorMessage helper for a
-          // translated fallback, matching the dialog's PostGIS entry point.
-          connFetchedRef.current.delete(connectionString);
-          setConnLoads((prev) => ({
-            ...prev,
-            [connectionString]: {
-              status: "error",
-              message: errorMessage(err, t("addData.postgres.errorConnect")),
-            },
-          }));
-        });
-    },
+    (connectionString: string) =>
+      fetchPostgresBrowserTables(
+        connectionString,
+        connFetchedRef.current,
+        connGenRef.current,
+        setConnLoads,
+        t,
+      ),
     [t],
   );
 
@@ -292,10 +243,15 @@ export function BrowserPanel({
       const entry = serviceById(serviceId);
       if (!entry || !isArcGISMapServiceEntry(entry)) return;
       arcgisFetchedRef.current.add(serviceId);
-      setArcgisLoads((prev) => ({ ...prev, [serviceId]: { status: "loading" } }));
+      setArcgisLoads((prev) => ({
+        ...prev,
+        [serviceId]: { status: "loading" },
+      }));
       // Saved services never carry a token, so this lists public services only,
       // matching what activating the entry can draw.
-      fetchArcGISMapServiceSublayers({ url: serviceFieldString(entry.fields, "url") })
+      fetchArcGISMapServiceSublayers({
+        url: serviceFieldString(entry.fields, "url"),
+      })
         .then((sublayers) => {
           // An empty listing may be a transient server answer, so re-expanding
           // retries it like an error does.
@@ -305,7 +261,10 @@ export function BrowserPanel({
             [serviceId]:
               sublayers.length > 0
                 ? { status: "loaded", sublayers }
-                : { status: "error", message: t("addData.arcgis.noSublayersFound") },
+                : {
+                    status: "error",
+                    message: t("addData.arcgis.noSublayersFound"),
+                  },
           }));
         })
         .catch((err: unknown) => {
@@ -330,14 +289,17 @@ export function BrowserPanel({
   const loadingLabel = t("browser.loadingTables");
   const foldersLoadingLabel = t("browser.loadingFolder");
   const arcgisLabels = useMemo(
-    () => ({ loading: t("browser.loadingSublayers"), allLayers: t("browser.allSublayers") }),
+    () => ({
+      loading: t("browser.loadingSublayers"),
+      allLayers: t("browser.allSublayers"),
+    }),
     [t],
   );
   const augmented = useMemo(
     () =>
       augmentArcGISServices(
         augmentFolders(
-          augmentConnections(tree, connLoads, loadingLabel),
+          augmentConnections(tree, { ...connLoads, ...mssqlLoads }, loadingLabel),
           folderLoads,
           foldersLoadingLabel,
           isLoadableFilePath,
@@ -346,7 +308,17 @@ export function BrowserPanel({
         arcgisLoads,
         arcgisLabels,
       ),
-    [tree, connLoads, loadingLabel, folderLoads, foldersLoadingLabel, arcgisLoads, arcgisLabels, t],
+    [
+      tree,
+      connLoads,
+      mssqlLoads,
+      loadingLabel,
+      folderLoads,
+      foldersLoadingLabel,
+      arcgisLoads,
+      arcgisLabels,
+      t,
+    ],
   );
 
   const filtered = useMemo(() => filterBrowserTree(augmented, query), [augmented, query]);
@@ -365,6 +337,8 @@ export function BrowserPanel({
     // expanded.
     if (id.startsWith(CONNECTION_ID_PREFIX) && !expanded.has(id)) {
       fetchConnectionTables(id.slice(CONNECTION_ID_PREFIX.length));
+    } else if (id.startsWith(MSSQL_CONNECTION_ID_PREFIX) && !expanded.has(id)) {
+      fetchMssqlTables(id.slice(MSSQL_CONNECTION_ID_PREFIX.length));
     } else if (id.startsWith(FOLDER_ID_PREFIX) && !expanded.has(id)) {
       fetchFolder(id.slice(FOLDER_ID_PREFIX.length));
     } else if (id.startsWith(SERVICE_ID_PREFIX) && !expanded.has(id)) {
@@ -565,6 +539,16 @@ export function BrowserPanel({
       } finally {
         endBusy();
       }
+    } else if (node.kind === "table" && node.mssqlConnectionId) {
+      // Open the SQL Server source with the saved profile and table preselected;
+      // the session and secret come from the keychain-backed session cache.
+      openAddData("mssql", {
+        mssql: {
+          connectionId: node.mssqlConnectionId,
+          schema: node.tableSchema,
+          table: node.tableName,
+        },
+      });
     } else if (node.kind === "table" && node.connectionString) {
       // Reuse the proven PostgreSQL Add Data flow (desktop Martin lifecycle) to
       // add the table as a layer, opening it prefilled with this connection and
@@ -584,7 +568,9 @@ export function BrowserPanel({
         setError(t("browser.libraryLayerMissing"));
         return;
       }
-      const plan = planLayerLibraryAdd(entry, { id: createLayerLibraryEntryId() });
+      const plan = planLayerLibraryAdd(entry, {
+        id: createLayerLibraryEntryId(),
+      });
       if (plan.kind === "layer") {
         // Re-add exactly like a project load does: put the layer record in the
         // store so MapController.syncLayers builds its map output, then run the
@@ -607,7 +593,11 @@ export function BrowserPanel({
           addLayer(plan.layer);
           await restoreLibraryLayer(plan.layer, createAppAPI(mapControllerRef));
           if (unresolvedJoins.length > 0) {
-            setError(t("browser.libraryLayerJoinsUnresolved", { count: unresolvedJoins.length }));
+            setError(
+              t("browser.libraryLayerJoinsUnresolved", {
+                count: unresolvedJoins.length,
+              }),
+            );
           }
         } finally {
           endBusy();
@@ -661,7 +651,11 @@ export function BrowserPanel({
             // reported success while adding none. Both leave the entry's saved
             // configuration unapplied, so say so rather than letting the user
             // discover their styling silently did not return.
-            setError(t("browser.libraryLayerConfigNotApplied", { name: plan.config.name }));
+            setError(
+              t("browser.libraryLayerConfigNotApplied", {
+                name: plan.config.name,
+              }),
+            );
           }
         }
       } finally {
@@ -803,6 +797,31 @@ export function BrowserPanel({
     deleteLayerLibraryEntry(node.libraryLayerId);
     if (fallbackRowId) requestAnimationFrame(() => focusRow(fallbackRowId));
   };
+  const forgetMssqlConnectionNode = (node: BrowserNode) => {
+    const profileId = node.mssqlConnectionId;
+    if (node.kind !== "connection" || !profileId) return;
+    if (!window.confirm(t("addData.mssql.forgetConnectionConfirm", { name: node.label }))) return;
+    if (favoriteIds.has(node.id)) removeFavorite(node.id);
+    forgetMssqlBrowserConnection(profileId, mssqlFetchedRef.current, setMssqlLoads);
+    const fallbackRowId = visibleRows.find((row) => row.id === node.id)?.parentId;
+    if (fallbackRowId) requestAnimationFrame(() => focusRow(fallbackRowId));
+  };
+
+  const forgetPostgresConnectionNode = (node: BrowserNode) => {
+    if (
+      !confirmForgetPostgresBrowserConnection(
+        node,
+        connFetchedRef.current,
+        connGenRef.current,
+        setConnLoads,
+        setExpanded,
+        t,
+      )
+    )
+      return;
+    const fallbackRowId = visibleRows.find((row) => row.id === node.id)?.parentId;
+    if (fallbackRowId) requestAnimationFrame(() => focusRow(fallbackRowId));
+  };
 
   // Import/export the whole library as a JSON bundle, matching how the Style
   // Manager shares its presets. Ids collide on purpose so re-importing an
@@ -858,9 +877,8 @@ export function BrowserPanel({
     }
   };
 
-  // A section counts as content if it has children *or* an always-on ＋ action
-  // (Databases' "New connection" and Files' "Add folder" show even with zero
-  // entries, so a first-run user isn't stuck on the empty-state message).
+  // Databases always has engine-group children with their own ＋ actions;
+  // Files likewise keeps its Add-folder action available on an empty list.
   const hasContent = filtered.some(
     (section) =>
       section.children?.length ||
@@ -922,7 +940,9 @@ export function BrowserPanel({
                 onCommitRename={commitRename}
                 onCancelRename={endRename}
                 onDeleteLibraryLayer={deleteLibraryLayer}
+                onForgetMssqlConnection={forgetMssqlConnectionNode}
                 onImportLibrary={() => void importLibrary()}
+                onForgetPostgresConnection={forgetPostgresConnectionNode}
                 onExportLibrary={() => void exportLibrary()}
               />
             ))}

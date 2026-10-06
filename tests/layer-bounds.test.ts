@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { GeoLibreLayer } from "@geolibre/core";
 import { getLayerBounds } from "../packages/map/src/geojson-loader";
+import { NULL_GEOMETRY } from "./helpers/null-geometry";
 
 function layerWith(features: GeoLibreLayer["geojson"]): GeoLibreLayer {
   return {
@@ -71,8 +72,8 @@ describe("getLayerBounds", () => {
       layerWith({
         type: "FeatureCollection",
         features: [
-          { type: "Feature", geometry: null, properties: { code: "AVH" } },
-          { type: "Feature", geometry: null, properties: { code: "BDP" } },
+          { type: "Feature", geometry: NULL_GEOMETRY, properties: { code: "AVH" } },
+          { type: "Feature", geometry: NULL_GEOMETRY, properties: { code: "BDP" } },
         ],
       }),
     );
@@ -96,5 +97,23 @@ describe("getLayerBounds", () => {
     layer.source.bounds = [-80, Number.NaN, -70, 40];
     layer.metadata.bounds = [-10, -5, 10, 5];
     assert.deepEqual(getLayerBounds(layer), [-10, -5, 10, 5]);
+  });
+
+  it("prefers the stored extent of a viewport-loaded layer over its features", () => {
+    const layer = layerWith({
+      type: "FeatureCollection",
+      features: [
+        { type: "Feature", geometry: { type: "Point", coordinates: [1, 2] }, properties: {} },
+      ],
+    });
+    layer.metadata.bounds = [-115.4, 36, -115, 36.3];
+    // An ordinary layer frames its features.
+    assert.deepEqual(getLayerBounds(layer), [1, 2, 1, 2]);
+    // A viewport-loaded layer holds only the features in view.
+    layer.metadata.viewportLoading = true;
+    assert.deepEqual(getLayerBounds(layer), [-115.4, 36, -115, 36.3]);
+    // With nothing stored, the loaded features still answer.
+    delete layer.metadata.bounds;
+    assert.deepEqual(getLayerBounds(layer), [1, 2, 1, 2]);
   });
 });

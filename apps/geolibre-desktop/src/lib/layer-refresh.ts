@@ -159,6 +159,7 @@ export function createWfsGetFeatureUrl(options: {
   outputFormat: string;
   srsName: string;
   maxFeatures?: string;
+  bbox?: [number, number, number, number];
 }): string {
   const isWfs2 = options.version.startsWith("2");
   const params: Array<[string, string]> = [
@@ -174,6 +175,13 @@ export function createWfsGetFeatureUrl(options: {
   if (options.srsName) params.push(["srsName", options.srsName]);
   if (options.maxFeatures) {
     params.push([isWfs2 ? "count" : "maxFeatures", options.maxFeatures]);
+  }
+  if (options.bbox) {
+    const [west, south, east, north] = options.bbox;
+    const bbox = options.version.startsWith("1.0")
+      ? `${west},${south},${east},${north},EPSG:4326`
+      : `${south},${west},${north},${east},urn:ogc:def:crs:EPSG::4326`;
+    params.push(["bbox", bbox]);
   }
 
   return appendQuery(options.endpoint, params);
@@ -198,7 +206,11 @@ interface FetchedText {
  */
 export async function fetchGeoJsonFeatureCollection(
   url: string,
-  options: { useWfsProxy?: boolean; useCswProxy?: boolean; signal?: AbortSignal } = {},
+  options: {
+    useWfsProxy?: boolean;
+    useCswProxy?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<FeatureCollection> {
   // Combine signals so a caller-supplied signal does not drop the timeout.
   const signal = options.signal
@@ -239,12 +251,17 @@ export async function fetchGeoJsonFeatureCollection(
   return arcGis ? repairArcGisAxisOrder(collection, arcGis, options, signal) : collection;
 }
 
-type FetchRouting = { useWfsProxy?: boolean; useCswProxy?: boolean };
+type FetchRouting = {
+  useWfsProxy?: boolean;
+  useCswProxy?: boolean;
+};
 
 // The transport for a request: the native client for a WFS request on desktop,
 // otherwise the browser fetch (through the dev proxy under Vite).
 function fetchText(url: string, options: FetchRouting, signal: AbortSignal): Promise<FetchedText> {
-  if (options.useWfsProxy && isTauri() && isHttpUrl(url)) return fetchNativeText(url, signal);
+  if (options.useWfsProxy && isTauri() && isHttpUrl(url)) {
+    return fetchNativeText(url, signal);
+  }
   return fetchBrowserText(
     options.useWfsProxy
       ? proxyWfsRequestUrl(url)
@@ -405,6 +422,7 @@ export async function fetchWfsGeoJson(
     outputFormat: string;
     srsName: string;
     maxFeatures?: string;
+    bbox?: [number, number, number, number];
   },
   options: { useWfsProxy?: boolean; signal?: AbortSignal } = {},
 ): Promise<{ data: FeatureCollection; url: string; outputFormat: string }> {
@@ -666,10 +684,29 @@ export function supportsRefreshFailurePolicy(layer: GeoLibreLayer): boolean {
   );
 }
 
+/** Whether clear-on-failure applies; MSSQL recovery reads keep local features. */
+function shouldClearGeoJsonOnRefreshFailure(
+  layer: {
+    connection?: { onFailure?: string };
+    geojson?: FeatureCollection | null;
+  },
+  mssqlRecoveryRefresh: boolean,
+  hasPendingEdits: boolean,
+): boolean {
+  return (
+    !mssqlRecoveryRefresh &&
+    layer.connection?.onFailure === "clear" &&
+    Boolean(layer.geojson) &&
+    !hasPendingEdits
+  );
+}
+
 export function isRefreshableLayer(layer: GeoLibreLayer): boolean {
   return (
     Boolean(refreshSourceUrl(layer)) ||
     isVectorControlRefreshLayer(layer) ||
+    // A SQL Server write whose outcome or generated keys are unknown needs manual recovery.
+    layer.mssqlWritebackPending === true ||
     // SQL query layers refresh by re-executing their stored DuckDB statement
     // (see refreshSqlQueryLayer) rather than fetching a URL.
     isSqlQueryLayer(layer) ||
@@ -693,7 +730,7 @@ export function isRefreshableLayer(layer: GeoLibreLayer): boolean {
  * @returns Whether an automatic refresh interval may be scheduled for it.
  */
 export function supportsAutoRefresh(layer: GeoLibreLayer): boolean {
-  return !isIcebergLayer(layer);
+  return !isIcebergLayer(layer) && layer.mssqlWritebackPending !== true;
 }
 
 export function getLayerRefreshConfig(layer: GeoLibreLayer): LayerRefreshConfig {
@@ -767,6 +804,21 @@ export function setLayerConnectionResult(
       lastError: result.error === undefined ? (layer.connection?.lastError ?? null) : result.error,
       onFailure: layer.connection?.onFailure ?? "keep-last",
     },
+  };
+}
+
+/** Build the layer patch for a failed refresh, preserving recovery data when required. */
+export function getRefreshFailureLayerPatch(
+  layer: GeoLibreLayer,
+  error: string,
+  mssqlRecoveryRefresh: boolean,
+  hasPendingEdits: boolean,
+): Partial<GeoLibreLayer> {
+  return {
+    ...setLayerConnectionResult(layer, { error }),
+    ...(shouldClearGeoJsonOnRefreshFailure(layer, mssqlRecoveryRefresh, hasPendingEdits)
+      ? { geojson: { type: "FeatureCollection" as const, features: [] } }
+      : {}),
   };
 }
 

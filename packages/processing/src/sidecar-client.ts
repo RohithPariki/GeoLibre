@@ -143,6 +143,29 @@ export interface WhiteboxToolParameter {
   schema?: unknown;
 }
 
+/**
+ * The lowercase words of a parameter identifier, split on snake_case,
+ * kebab-case and camelCase boundaries, including an acronym followed by a word
+ * (`outputFolder`, `output_folder` and `output-folder` all give
+ * `["output", "folder"]`; `inputJSONFile` gives `["input", "json", "file"]`).
+ *
+ * A plain `\b` regex cannot do this: `_` is a word character, so `\bfolder\b`
+ * never matches inside `output_folder`. Shared by the Processing dialog's
+ * path/filter heuristics and the WASM runner's output-format hint so the two
+ * cannot drift apart.
+ *
+ * @param name - A parameter name (or any identifier-like text).
+ * @returns The identifier's words, lowercased; empty for an empty name.
+ */
+export function identifierWords(name: string): string[] {
+  return name
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+}
+
 /** Whether a dataset input accepts several datasets rather than one. */
 export function isMultipleWhiteboxDatasetParameter(param: WhiteboxToolParameter): boolean {
   const kind = String(param.kind ?? "").toLowerCase();
@@ -1009,6 +1032,208 @@ export async function writePostgisTable(
   }
   return (await res.json()) as WritePostgisTableResult;
 }
+export type MssqlAuthMethod =
+  | "sql"
+  | "windows"
+  | "entra_password"
+  | "entra_sp"
+  | "entra_interactive"
+  | "msi"
+  | "token";
+
+export interface MssqlStatus {
+  available: boolean;
+  message: string;
+  driver: string | null;
+  auth_methods: MssqlAuthMethod[];
+}
+
+export interface MssqlAuth {
+  method: MssqlAuthMethod;
+  username?: string;
+  password?: string;
+  tenant_id?: string;
+  client_id?: string;
+  client_secret?: string;
+  access_token?: string;
+}
+
+export interface ConnectMssqlRequest {
+  server: string;
+  port?: number;
+  database: string;
+  encrypt?: boolean;
+  trust_server_certificate?: boolean;
+  auth: MssqlAuth;
+}
+
+export interface MssqlTableInfo {
+  schema: string;
+  table: string;
+  geometry_column: string;
+  column_type: "geometry" | "geography";
+  srid: number;
+  /** First geometry type in the bounded sample, or `Unknown`. */
+  geometry_type: string;
+  /** Distinct sample types in probe order. */
+  geometry_types: string[];
+  mixed_geometry: boolean;
+  mixed_srid: boolean;
+  /** Single-column primary key; null when absent or composite. */
+  primary_key: string | null;
+  /** Primary-key columns in key order; empty when the table has none. */
+  primary_key_columns: string[];
+}
+
+export interface ReadMssqlTableRequest {
+  session_id: string;
+  schema_name?: string;
+  table: string;
+  geometry_column?: string;
+  excluded_fields?: string[];
+}
+
+export interface ReadMssqlTableResult {
+  geojson: FeatureCollection;
+  schema: string;
+  table: string;
+  geometry_column: string;
+  column_type: "geometry" | "geography";
+  srid: number;
+  primary_key: string | null;
+  primary_key_columns: string[];
+  mixed_geometry: boolean;
+  mixed_srid: boolean;
+  feature_count: number;
+}
+
+export interface WriteMssqlTableRequest {
+  session_id: string;
+  schema_name?: string;
+  table: string;
+  geometry_column?: string;
+  geojson: FeatureCollection;
+  baseline_keys?: Array<string | number>;
+  capabilities?: LayerCapabilities;
+  unchanged_geometry_keys?: Array<string | number>;
+  /** Per loaded row, the columns edited since load; limits that row's update. */
+  changed_columns?: Array<{ key: string | number; columns: string[] }>;
+}
+
+export type WriteMssqlTableResult = WritePostgisTableResult;
+
+export class MssqlWriteRejectedError extends Error {
+  override readonly name = "MssqlWriteRejectedError";
+}
+
+export class MssqlSessionExpiredError extends Error {
+  override readonly name = "MssqlSessionExpiredError";
+}
+
+export async function fetchMssqlStatus(baseUrl = DEFAULT_SIDECAR_URL): Promise<MssqlStatus> {
+  let res: Response;
+  try {
+    res = await sidecarFetch(`${baseUrl}/mssql/status`);
+  } catch (error) {
+    throw sidecarConnectionError(baseUrl, error);
+  }
+  if (!res.ok) {
+    throw new Error(await responseErrorMessage(res, "Could not check SQL Server runtime"));
+  }
+  return (await res.json()) as MssqlStatus;
+}
+
+async function postMssql(
+  baseUrl: string,
+  path: string,
+  body: unknown,
+  fallback: string,
+): Promise<Response> {
+  let res: Response;
+  try {
+    res = await sidecarFetch(`${baseUrl}/mssql/${path}`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // The desktop diagnostics wrapper reads and strips this literal; packages cannot import from the app.
+        "x-geolibre-expected-status": "410",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw sidecarConnectionError(baseUrl, error);
+  }
+
+  if (res.status === 410) {
+    throw new MssqlSessionExpiredError(
+      await responseErrorMessage(res, "SQL Server session expired"),
+    );
+  }
+  if (!res.ok) {
+    const data = await responseErrorData(res);
+    const message = detailMessage(data, res.status, fallback);
+    if (
+      data !== null &&
+      typeof data === "object" &&
+      "rolled_back" in data &&
+      data.rolled_back === true
+    ) {
+      throw new MssqlWriteRejectedError(message);
+    }
+    throw new Error(message);
+  }
+  return res;
+}
+
+export async function connectMssql(
+  request: ConnectMssqlRequest,
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<{ session_id: string }> {
+  const res = await postMssql(baseUrl, "connect", request, "Could not connect to SQL Server");
+  return (await res.json()) as { session_id: string };
+}
+
+export async function disconnectMssql(
+  sessionId: string,
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<void> {
+  await postMssql(
+    baseUrl,
+    "disconnect",
+    { session_id: sessionId },
+    "Could not disconnect from SQL Server",
+  );
+}
+
+export async function listMssqlTables(
+  sessionId: string,
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<MssqlTableInfo[]> {
+  const res = await postMssql(
+    baseUrl,
+    "tables",
+    { session_id: sessionId },
+    "Could not list SQL Server tables",
+  );
+  const data = (await res.json()) as { tables: MssqlTableInfo[] };
+  return data.tables;
+}
+
+export async function readMssqlTable(
+  request: ReadMssqlTableRequest,
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<ReadMssqlTableResult> {
+  const res = await postMssql(baseUrl, "read", request, "Could not read SQL Server table");
+  return (await res.json()) as ReadMssqlTableResult;
+}
+
+export async function writeMssqlTable(
+  request: WriteMssqlTableRequest,
+  baseUrl = DEFAULT_SIDECAR_URL,
+): Promise<WriteMssqlTableResult> {
+  const res = await postMssql(baseUrl, "write", request, "Could not save edits to SQL Server");
+  return (await res.json()) as WriteMssqlTableResult;
+}
 
 // --- AI segmentation (SamGeo / SAM3) ---------------------------------------
 
@@ -1180,15 +1405,24 @@ export async function runSedonaSql(
   return (await res.json()) as SedonaSqlResult;
 }
 
-async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
+async function responseErrorData(response: Response): Promise<unknown> {
   try {
-    const data = (await response.json()) as { detail?: unknown };
-    if (typeof data.detail === "string") return data.detail;
-    if (data.detail) return JSON.stringify(data.detail);
+    return await response.json();
   } catch {
-    // Use the fallback below when the response is not JSON.
+    return undefined;
   }
-  return `${fallback}: HTTP ${response.status}`;
+}
+
+function detailMessage(data: unknown, status: number, fallback: string): string {
+  const detail =
+    data !== null && typeof data === "object" && "detail" in data ? data.detail : undefined;
+  if (typeof detail === "string") return detail;
+  if (detail) return JSON.stringify(detail);
+  return `${fallback}: HTTP ${status}`;
+}
+
+async function responseErrorMessage(response: Response, fallback: string): Promise<string> {
+  return detailMessage(await responseErrorData(response), response.status, fallback);
 }
 
 function sidecarConnectionError(baseUrl: string, error: unknown): Error {

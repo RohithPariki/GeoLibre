@@ -22,6 +22,7 @@ They are grouped together because they behave the same way, not because they sha
 | [US EPA EnviroAtlas](#us-epa-enviroatlas) | EPA | Environmental and ecosystem map services |
 | [USGS National Map](#usgs-national-map) | USGS | Topo, imagery, hydrography, elevation, and index services |
 | [USGS NLDI](#usgs-nldi) | USGS | Flowline tracing, hydrolocation, basins, and network navigation |
+| [USGS 3DEP](#usgs-3dep) | USGS | 3DEP digital elevation models (1 m, 1/3 and 1 arc-second, and more) |
 | [Vantor Open Data](#vantor-open-data) | Vantor | Disaster-event satellite imagery (COG) |
 | [Planet Open Data](#planet-open-data) | Planet Labs | Planet's disaster data releases, through the STAC browser |
 | [Earthdata GIS](#earthdata-gis) | NASA EOSDIS | ArcGIS image, map, and feature services, and published web maps |
@@ -97,6 +98,15 @@ Traces a clicked point onto the National Hydrography Dataset network: flowline a
 
 Unlike the other entries, this one is a click-driven analysis workflow rather than a catalog search. See **[USGS NLDI workflows](usgs-nldi.md)** for the full walkthrough, including exporting the traced results to GeoJSON or copying them into the Layers panel.
 
+## USGS 3DEP
+
+Searches The National Map for [3D Elevation Program](https://www.usgs.gov/3d-elevation-program) digital elevation models.
+
+- Search the **current view**, a **bounding box drawn on the map**, typed **coordinates**, or a USGS **1:24,000 topographic quad** by name and state.
+- Pick the **elevation datasets** (1 m DEM, 1/3 arc-second, 1 arc-second, Alaska 5 m, and others) and the file **format**, and optionally hide redundant partial tiles.
+- Footprints render on the map and in the Layers panel; click one to select its result, or export them all to GeoJSON.
+- **Load on Map** streams a GeoTIFF DEM through GeoLibre's raster path; **Download** saves the source file (IMG products are download-only).
+
 ## Vantor Open Data
 
 A STAC explorer for [Vantor's](https://www.vantor.com/) open disaster imagery releases.
@@ -141,6 +151,34 @@ Downloads current OpenStreetMap vector data through the public Overpass API.
 Public Overpass instances are intended for bounded interactive queries. Zoom to the area you need before downloading. To prevent accidentally requesting an enormous result, **All tagged features** is limited to 0.25 square degrees and filtered downloads are limited to 4 square degrees.
 
 The panel identifies the source as © OpenStreetMap contributors and notes the Open Database License (ODbL); keep the required attribution when publishing derived maps or data.
+
+## ArcGIS Portal
+
+Browses the content of your own ArcGIS Online organization or ArcGIS Enterprise
+portal, including items shared only with your organization or your groups, and
+adds it to the map.
+
+- Sign in from the panel. Leave the portal URL blank for ArcGIS Online, or enter
+  your organization URL (`https://yourorg.maps.arcgis.com`) to get its sign-in
+  page (including SSO), or your Enterprise portal. You need an OAuth client ID
+  registered on the portal; the hosted web app fills one in for ArcGIS Online.
+  See [Signing in with ArcGIS](../arcgis-editing.md#signing-in-with-arcgis).
+- **Browse** picks the scope: **My content**, **My favorites**, **My groups**
+  (then choose the group), **My organization**, or **All of the portal**.
+  Narrow it with a keyword or an item type. Results are newest first, or by
+  relevance once you type a keyword.
+- **Add to map** loads feature, map, image, and vector tile services. A web map
+  adds its feature, map service, and image service layers. Once added, the
+  button reads **Remove from map** and removes them again; it turns back to
+  **Add to map** if you remove the layers elsewhere, such as in the Layers
+  panel. **Zoom** frames the item and **Details** opens its page on the portal.
+- The session is the same one Add Data → ArcGIS uses, so signing in or out in
+  either place applies to both. Layers you add renew their token while you stay
+  signed in. **Another portal** signs in to a second portal, and the portal
+  picker switches between them.
+- Your sign-in token is sent only to services on the portal's own host, or on
+  Esri's `arcgis.com` hosting for ArcGIS Online. A web map layer or item that
+  points anywhere else is loaded without it, so only public services there load.
 
 ## ArcGIS Hub
 

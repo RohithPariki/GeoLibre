@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  DEFAULT_LAYER_STYLE,
   PROJECT_CREDENTIAL_FIELDS,
   createEmptyProject,
   redactCredentials,
   redactProjectCredentials,
   serializeProject,
+  setRegistryPublishableSettings,
+  type GeoLibreProject,
 } from "@geolibre/core";
+
+/** One plugin's saved settings blob, read as a record (the store types it `unknown`). */
+function pluginSetting(project: GeoLibreProject, id: string): Record<string, unknown> | undefined {
+  return project.plugins?.settings[id] as Record<string, unknown> | undefined;
+}
 
 function credentialProject() {
   const project = createEmptyProject("Credential fixture");
@@ -35,7 +43,7 @@ function credentialProject() {
       },
       visible: true,
       opacity: 1,
-      style: {},
+      style: { ...DEFAULT_LAYER_STYLE },
       metadata: {
         endpoint: "https://example.com/data?%58-Amz-Signature=signed-secret&format=json",
         brokerRef: "credential-broker://tiles/auth",
@@ -84,7 +92,7 @@ describe("project credential redaction", () => {
       "https://api.mapbox.com/styles/v1/acme/day",
     );
     assert.equal(redactProjectCredentials(original).redactedCount, 10);
-    assert.equal(original.plugins?.settings.external.arbitraryName, "plugin-secret");
+    assert.equal(pluginSetting(original, "external")?.arbitraryName, "plugin-secret");
   });
 
   it("keeps the first-party map controls so an export still renders them", () => {
@@ -155,7 +163,7 @@ describe("project credential redaction", () => {
     const { project } = redactProjectCredentials(original);
 
     assert.ok(!serializeProject(project).includes("swipe-secret"));
-    assert.equal(project.plugins!.settings["maplibre-gl-swipe"].position, 50);
+    assert.equal(pluginSetting(project, "maplibre-gl-swipe")?.position, 50);
   });
 
   it("reports nothing redacted when only publishable plugin settings are present", () => {
@@ -173,6 +181,7 @@ describe("project credential redaction", () => {
     const plugins = {
       manifestUrls: [],
       activePluginIds: ["gods-eye-view"],
+      mapControlPositions: {},
       settings: {
         "gods-eye-view": { earthquakes: true, satellites: true, cctv: false, speed: 1 },
       },
@@ -203,6 +212,7 @@ describe("project credential redaction", () => {
     original.plugins = {
       manifestUrls: [],
       activePluginIds: [],
+      mapControlPositions: {},
       settings: {
         "geolibre-point-cloud-annotation": {
           version: 1,
@@ -248,7 +258,7 @@ describe("project credential redaction", () => {
         },
         visible: true,
         opacity: 1,
-        style: {},
+        style: { ...DEFAULT_LAYER_STYLE },
         metadata: {},
       },
     ];
@@ -420,5 +430,66 @@ describe("project credential redaction", () => {
     const result = redactProjectCredentials(project);
     assert.ok(!serializeProject(result.project).includes("too-deep-secret"));
     assert.ok(result.redactedPaths.includes(`layers[0].source${".child".repeat(12)}`));
+  });
+});
+
+describe("registry-declared publishable plugin settings", () => {
+  function withState(state: Record<string, unknown>) {
+    const project = createEmptyProject("External plugin state");
+    project.plugins = {
+      manifestUrls: [],
+      activePluginIds: ["ext-plugin"],
+      mapControlPositions: {},
+      settings: { "ext-plugin": state },
+    };
+    return project;
+  }
+
+  it("drops an undeclared external plugin's state", () => {
+    setRegistryPublishableSettings([]);
+    const { project, redactedPaths } = redactProjectCredentials(withState({ search: "rivers" }));
+    assert.ok(redactedPaths.includes("plugins.settings"));
+    assert.equal(project.plugins!.settings["ext-plugin"], undefined);
+  });
+
+  it("keeps the declared keys and drops the rest", () => {
+    setRegistryPublishableSettings([["ext-plugin", ["search"]]]);
+    try {
+      const { project } = redactProjectCredentials(withState({ search: "rivers", token: "x" }));
+      assert.deepEqual(project.plugins!.settings["ext-plugin"], { search: "rivers" });
+    } finally {
+      setRegistryPublishableSettings([]);
+    }
+  });
+
+  it("keeps the whole blob when declared null, still sweeping credentials", () => {
+    setRegistryPublishableSettings([["ext-plugin", null]]);
+    try {
+      const { project, redactedPaths } = redactProjectCredentials(
+        withState({ search: "rivers", apiKey: "secret" }),
+      );
+      assert.equal(pluginSetting(project, "ext-plugin")?.search, "rivers");
+      assert.ok(!serializeProject(project).includes("secret"));
+      assert.ok(redactedPaths.some((path) => path.startsWith("plugins.settings")));
+    } finally {
+      setRegistryPublishableSettings([]);
+    }
+  });
+
+  it("cannot widen a built-in plugin's allowlist", () => {
+    setRegistryPublishableSettings([["maplibre-gl-components", null]]);
+    try {
+      const project = createEmptyProject("Built-in");
+      project.plugins = {
+        manifestUrls: [],
+        activePluginIds: [],
+        mapControlPositions: {},
+        settings: { "maplibre-gl-components": { html: "<b>x</b>", legend: {} } },
+      };
+      const { project: out } = redactProjectCredentials(project);
+      assert.equal(pluginSetting(out, "maplibre-gl-components")?.html, undefined);
+    } finally {
+      setRegistryPublishableSettings([]);
+    }
   });
 });

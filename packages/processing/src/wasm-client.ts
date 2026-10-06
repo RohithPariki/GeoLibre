@@ -7,7 +7,11 @@
 // single-threaded execution (use the sidecar for very large data).
 import type { FeatureCollection } from "geojson";
 import { convertGeoTiffToCog } from "./cog-convert";
-import { isMultipleWhiteboxDatasetParameter, normalizeVectorOutputFormat } from "./sidecar-client";
+import {
+  identifierWords,
+  isMultipleWhiteboxDatasetParameter,
+  normalizeVectorOutputFormat,
+} from "./sidecar-client";
 import { runWasmToolInBackground } from "./wasm-tool-runner";
 import type {
   RunWhiteboxToolRequest,
@@ -417,6 +421,53 @@ export function fileOutputTargetExtension(
   return outputTextFormatHint(param) ?? "dat";
 }
 
+/** A point cloud file extension the WASM runner reads and writes. */
+export type LidarFileExtension = "las" | "laz" | "copc.laz";
+
+/**
+ * The extension the WASM runner asks a `lidar_out` tool to write. Whitebox
+ * picks its LiDAR writer from the output extension, so a user-typed `.laz`
+ * path gets LASzip-compressed output and `.copc.laz` a Cloud Optimized Point
+ * Cloud; anything else (blank, `.las`, an unrecognized extension) keeps the
+ * uncompressed `.las` default.
+ *
+ * @param requested - The user-chosen output path, if any.
+ * @returns `copc.laz`, `laz` or `las`.
+ */
+export function lidarOutputTargetExtension(requested: unknown): LidarFileExtension {
+  if (typeof requested !== "string") return "las";
+  const path = requested.trim();
+  if (/\.copc\.laz$/i.test(path)) return "copc.laz";
+  return /\.laz$/i.test(path) ? "laz" : "las";
+}
+
+/**
+ * The extension a LAS-family file's bytes call for. Whitebox picks its LiDAR
+ * reader from the file extension alone, so LAZ or COPC bytes written as
+ * `.las` are decoded as uncompressed records and yield garbage points. The
+ * point data format byte (offset 104) has bit 7 set (bit 6 in old LASzip
+ * files) when the records are compressed, and a COPC file's first VLR, right
+ * after the header, has the user id `copc` and record id 1.
+ *
+ * @param bytes - The file bytes (only the header and first VLR are read).
+ * @returns `copc.laz`, `laz` or `las`; `las` when the bytes are not LAS at all.
+ */
+export function lidarBytesExtension(bytes: Uint8Array): LidarFileExtension {
+  if (!isLas(bytes) || bytes.length < 105) return "las";
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  // The COPC info VLR: first after the header, user id "copc" (NUL-padded to
+  // 16 bytes), record id 1.
+  const userId = view.getUint16(94, true) + 2;
+  if (
+    bytes.length >= userId + 18 &&
+    String.fromCharCode(...bytes.subarray(userId, userId + 16)).replace(/\0+$/, "") === "copc" &&
+    view.getUint16(userId + 16, true) === 1
+  ) {
+    return "copc.laz";
+  }
+  return (bytes[104] & 0xc0) !== 0 ? "laz" : "las";
+}
+
 /**
  * The text/tabular output format a `file_out` parameter declares through its
  * name, description, or `table` data kind, as a bare extension (`csv`/`html`/
@@ -439,7 +490,10 @@ export function outputTextFormatHint(param: WhiteboxToolParameter): string | nul
   // tolerance of 0.5 recommended") cannot be mistaken for an extension.
   const recommended = (param.description ?? "").match(/\.([a-z][a-z0-9]*)\s+recommended/i);
   if (recommended) return recommended[1].toLowerCase();
-  const hint = `${param.name ?? ""} ${param.description ?? ""} ${param.type ?? ""}`;
+  // Split the name into words first: `_` is a word character, so `\bcsv\b`
+  // alone never matches inside `output_csv`.
+  const nameWords = identifierWords(param.name ?? "").join(" ");
+  const hint = `${nameWords} ${param.description ?? ""} ${param.type ?? ""}`;
   if (/\bcsv\b/i.test(hint)) return "csv";
   if (/\bhtml\b/i.test(hint)) return "html";
   if (/\bjson\b/i.test(hint)) return "json";
@@ -560,8 +614,13 @@ export function isTiff(b: Uint8Array): boolean {
   return magic === 0x2a || magic === 0x2b;
 }
 
-// LAS/LAZ magic: every LAS and LAZ file begins with the signature "LASF".
-function isLas(b: Uint8Array): boolean {
+/**
+ * LAS/LAZ magic: every LAS, LAZ and COPC file begins with the signature "LASF".
+ *
+ * @param b - The candidate file bytes.
+ * @returns `true` if the bytes start with the LAS signature.
+ */
+export function isLas(b: Uint8Array): boolean {
   return b.length >= 4 && b[0] === 0x4c && b[1] === 0x41 && b[2] === 0x53 && b[3] === 0x46;
 }
 
@@ -790,8 +849,11 @@ export async function runWhiteboxToolWasm(request: RunWhiteboxToolRequest): Prom
           `Input "${name}" is not a readable LAS/LAZ file in the browser. Load LAS/LAZ files, or use the sidecar.`,
         );
       }
-      const ext = kind === "lidar_in" ? "las" : kind === "file_in" ? "dat" : "tif";
       const files = byteInputs.map((bytes, index) => {
+        // A LiDAR input is named for its own encoding: Whitebox reads by
+        // extension, so LAZ/COPC bytes named `.las` decode as garbage.
+        const ext =
+          kind === "lidar_in" ? lidarBytesExtension(bytes!) : kind === "file_in" ? "dat" : "tif";
         const file = byteInputs.length === 1 ? `${name}.${ext}` : `${name}_${index + 1}.${ext}`;
         input[file] = bytes!;
         return `/work/${file}`;
@@ -816,8 +878,11 @@ export async function runWhiteboxToolWasm(request: RunWhiteboxToolRequest): Prom
       }
     } else if (kind === "lidar_out") {
       // LiDAR outputs come back as raw LAS bytes (e.g. a classified copy of the
-      // input); callers decide whether to load or parse them.
-      const file = `${outputBaseName(request.tool_id, name)}.las`;
+      // input); callers decide whether to load or parse them. The tool picks
+      // its writer from the extension, so honour a user-typed `.laz` (LASzip
+      // compressed) instead of always asking for uncompressed `.las`.
+      const ext = lidarOutputTargetExtension(request.parameters[name]);
+      const file = `${outputBaseName(request.tool_id, name)}.${ext}`;
       outputs.push({ name, file, kind: "bytes" });
       args.push(`--${name}=/work/${file}`);
     } else if (kind === "raster_out" || kind === "file_out") {

@@ -29,11 +29,13 @@ export const WEB_SERVICE_PLUGIN_IDS = [
   "maplibre-gl-national-map",
   "maplibre-usgs-nldi",
   "maplibre-gl-vantor",
+  "maplibre-gl-usgs-dem",
   "geolibre-planet-open-data",
   "maplibre-gl-earthdata-gis",
   "maplibre-gl-openaerialmap",
   "geolibre-osm-downloader",
   "geolibre-ign-lidar-hd",
+  "geolibre-arcgis-portal",
   "maplibre-gl-arcgis-hub",
   "geolibre-tennessee-gis",
   "geolibre-us-federal-gis",
@@ -51,6 +53,7 @@ export const WEB_SERVICE_PLUGIN_IDS = [
   "geolibre-fields-of-the-world",
   "geolibre-ocean-data-platform",
   "maplibre-gl-geolens",
+  "maplibre-gl-usgs-lidar",
 ] as const;
 
 /** One active layer reported by a web service control. */

@@ -19,7 +19,7 @@
  *   importable under Node for tests.
  */
 
-import type { GeoLibreLayer } from "@geolibre/core";
+import { shouldZoomToNewLayers, type GeoLibreLayer } from "@geolibre/core";
 import type { MapEngine } from "@geolibre/map";
 // Type-only: erased at compile time, so importing it does not pull maplibre-gl
 // (which `xyz-url` imports at runtime) into the pure builder surface.
@@ -125,6 +125,8 @@ export interface WmsLayerParams {
   version: string;
   /** CRS of the requested tiles (default EPSG:3857); see {@link normalizeWmsCrs}. */
   crs?: string;
+  /** False when the capabilities mark every requested layer `queryable="0"`. */
+  queryable?: false;
 }
 
 /**
@@ -141,6 +143,7 @@ export function buildWmsLayer(params: WmsLayerParams): GeoLibreLayer {
   const layers = params.layers.trim();
   const styles = params.styles.trim();
   const tileSize = toTileSize(params.tileSize);
+  const crs = normalizeWmsCrs(params.crs || undefined, version);
   const tileUrl = createWmsTileUrl({
     endpoint,
     layers,
@@ -149,7 +152,7 @@ export function buildWmsLayer(params: WmsLayerParams): GeoLibreLayer {
     transparent: params.transparent,
     tileSize,
     version,
-    crs: normalizeWmsCrs(params.crs || undefined, version),
+    crs,
   });
   const attribution = attributionForTileUrl(tileUrl);
   return createBaseLayer(
@@ -165,6 +168,9 @@ export function buildWmsLayer(params: WmsLayerParams): GeoLibreLayer {
       format: params.format,
       transparent: params.transparent,
       version,
+      crs,
+      // Identify skips a layer that answers no GetFeatureInfo (#2887).
+      ...(params.queryable === false ? { queryable: false } : {}),
       ...(attribution ? { attribution } : {}),
     },
     { service: "wms" },
@@ -580,7 +586,7 @@ export async function applyServiceEntry(
         srsName: request.srsName,
       });
       addLayer(layer, beforeLayerId);
-      mapControllerRef.current?.fitLayer(layer);
+      if (shouldZoomToNewLayers()) mapControllerRef.current?.fitLayer(layer);
       return;
     }
     default: {

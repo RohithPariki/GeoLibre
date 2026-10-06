@@ -24,7 +24,7 @@ import {
   type BrowserFilePickerType,
   type BrowserFilePickerWindow,
 } from "./file-dialogs";
-import { isHttpUrl } from "./paths";
+import { ensureGeoLibreProjectExtension, isHttpUrl } from "./paths";
 import { isAbortError } from "./shared";
 
 const GEOLIBRE_PROJECT_FILE_TYPES: BrowserFilePickerType[] = [
@@ -36,11 +36,13 @@ const GEOLIBRE_PROJECT_FILE_TYPES: BrowserFilePickerType[] = [
   },
 ];
 
-async function openProjectFileBrowser(): Promise<{
+export interface OpenedProjectFile {
   project: GeoLibreProject;
   path: string;
   text: string;
-} | null> {
+}
+
+async function openProjectFileBrowser(): Promise<OpenedProjectFile | null> {
   const pickerWindow = window as BrowserFilePickerWindow;
   if (pickerWindow.showOpenFilePicker) {
     try {
@@ -83,11 +85,7 @@ async function openProjectFileBrowser(): Promise<{
  *   {@link saveStartupProjectSnapshot} copies verbatim rather than re-serializing
  *   the parsed form. Null if the picker was cancelled.
  */
-export async function openProjectFile(): Promise<{
-  project: GeoLibreProject;
-  path: string;
-  text: string;
-} | null> {
+export async function openProjectFile(): Promise<OpenedProjectFile | null> {
   if (!isTauri()) {
     return openProjectFileBrowser();
   }
@@ -347,8 +345,9 @@ export async function saveProjectFile(
     defaultPath: defaultName ?? "project.geolibre",
   });
   if (!path) return null;
-  await writeTextFile(path, content);
-  return path;
+  const projectPath = ensureGeoLibreProjectExtension(path);
+  await writeTextFile(projectPath, content);
+  return projectPath;
 }
 
 /**

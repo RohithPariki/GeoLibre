@@ -43,6 +43,7 @@ import {
   ARCGIS_ID_FIELD,
   ARCGIS_LABEL_CLASS_FIELD,
   ARCGIS_LABEL_FIELD,
+  ARCGIS_SUPPORTED_LAYER_KINDS,
   arcgisBlendMode,
   isArcgisRasterPlan,
   ARCGIS_SYMBOL_FIELD,
@@ -109,6 +110,17 @@ export const ARCGIS_CAPABILITIES: MapEngineCapabilities = Object.freeze({
   screenOverlays: false,
   flatProjection: true,
   terrainSource: true,
+  // The SDK draws Zarr from the record. The raster and PMTiles panels are
+  // MapLibre controls this view does not host, so those formats go through the
+  // Add Data forms; the measure control draws through the MapLibre/Mapbox style
+  // API, which the SDK has no equivalent of.
+  nativeZarr: true,
+  nativeDataSources: false,
+  // The engine is published once its view is ready.
+  deferredEngineReady: true,
+  measureTool: false,
+  controlLayerPanels: false,
+  supportedLayerKinds: ARCGIS_SUPPORTED_LAYER_KINDS,
 });
 
 export const ARCGIS_DECK_CAPABILITIES: MapEngineCapabilities = Object.freeze({
@@ -544,6 +556,8 @@ export class ArcgisEngine implements MapEngine {
   /** Whether {@link settleView} has placed the stored camera. */
   private placed = false;
   private errors = new Map<string, string>();
+  /** Store ids last seen as plugin layers, whose `layer:` error means "unsupported". */
+  private pluginLayerIds = new Set<string>();
   private preferences: MapPreferences | null = null;
   private basemapPlan: ArcgisBasemapPlan | null = null;
   private basemapVisible = true;
@@ -1139,7 +1153,7 @@ export class ArcgisEngine implements MapEngine {
     });
     void view.goTo(extent, { duration: 800 }).catch(reportGoToFailure);
   }
-  fitLayer(layer: GeoLibreLayer): void {
+  fitLayer(layer: GeoLibreLayer): boolean {
     const center = layer.metadata.center;
     const hasCenter =
       Array.isArray(center) &&
@@ -1154,7 +1168,7 @@ export class ArcgisEngine implements MapEngine {
         zoom: Math.max(viewZoom(this.view), 14),
         ...(this.view.type === "3d" ? { pitch: Math.max(this.view.camera?.tilt ?? 0, 60) } : {}),
       });
-      return;
+      return true;
     }
     const bounds = getLayerBounds(layer);
     if (bounds) {
@@ -1171,22 +1185,23 @@ export class ArcgisEngine implements MapEngine {
           center: [(bounds[0] + bounds[2]) / 2, (bounds[1] + bounds[3]) / 2],
           zoom: minRenderZoom,
         });
-        return;
+        return true;
       }
       this.fitBounds(bounds);
-      return;
+      return true;
     }
     if (hasCenter) {
       this.flyTo({
         center: [center[0] as number, center[1] as number],
         zoom: typeof layer.metadata.zoom === "number" ? layer.metadata.zoom : 16,
       });
-      return;
+      return true;
     }
     // A service layer knows its own extent once loaded.
     const native = this.natives.get(layer.id)?.layers[0];
-    if (native?.fullExtent)
-      void this.view?.goTo(native.fullExtent, { duration: 800 }).catch(reportGoToFailure);
+    if (!native?.fullExtent) return false;
+    void this.view?.goTo(native.fullExtent, { duration: 800 }).catch(reportGoToFailure);
+    return true;
   }
   /**
    * The zoom at which `bounds` fills the view, in Web Mercator, or null before
@@ -1358,12 +1373,14 @@ export class ArcgisEngine implements MapEngine {
       const opacity = this.storyOpacities.get(original.id);
       const layer = opacity === undefined ? original : { ...original, opacity };
       if (isArcgisPluginLayer(original)) {
+        this.pluginLayerIds.add(original.id);
         this.removeLayer(original.id);
         // The layer panels badge it too; the banner says why it is missing.
         if (original.visible)
           this.errors.set(`layer:${original.id}`, this.messages.pluginLayer(original.name));
         continue;
       }
+      this.pluginLayerIds.delete(original.id);
       try {
         let entry = this.natives.get(layer.id);
         const compileKey = layer.geojson ? geojsonCompileKey(layer) : undefined;
@@ -2561,6 +2578,23 @@ export class ArcgisEngine implements MapEngine {
             );
         }
     return { pending, errors: [...this.errors.values()] };
+  }
+  /**
+   * The store layers that failed to load, as the last {@link getRenderStatus}
+   * call left them. A plugin layer the SDK cannot draw is left out: it is
+   * unsupported here, not broken, and the banner already says so.
+   *
+   * @returns Each failing layer's store id mapped to its render-status message.
+   */
+  getLayerLoadErrors(): Map<string, string> {
+    const failures = new Map<string, string>();
+    for (const [key, message] of this.errors) {
+      if (!key.startsWith("layer:")) continue;
+      const id = key.slice(6);
+      if (this.pluginLayerIds.has(id)) continue;
+      failures.set(id, message);
+    }
+    return failures;
   }
   async captureImage(): Promise<Blob> {
     const view = this.view;

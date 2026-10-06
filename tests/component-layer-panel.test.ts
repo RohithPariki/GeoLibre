@@ -1,29 +1,36 @@
 import { act, fireEvent, render, screen, useAppStore, within } from "./helpers/dom";
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, it, type TestContext } from "node:test";
 import { createElement } from "react";
 import { geojsonLayer } from "./helpers/layer-fixtures";
 
 // Loaded after the harness so its CSS imports and Vite globals are handled.
 const { LayerPanel } = await import("../apps/geolibre-desktop/src/components/panels/LayerPanel");
+const { useLayerRefresh } =
+  await import("../apps/geolibre-desktop/src/components/panels/layer-panel/useLayerRefresh");
 
 const noop = () => {};
 
-/** Render the Layers panel with no map behind it (`mapControllerRef` is null). */
+/** Render the Layers panel with the same shell-owned refresh hook. */
+function LayerPanelHarness() {
+  const layers = useAppStore((state) => state.layers);
+  const refresh = useLayerRefresh({ layers, isCollapsed: false });
+  return createElement(LayerPanel, {
+    themeMode: "light",
+    mapControllerRef: { current: null },
+    refresh,
+    onResizeStart: noop,
+    geometryEditLayerId: null,
+    onToggleGeometryEdit: noop,
+    onCancelGeometryEdit: noop,
+    onMaterializeDuckDBLayer: noop,
+    onOpenRasterStylePanel: noop,
+    onOpenRasterSubset: noop,
+  });
+}
+
 function renderLayerPanel() {
-  return render(
-    createElement(LayerPanel, {
-      themeMode: "light",
-      mapControllerRef: { current: null },
-      onResizeStart: noop,
-      geometryEditLayerId: null,
-      onToggleGeometryEdit: noop,
-      onCancelGeometryEdit: noop,
-      onMaterializeDuckDBLayer: noop,
-      onOpenRasterStylePanel: noop,
-      onOpenRasterSubset: noop,
-    }),
-  );
+  return render(createElement(LayerPanelHarness));
 }
 
 /** The rendered layer rows, top to bottom, as their displayed names. */
@@ -42,6 +49,38 @@ function row(name: string): HTMLElement {
 
 function layer(id: string) {
   return useAppStore.getState().layers.find((entry) => entry.id === id);
+}
+
+/** Supply hit testing and capture, which the non-layout DOM cannot perform. */
+function pointerDrag(t: TestContext, name: string) {
+  const handle = within(row(name)).getByRole("button", { name: `Drag ${name} to reorder` });
+  let hit: Element | null = null;
+  let captured = false;
+  Object.assign(handle, {
+    setPointerCapture: () => {
+      captured = true;
+    },
+    hasPointerCapture: () => captured,
+    releasePointerCapture: () => {
+      captured = false;
+    },
+  });
+  t.mock.method(document, "elementFromPoint", () => hit);
+  const send = (type: string, x: number, target: Element | null = hit) => {
+    hit = target;
+    fireEvent(
+      handle,
+      new PointerEvent(type, {
+        bubbles: true,
+        pointerId: 1,
+        isPrimary: true,
+        button: 0,
+        clientX: x,
+        clientY: 20,
+      }),
+    );
+  };
+  return { send };
 }
 
 describe("LayerPanel", () => {
@@ -80,6 +119,94 @@ describe("LayerPanel", () => {
     renderLayerPanel();
 
     // The store keeps draw order (last = top), the panel shows top first.
+    assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
+  });
+
+  it("reorders using captured pointer movement in both directions", (t) => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+      ],
+    });
+    renderLayerPanel();
+    const drag = pointerDrag(t, "Rivers");
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, row("Parks"));
+    drag.send("pointerup", 30);
+    assert.deepEqual(rowNames(), ["Rivers", "Parks"]);
+    assert.deepEqual(
+      useAppStore.getState().layers.map((layer) => layer.id),
+      ["parks", "rivers"],
+    );
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, row("Parks"));
+    drag.send("pointerup", 30);
+    assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
+  });
+
+  it("does not reorder on a click, cancelled drag, or release outside the list", (t) => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+      ],
+    });
+    renderLayerPanel();
+    const drag = pointerDrag(t, "Rivers");
+    drag.send("pointerdown", 10);
+    drag.send("pointerup", 11, row("Parks"));
+    assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, row("Parks"));
+    drag.send("pointercancel", 30);
+    drag.send("pointerup", 30);
+    assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, row("Parks"));
+    drag.send("pointerup", 30, document.body);
+    assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
+  });
+
+  it("moves selected layers together when dragging one of their handles", (t) => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+        geojsonLayer({ id: "roads", name: "Roads" }),
+      ],
+    });
+    renderLayerPanel();
+    fireEvent.click(row("Rivers"));
+    fireEvent.click(row("Parks"), { ctrlKey: true });
+    const drag = pointerDrag(t, "Rivers");
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, row("Roads"));
+    drag.send("pointerup", 30);
+    assert.deepEqual(rowNames(), ["Parks", "Rivers", "Roads"]);
+  });
+
+  it("drops into a collapsed group and back out onto an ungrouped row", (t) => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+      ],
+      layerGroups: [{ id: "group", name: "Folder", collapsed: true, visible: true, opacity: 1 }],
+    });
+    renderLayerPanel();
+    const drag = pointerDrag(t, "Rivers");
+    drag.send("pointerdown", 10);
+    drag.send("pointermove", 30, screen.getByTestId("layer-group-header"));
+    drag.send("pointerup", 30);
+    assert.equal(layer("rivers")?.groupId, "group");
+    assert.deepEqual(rowNames(), ["Parks"]);
+    act(() => useAppStore.getState().toggleLayerGroupCollapsed("group"));
+    const outward = pointerDrag(t, "Rivers");
+    outward.send("pointerdown", 10);
+    outward.send("pointermove", 30, row("Parks"));
+    outward.send("pointerup", 30);
+    assert.equal(layer("rivers")?.groupId ?? null, null);
     assert.deepEqual(rowNames(), ["Parks", "Rivers"]);
   });
 
@@ -122,6 +249,15 @@ describe("LayerPanel", () => {
     assert.equal(screen.queryAllByRole("textbox", { name: /^Rename / }).length, 0);
   });
 
+  it("starts a rename with F2 on the layer's name button", () => {
+    useAppStore.setState({ layers: [geojsonLayer({ id: "parks", name: "Parks" })] });
+    renderLayerPanel();
+
+    fireEvent.keyDown(within(row("Parks")).getByRole("button", { name: "Parks" }), { key: "F2" });
+
+    assert.ok(screen.getByRole("textbox", { name: "Rename Parks" }));
+  });
+
   it("keeps the old name when a rename is cancelled with Escape", () => {
     useAppStore.setState({ layers: [geojsonLayer({ id: "parks", name: "Parks" })] });
     renderLayerPanel();
@@ -159,8 +295,58 @@ describe("LayerPanel", () => {
     fireEvent.click(row("Rivers"));
 
     assert.equal(useAppStore.getState().selectedLayerId, "rivers");
-    assert.equal(row("Rivers").getAttribute("aria-pressed"), "true");
-    assert.equal(row("Parks").getAttribute("aria-pressed"), "false");
+    // The selection state lives on the row's name button, not the card: the
+    // card holds the row's other controls, so it must not be a button too.
+    const selectButton = (name: string) => within(row(name)).getByRole("button", { name });
+    assert.equal(selectButton("Rivers").getAttribute("aria-pressed"), "true");
+    assert.equal(selectButton("Parks").getAttribute("aria-pressed"), "false");
+    assert.equal(row("Rivers").getAttribute("role"), "listitem");
+    assert.equal(row("Rivers").hasAttribute("tabindex"), false);
+  });
+
+  it("selects a layer from its name button, the row's keyboard target", () => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+      ],
+    });
+    renderLayerPanel();
+
+    // Enter or Space on a native button dispatches this click.
+    fireEvent.click(within(row("Parks")).getByRole("button", { name: "Parks" }));
+
+    assert.equal(useAppStore.getState().selectedLayerId, "parks");
+    assert.equal(
+      within(row("Parks")).getByRole("button", { name: "Parks" }).getAttribute("aria-pressed"),
+      "true",
+    );
+  });
+
+  it("labels each row with its depth in the layer list", () => {
+    useAppStore.setState({
+      layers: [
+        geojsonLayer({ id: "rivers", name: "Rivers", groupId: "water" }),
+        geojsonLayer({ id: "parks", name: "Parks" }),
+      ],
+      layerGroups: [
+        {
+          id: "water",
+          name: "Water",
+          visible: true,
+          opacity: 1,
+          collapsed: false,
+        },
+      ],
+    });
+    renderLayerPanel();
+
+    assert.ok(screen.getByRole("list", { name: "Layers" }));
+    assert.equal(row("Parks").getAttribute("aria-level"), "1");
+    assert.equal(row("Rivers").getAttribute("aria-level"), "2");
+    const header = screen.getByTestId("layer-group-header");
+    assert.equal(header.getAttribute("role"), "listitem");
+    assert.equal(header.getAttribute("aria-level"), "1");
   });
 
   it("moves a layer up the draw order", () => {

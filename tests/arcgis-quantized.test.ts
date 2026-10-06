@@ -9,6 +9,7 @@ import {
   arcgisQuantizationParams,
   decodeArcGISQuantizedFeatures,
   isArcGISQuantizedFeatureSet,
+  type ArcGISQuantizedFeatureSet,
 } from "../packages/plugins/src/plugins/arcgis-quantized";
 import type { GeoLibreAppAPI } from "../packages/plugins/src/types";
 
@@ -19,7 +20,10 @@ const POLYGON_LAYER = {
 };
 
 /** A quantized feature set on a 1 km grid with an upper-left origin at (0, 0) meters. */
-const featureSet = (features: unknown[], originPosition = "upperLeft") => ({
+const featureSet = (
+  features: ArcGISQuantizedFeatureSet["features"],
+  originPosition = "upperLeft",
+): ArcGISQuantizedFeatureSet => ({
   objectIdFieldName: "OBJECTID",
   transform: { originPosition, scale: [1000, 1000], translate: [0, 0] },
   exceededTransferLimit: true,
@@ -61,7 +65,34 @@ describe("decodeArcGISQuantizedFeatures", () => {
   it("recognizes only a feature set with a transform", () => {
     assert.ok(isArcGISQuantizedFeatureSet(featureSet([])));
     assert.equal(isArcGISQuantizedFeatureSet({ type: "FeatureCollection", features: [] }), false);
-    assert.equal(isArcGISQuantizedFeatureSet({ features: [], transform: { scale: [1] } }), false);
+    assert.equal(
+      isArcGISQuantizedFeatureSet({ features: [{ attributes: {} }], transform: { scale: [1] } }),
+      false,
+    );
+    assert.equal(isArcGISQuantizedFeatureSet({ features: [{ attributes: {} }] }), false);
+  });
+
+  it("accepts the transform-less page ArcGIS returns when no record matched", () => {
+    // Verbatim from a hosted FeatureServer queried over an empty extent.
+    const empty = {
+      objectIdFieldName: "FID",
+      uniqueIdField: { name: "FID", isSystemMaintained: true },
+      globalIdFieldName: "",
+      features: [],
+    };
+    assert.ok(isArcGISQuantizedFeatureSet(empty));
+    const decoded = decodeArcGISQuantizedFeatures(empty);
+    assert.deepEqual(decoded.features, []);
+    assert.equal(decoded.recordCount, 0);
+    assert.equal(decoded.exceededTransferLimit, false);
+    assert.equal(decoded.firstRecord, undefined);
+  });
+
+  it("rejects a non-empty page without a transform instead of dropping its records", () => {
+    assert.throws(
+      () => decodeArcGISQuantizedFeatures({ features: [{ attributes: { FID: 1 } }] }),
+      /no transform/,
+    );
   });
 
   it("undoes the delta encoding and the upper-left origin", () => {

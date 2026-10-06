@@ -12,7 +12,7 @@ import type { ExperienceLevel, UiProfileSettings } from "../hooks/useDesktopSett
 export type ComplexityTier = "basic" | "intermediate" | "advanced";
 
 /**
- * Plugins toggled from other menus (Effects/Directions/Reverse Geocode via the
+ * Plugins toggled from other menus (Effects/Directions/Reverse Geocode/Layer Control via the
  * Controls menu, deck.gl viz via Add Data), so they are excluded from the
  * Plugins menu and from the UI-profile plugin lists. Keep in sync with
  * `PluginsMenu`'s skip list. Literal ids (mirroring `EFFECTS_PLUGIN_ID` etc.
@@ -24,6 +24,7 @@ export const MENU_MANAGED_PLUGIN_IDS = new Set<string>([
   "maplibre-gl-directions", // DIRECTIONS_PLUGIN_ID
   "maplibre-reverse-geocode", // REVERSE_GEOCODE_PLUGIN_ID
   "maplibre-deckgl-viz", // DECK_VIZ_PLUGIN_ID
+  "maplibre-layer-control", // LAYER_CONTROL_PLUGIN_ID
 ]);
 
 /** The plugin ids that participate in the UI profile (excludes the menu-managed
@@ -188,6 +189,12 @@ export const DATA_SOURCE_CATALOG: readonly DataSourceCatalogEntry[] = [
     tier: "advanced",
   },
   {
+    id: "mssql",
+    section: "databases",
+    labelKey: "toolbar.layerType.mssql",
+    tier: "advanced",
+  },
+  {
     id: "iceberg",
     section: "databases",
     labelKey: "toolbar.layerType.iceberg",
@@ -224,6 +231,7 @@ export const PLUGIN_TIERS: Record<string, ComplexityTier> = {
   "geolibre-s3-browser": "advanced",
   "maplibre-gl-huggingface": "advanced",
   "maplibre-gl-vantor": "advanced",
+  "maplibre-gl-usgs-dem": "advanced",
   "maplibre-gl-esri-wayback": "advanced",
   "maplibre-gl-geoagent": "advanced",
   "maplibre-samgeo": "advanced",
@@ -439,6 +447,12 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     tier: "intermediate",
   },
   {
+    id: "view.colorVision",
+    menuId: "view",
+    labelKey: "toolbar.item.colorVisionPreview",
+    tier: "intermediate",
+  },
+  {
     // "basic", not "advanced": this is the only control that switches the
     // primary map back to MapLibre, and a preset *hides* items above its tier
     // rather than disabling them. A beginner opening a project saved with
@@ -595,6 +609,12 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
   },
   // Controls — built-in map controls
   {
+    id: "controls.layerControl",
+    menuId: "controls",
+    labelKey: "toolbar.plugin.maplibre-layer-control",
+    tier: "basic",
+  },
+  {
     id: "controls.mapControl.navigation",
     menuId: "controls",
     labelKey: "toolbar.mapControl.navigation",
@@ -735,6 +755,7 @@ export const MENU_ITEM_CATALOG: readonly MenuItemCatalogEntry[] = [
     tier: "intermediate",
   },
   { id: "controls.html", menuId: "controls", labelKey: "toolbar.item.html", tier: "advanced" },
+  { id: "controls.image", menuId: "controls", labelKey: "toolbar.item.image", tier: "advanced" },
   {
     id: "controls.measure",
     menuId: "controls",

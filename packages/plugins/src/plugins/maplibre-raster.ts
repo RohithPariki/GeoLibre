@@ -2,6 +2,7 @@ import {
   effectiveLayerRenderState,
   explainS3ReadError,
   resolveReadableUrl,
+  shouldZoomToNewLayers,
   styleValue,
   useAppStore,
 } from "@geolibre/core";
@@ -48,6 +49,7 @@ import { isNonTiledRasterError } from "./non-tiled-raster-error";
 import { convertTiffYCbCrToRgb } from "./tiff-ycbcr";
 import { readableStacLayerHref } from "./stac-signing";
 import { configureMapboxRasterEngine } from "./raster-mapbox-compat";
+import { focusPanel, restorePanelFocus } from "./panel-focus";
 
 const rasterControlPosition: GeoLibreMapControlPosition = "top-left";
 const RASTER_PANEL_CLASS = "geolibre-raster-panel";
@@ -157,6 +159,12 @@ type RasterLayerManagerInternals = {
   };
   /** The currently selected raster id (read to restore it after inspect). */
   selectedId?: string | null;
+  /**
+   * The panel's Add data section calls this directly (not the control's
+   * `addRaster`), so it is wrapped to default `zoomTo` to the map preference.
+   */
+  addRaster?: (source: string | File, options?: { zoomTo?: boolean }) => Promise<string>;
+  geolibreZoomToPatched?: boolean;
   _device?: unknown;
   _deps?: {
     createOverlay?: (map: MapControlHost, options: OverlayFactoryOptions) => OverlayLike;
@@ -224,6 +232,13 @@ let rasterControlMounted = false;
 // call that carries it (the browse-button interception) can still add layers.
 let rasterHostApp: GeoLibreAppAPI | null = null;
 let restorePanelExpandTimeout: number | null = null;
+/**
+ * The `projectGeneration` in which the user last opened the panel, or null once
+ * it is closed. A restore pass for that same project (the map finishing its
+ * first style load, a basemap swap) must not apply the project's saved panel
+ * state over the user's newer choice (#2895, as for the vector panel).
+ */
+let panelOpenedInGeneration: number | null = null;
 let rasterControlInterleaved = true;
 // Unsubscribes the web raster overlay proxy from the shared Deck's device
 // notifications when the control's overlay is torn down (see
@@ -338,9 +353,13 @@ export function setLocalRasterPicker(picker: LocalRasterPicker | null): void {
  * @param app - The GeoLibre app API.
  */
 export function openRasterLayerPanel(app: GeoLibreAppAPI): void {
+  const openedInGeneration = useAppStore.getState().projectGeneration;
   void (async () => {
     const control = await ensureRasterControl(app);
     if (!control) return;
+    // Recorded only once the control exists, so a failed open never makes a
+    // later restore skip the project's saved panel state.
+    panelOpenedInGeneration = openedInGeneration;
     // Defer by one task so the control finishes its mount cycle before the
     // panel is shown and expanded, matching the other standalone panels
     // (Earth Engine, 3D Tiles); expanding in the same task as addControl can
@@ -356,6 +375,8 @@ export function openRasterLayerPanel(app: GeoLibreAppAPI): void {
         wireRasterCloseButton(control);
         wireRasterBrowseButton(control);
         applyRasterPanelClass(control);
+        // Take keyboard focus off the menu trigger and into the panel (#2895).
+        focusPanel((control as unknown as RasterControlInternals)._panel, RASTER_CLOSE_SELECTOR);
       } catch (error) {
         console.error("[GeoLibre] Failed to open the raster layer panel", error);
       }
@@ -389,10 +410,14 @@ export async function addRasterToMap(
     state?: Partial<RasterLayerState>;
     /** Existing map style layer beneath which the raster is inserted. */
     beforeId?: string;
-    /** Whether to fit the map to the raster after loading. Defaults to true. */
+    /**
+     * Whether to fit the map to the raster after loading. Defaults to the
+     * project's "Zoom to newly added layers" map preference.
+     */
     zoomTo?: boolean;
   } = {},
 ): Promise<string> {
+  // eslint-disable-next-line local/no-renderer-kind-checks -- picks the engine's own adapter
   if (app.getMapRenderer?.() === "arcgis") {
     const { addArcgisRaster } = await import("./arcgis-raster-import");
     return addArcgisRaster(app, source, options);
@@ -454,7 +479,7 @@ function addRasterSource(
   return control.addRaster(source, {
     id: options.id,
     name: options.name,
-    zoomTo: options.zoomTo ?? true,
+    zoomTo: options.zoomTo ?? shouldZoomToNewLayers(),
     // Safe to pass before the band count is known: the renderer applies a
     // colormap only in single-band mode and ignores it otherwise.
     ...(options.state || options.defaults?.colormap
@@ -626,6 +651,7 @@ export function getRasterLoadState(layerId: string) {
 }
 
 export function closeRasterLayerPanel(app: GeoLibreAppAPI): void {
+  panelOpenedInGeneration = null;
   if (restorePanelExpandTimeout !== null) {
     window.clearTimeout(restorePanelExpandTimeout);
     restorePanelExpandTimeout = null;
@@ -716,6 +742,7 @@ export function readRasterWindow(
  * @param app - The GeoLibre app API.
  */
 export function restoreRasterLayers(app: GeoLibreAppAPI): void {
+  // eslint-disable-next-line local/no-renderer-kind-checks -- picks the engine's own adapter
   if (app.getMapRenderer?.() === "arcgis") {
     void import("./arcgis-raster-import")
       .then(({ restoreArcgisRasterFiles }) => restoreArcgisRasterFiles(localRasterFileReader))
@@ -786,7 +813,11 @@ export function restoreRasterLayers(app: GeoLibreAppAPI): void {
       // Isolated so a DOM error from the panel-state restore cannot abort
       // the raster replay below.
       try {
-        applyRestoredRasterPanelState(control, panelCollapsed);
+        // The user opened the panel after this project loaded, so their choice
+        // is newer than the saved state; leave the panel as they left it.
+        if (panelOpenedInGeneration !== useAppStore.getState().projectGeneration) {
+          applyRestoredRasterPanelState(control, panelCollapsed);
+        }
       } catch (error) {
         console.error("[GeoLibre] Failed to restore raster panel state", error);
       }
@@ -948,6 +979,7 @@ async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl |
     // button the user never asked for. openRasterLayerPanel shows it.
     await patchTauriRasterOverlayFactory(rasterControl);
     patchCogTilerJpegTables(rasterControl);
+    defaultRasterZoomToPreference(rasterControl);
     await warmTauriWasmEngine(rasterControl);
     // On web the control renders interleaved, which shares deck.gl's per-map
     // Deck with the other interleaved overlays; route it through the shared
@@ -970,6 +1002,23 @@ async function ensureRasterControl(app: GeoLibreAppAPI): Promise<RasterControl |
   }
 
   return rasterControl;
+}
+
+/**
+ * Makes the raster control's "fit to the new raster" default follow the
+ * project's Map Preferences instead of the upstream `true`. A caller passing
+ * `zoomTo` explicitly (project restore passes `false`) is left alone. Must run
+ * after addMapControl, which is when the control creates its LayerManager.
+ *
+ * @param control - The mounted raster control.
+ */
+function defaultRasterZoomToPreference(control: RasterControl): void {
+  const manager = (control as unknown as RasterControlInternals)._layerManager;
+  if (!manager?.addRaster || manager.geolibreZoomToPatched) return;
+  const addRaster = manager.addRaster.bind(manager);
+  manager.addRaster = (source, options) =>
+    addRaster(source, { ...options, zoomTo: options?.zoomTo ?? shouldZoomToNewLayers() });
+  manager.geolibreZoomToPatched = true;
 }
 
 /**
@@ -1531,18 +1580,24 @@ function applyRasterPanelClass(control: RasterControl): void {
   internals._panel?.classList.add(RASTER_PANEL_CLASS);
 }
 
+const RASTER_CLOSE_SELECTOR = ".mlr-control-close";
+
 // The upstream close button only collapses the panel, leaving the map
 // button visible. Hide the whole control too so closing the panel restores
 // the pre-open map, like dismissing the dialog it replaces. Loaded rasters
 // keep rendering; the layer panel still manages them.
 function wireRasterCloseButton(control: RasterControl): void {
   const panel = (control as unknown as RasterControlInternals)._panel;
-  const closeButton = panel?.querySelector<HTMLElement>(".mlr-control-close");
+  const closeButton = panel?.querySelector<HTMLElement>(RASTER_CLOSE_SELECTOR);
   if (!closeButton || closeButton.dataset.geolibreCloseWired === "true") {
     return;
   }
   closeButton.dataset.geolibreCloseWired = "true";
-  closeButton.addEventListener("click", () => hideRasterControl(control));
+  closeButton.addEventListener("click", () => {
+    panelOpenedInGeneration = null;
+    restorePanelFocus(panel);
+    hideRasterControl(control);
+  });
 }
 
 // The panel's "click to browse" drop zone opens a hidden <input type="file">,

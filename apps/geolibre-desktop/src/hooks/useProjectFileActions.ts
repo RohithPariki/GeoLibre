@@ -21,7 +21,11 @@ import {
 } from "@geolibre/plugins";
 import type { FeatureCollection } from "geojson";
 import { type FormEvent, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { embedEditedGeometry, hasEditedGeometry } from "../lib/edited-geometry-save";
+import {
+  discardEditedWfsGeometry,
+  embedEditedGeometry,
+  hasEditedGeometry,
+} from "../lib/edited-geometry-save";
 import { useTranslation } from "react-i18next";
 import { createAppAPI, getPluginManager } from "./usePlugins";
 import { pluginManifestUrlsForIds } from "../lib/external-plugins";
@@ -40,6 +44,7 @@ import {
   saveProjectFileToPath,
   saveStartupProjectSnapshot,
   saveTextFileWithFallback,
+  type OpenedProjectFile,
 } from "../lib/tauri-io";
 import { useDesktopSettingsStore } from "./useDesktopSettings";
 import { buildProjectHtml, viewerChromeParams } from "../lib/html-export";
@@ -86,6 +91,7 @@ import { importArcgisProject, type ArcgisProjectImportWarning } from "../lib/arc
 import type { MapControllerRef } from "../components/layout/toolbar/constants";
 import { IS_MAS_BUILD } from "../lib/build-flags";
 import { resolveDroppedProjectIfCurrent } from "../lib/dropped-project";
+import { useWindowCloseGuard } from "./useWindowCloseGuard";
 import {
   projectCredentialRollback,
   projectCredentialsInKeychain,
@@ -875,6 +881,12 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
       asCopy?: boolean;
       oauthSessionRevision?: number;
       remoteProject?: RemoteSharedProjectTarget;
+      /**
+       * Lets the caller cancel the open (e.g. the New Project dialog closing
+       * mid-download): an abort before the project loads leaves the current
+       * project untouched.
+       */
+      signal?: AbortSignal;
     } = {},
   ): Promise<void> => {
     const normalizedUrl = normalizeProjectUrl(url);
@@ -885,6 +897,8 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
     shareUrlAbortRef.current?.abort();
     const controller = new AbortController();
     shareUrlAbortRef.current = controller;
+    if (options.signal?.aborted) controller.abort();
+    options.signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
     try {
       let project: Awaited<ReturnType<typeof resolveProjectXyzLayers>>;
@@ -938,7 +952,44 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
   // set the shared `actionError` itself, so each caller can route the failure to
   // its own surface (the toolbar's modal vs. the Browser panel's inline banner)
   // now that a single instance is shared across both.
+  // The browser cannot reopen a file by the name it was saved under, so a local
+  // recent entry on the web asks the user to pick the file again (GeoLibre#2921).
+  const reopenRecentWithPicker = async (signal: AbortSignal): Promise<string | null> => {
+    let result: OpenedProjectFile | null;
+    try {
+      result = await openProjectFile();
+    } catch (error) {
+      if (signal.aborted) return null;
+      console.error("Failed to open recent project", error);
+      return error instanceof Error ? error.message : t("toolbar.error.couldNotOpenRecentProject");
+    }
+    if (!result || signal.aborted) return null;
+    try {
+      const project = await resolveProjectXyzLayers(result.project, signal);
+      if (signal.aborted) return null;
+      loadProject(project, result.path);
+      return null;
+    } catch (error) {
+      if (signal.aborted) return null;
+      console.error("Failed to load recent project", error);
+      return error instanceof Error ? error.message : t("toolbar.error.couldNotLoadRecentProject");
+    }
+  };
+
   const handleOpenRecent = async (path: string): Promise<string | null> => {
+    if (!isTauri() && !isHttpUrl(path)) {
+      // Cancel any previous open; stale picker results must not replace a newer
+      // project selection.
+      recentAbortRef.current?.abort();
+      const controller = new AbortController();
+      recentAbortRef.current = controller;
+      // Called synchronously: Safari only opens a file picker inside the user gesture.
+      return reopenRecentWithPicker(controller.signal).finally(() => {
+        if (recentAbortRef.current === controller) {
+          recentAbortRef.current = null;
+        }
+      });
+    }
     // Cancel any previous in-flight open so rapid clicks cannot race and let a
     // stale fetch win by resolving last.
     recentAbortRef.current?.abort();
@@ -1273,15 +1324,25 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
       };
     }
 
-    // "noembed": on the web this saves without the local data (those layers are
-    // lost on reopen). On desktop it saves file references — but only for layers
-    // that actually have a re-readable path; the rest (e.g. an Add Vector Layer
-    // file restored from an embedded copy on a machine without the original) are
-    // embedded as a fallback, since referencing them would save no data at all.
-    if (!isTauri()) return {};
+    // "noembed": on the web this saves without local data; on desktop it saves
+    // file references where available. Edited WFS layers cannot be represented
+    // by a file reference, so this choice intentionally saves the live service
+    // URL and drops the locally edited collection.
     let changed = false;
+    if (!isTauri()) {
+      const layers = useAppStore.getState().layers.map((layer) => {
+        const savedLayer = discardEditedWfsGeometry(layer);
+        if (savedLayer !== layer) changed = true;
+        return savedLayer;
+      });
+      return changed ? { layers } : {};
+    }
     const layers = useAppStore.getState().layers.map((layer) => {
-      if (hasEditedGeometry(layer) && !isReloadableLocalFileLayer(layer)) return layer;
+      if (hasEditedGeometry(layer) && !isReloadableLocalFileLayer(layer)) {
+        const savedLayer = discardEditedWfsGeometry(layer);
+        if (savedLayer !== layer) changed = true;
+        return savedLayer;
+      }
       // Plain GeoJSON with an absolute path → reference (drop the embedded copy).
       if (isReloadableLocalFileLayer(layer)) {
         changed = true;
@@ -1625,6 +1686,8 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
 
   const handleSave = () => saveProject();
   const handleSaveAs = () => saveProject({ saveAs: true });
+  // The desktop window's title-bar X asks before dropping unsaved work.
+  const windowCloseGuard = useWindowCloseGuard(handleSave);
 
   // Export the current project as a standalone interactive HTML page (#821).
   // Shares saveProject's guard so a double-click can't open two save dialogs.
@@ -1834,6 +1897,7 @@ export function useProjectFileActions(mapControllerRef: MapControllerRef) {
     droppedProjectPrompt,
     droppedProjectSaving,
     resolveDroppedProjectPrompt,
+    ...windowCloseGuard,
     qgisImportWarnings,
     setQgisImportWarnings,
     arcgisImportWarnings,
